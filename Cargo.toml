@@ -24,6 +24,10 @@ path = "src/main.rs"
 name = "debug-cli"
 path = "src/debug_cli.rs"
 
+[[bin]]
+name = "taikyokushogi-cli"
+path = "src/cli.rs"
+
 [features]
 default = ["cpu"]
 cpu = []

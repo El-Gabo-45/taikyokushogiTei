@@ -1,22 +1,93 @@
-//! Head-to-head strength testing: play N games between two search configs
-//! and report the W/L/D score. This is the minimal tool for measuring Elo
-//! gains (handcrafted vs NNUE, depth A vs depth B, config vs config).
+//! Head-to-head strength testing with **Elo estimation and SPRT**.
 //!
-//! Games are deterministic (seeded LCG opening randomization), so a given
-//! invocation is reproducible; vary the game count / opening depth to widen
-//! the sample. For publishable claims, run many games and apply SPRT or a
-//! confidence interval on the W/L/D counts.
+//! Plays N games between two search configs (alternating colors, seeded
+//! opening randomization) and reports, every batch:
+//!   - W/L/D score and the Elo difference with a 95% confidence interval
+//!   - (optional) GSPRT likelihood ratio for early accept/stop
 //!
 //! Usage:
-//!   cargo run --release --example match_race -- [games] [depth_a] [depth_b] [time_ms] [opening_plies]
-//! Defaults: 4 games, A=depth 3, B=depth 2, 5000ms budget, 4 random opening plies.
+//!   cargo run --release --example match_race -- [args]
+//!
+//! Positional args:  games [depthA] [depthB] [time_ms] [opening_plies]
+//! Optional flags:   nnueA        side A uses the NNUE evaluator
+//!                   nnueB        side B uses the NNUE evaluator
+//!                   sprt=elo0:elo1   run a GSPRT (alpha=0.05, beta=0.10)
+//!
+//! Examples:
+//!   # depth 3 vs depth 2, 100 games, Elo + CI every 10 games
+//!   cargo run --release --example match_race -- 100 3 2 2000 6
+//!   # SPRT test: is depth 3 >= +10 Elo over depth 2?
+//!   cargo run --release --example match_race -- 400 3 2 2000 6 sprt=0:10
+//!   # handcrafted vs NNUE (needs TAIKYOKU_NNUE_PATH)
+//!   TAIKYOKU_NNUE_PATH=net.nnue cargo run --release --example match_race -- 100 3 3 2000 6 nnueB
+//!
+//! The game results are deterministic (seeded LCG), so a given invocation
+//! is reproducible. For publishable claims use the SPRT mode with standard
+//! bounds (elo0=0, elo1=10, alpha=0.05, beta=0.10) and many games.
 
 use taikyokushogi::{Board, GameResult};
 
+// ── Elo / statistics ────────────────────────────────────────────
+/// Logistic Elo model: score = 1 / (1 + 10^(-elo/400)).
+fn logistic(elo: f64) -> f64 {
+    1.0 / (1.0 + 10.0f64.powf(-elo / 400.0))
+}
+
+/// Inverted logistic: Elo difference implied by a score in [0,1].
+fn elo_from_score(score: f64) -> f64 {
+    let s = score.clamp(0.001, 0.999);
+    -400.0 * (1.0 / s - 1.0).log10()
+}
+
+struct Stats { w: u64, l: u64, d: u64 }
+
+impl Stats {
+    fn n(&self) -> u64 { self.w + self.l + self.d }
+    fn score(&self) -> f64 {
+        let n = self.n() as f64;
+        if n == 0.0 { 0.5 } else { (self.w as f64 + 0.5 * self.d as f64) / n }
+    }
+    /// Unbiased sample variance of per-game results (win=1, draw=0.5, loss=0).
+    fn variance(&self) -> f64 {
+        let n = self.n() as f64;
+        if n < 2.0 { return 0.25; }
+        let s = self.score();
+        let mut acc = 0.0;
+        for (count, value) in [(self.w as f64, 1.0), (self.l as f64, 0.0), (self.d as f64, 0.5)] {
+            acc += count * (value - s) * (value - s);
+        }
+        acc / (n - 1.0)
+    }
+    /// Elo difference (A minus B) with a 95% CI from the sample variance.
+    fn elo_with_ci(&self) -> (f64, f64, f64) {
+        let s = self.score();
+        let elo = elo_from_score(s);
+        let sem_score = (self.variance() / self.n() as f64).sqrt();
+        // d(elo)/d(score) = 400 / (ln 10 * s * (1-s))
+        let sem_elo = 400.0 / (std::f64::consts::LN_10 * s * (1.0 - s)) * sem_score;
+        (elo, elo - 1.96 * sem_elo, elo + 1.96 * sem_elo)
+    }
+}
+
+/// Generalized SPRT (Fisler/… "Parameterized SPRT" from the gSPRT paper):
+/// H0: elo = elo0, H1: elo = elo1. Returns the log-likelihood ratio.
+fn gsprt_llr(stats: &Stats, elo0: f64, elo1: f64) -> f64 {
+    let n = stats.n() as f64;
+    if n == 0.0 { return 0.0; }
+    let s = stats.score();
+    let var = (stats.w as f64 + 0.25 * stats.d as f64) / n - s * s;
+    let s0 = logistic(elo0);
+    let s1 = logistic(elo1);
+    if var <= 1e-9 || (s1 - s0).abs() < 1e-9 { return 0.0; }
+    n * (s1 - s0) * (2.0 * s - s0 - s1) / (2.0 * var)
+}
+
+// ── Game playing ────────────────────────────────────────────────
 struct Config {
     name: &'static str,
     depth: u32,
     time_ms: u64,
+    nnue: bool,
 }
 
 struct Lcg(u64);
@@ -32,12 +103,11 @@ impl Lcg {
 
 const MAX_GAME_PLIES: u32 = 300; // adjudicate longer games as draws
 
+/// Returns 1 if black wins, -1 if white wins, 0 for a draw.
 fn play_game(game: usize, cfg_black: &Config, cfg_white: &Config, opening_plies: usize) -> i8 {
-    // 1 = black (cfg_black) wins, -1 = white wins, 0 = draw
     let mut rng = Lcg(0x9E37_79B9_7F4A_7C15 ^ (game as u64).wrapping_mul(0x85EB_CA6B));
     let mut board = Board::initial();
 
-    // Deterministic random opening so games don't repeat identically.
     for _ in 0..opening_plies {
         let moves = board.legal_moves();
         if moves.is_empty() { break; }
@@ -53,60 +123,117 @@ fn play_game(game: usize, cfg_black: &Config, cfg_white: &Config, opening_plies:
             };
         }
         let cfg = if board.side_to_move() == taikyokushogi::Color::Black { cfg_black } else { cfg_white };
+        taikyokushogi::set_use_nnue(cfg.nnue);
         let r = board.search(cfg.depth, cfg.time_ms);
         match r.best_move {
             Some(m) => board.apply(&m),
             None => {
-                // No move found: side to move loses (royal captured or no moves).
                 return if board.side_to_move() == taikyokushogi::Color::Black { -1 } else { 1 };
             }
         }
     }
-    0 // adjudicated draw at the ply cap
+    0
 }
 
+// __APPEND__
+
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let games: usize = args.get(1).map(|s| s.parse().unwrap()).unwrap_or(4);
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut pos: Vec<u64> = Vec::new();
+    let mut nnue_a = false;
+    let mut nnue_b = false;
+    let mut sprt: Option<(f64, f64)> = None;
+    for a in &args {
+        if let Some(rest) = a.strip_prefix("sprt=") {
+            let parts: Vec<&str> = rest.split(':').collect();
+            if parts.len() == 2 {
+                sprt = Some((parts[0].parse().unwrap_or(0.0), parts[1].parse().unwrap_or(10.0)));
+            }
+        } else if a.eq_ignore_ascii_case("nnueA") { nnue_a = true; }
+        else if a.eq_ignore_ascii_case("nnueB") { nnue_b = true; }
+        else if let Ok(v) = a.parse::<u64>() { pos.push(v); }
+        else { eprintln!("warning: ignored arg `{}`", a); }
+    }
+    let games = pos.first().copied().unwrap_or(100) as usize;
     let cfg_a = Config {
         name: "A",
-        depth: args.get(2).map(|s| s.parse().unwrap()).unwrap_or(3),
-        time_ms: args.get(4).map(|s| s.parse().unwrap()).unwrap_or(5000),
+        depth: pos.get(1).copied().unwrap_or(3) as u32,
+        time_ms: pos.get(3).copied().unwrap_or(2000),
+        nnue: nnue_a,
     };
     let cfg_b = Config {
         name: "B",
-        depth: args.get(3).map(|s| s.parse().unwrap()).unwrap_or(2),
-        time_ms: args.get(4).map(|s| s.parse().unwrap()).unwrap_or(5000),
+        depth: pos.get(2).copied().unwrap_or(2) as u32,
+        time_ms: pos.get(3).copied().unwrap_or(2000),
+        nnue: nnue_b,
     };
-    let opening_plies: usize = args.get(5).map(|s| s.parse().unwrap()).unwrap_or(4);
+    let opening_plies = pos.get(4).copied().unwrap_or(6) as usize;
+    let (elo0, elo1) = sprt.unwrap_or((0.0, 10.0));
 
     println!(
-        "match_race: {} games | A: d{} {}ms | B: d{} {}ms | {} opening plies",
-        games, cfg_a.depth, cfg_a.time_ms, cfg_b.depth, cfg_b.time_ms, opening_plies
+        "match: {} games | A: d{}{} {}ms | B: d{}{} {}ms | {} opening plies{}",
+        games, cfg_a.depth, if cfg_a.nnue { "+nnue" } else { "" }, cfg_a.time_ms,
+        cfg_b.depth, if cfg_b.nnue { "+nnue" } else { "" }, cfg_b.time_ms,
+        opening_plies,
+        sprt.map(|(e0, e1)| format!(" | SPRT [{},{}] a=0.05 b=0.10", e0, e1)).unwrap_or_default(),
     );
 
-    let (mut a_wins, mut b_wins, mut draws) = (0u32, 0u32, 0u32);
+    let mut stats = Stats { w: 0, l: 0, d: 0 };
+    const BATCH: usize = 10;
+    const ALPHA: f64 = 0.05;
+    const BETA: f64 = 0.10;
+    let upper = ((1.0 - BETA) / ALPHA).ln();
+    let lower = (BETA / (1.0 - ALPHA)).ln();
+
     for game in 0..games {
-        // Alternate colors: even games A takes black.
         let score = if game % 2 == 0 {
             play_game(game, &cfg_a, &cfg_b, opening_plies)
         } else {
             -play_game(game, &cfg_b, &cfg_a, opening_plies)
         };
         match score {
-            1 => { a_wins += 1; println!("game {:>3}: {} wins", game, cfg_a.name); }
-            -1 => { b_wins += 1; println!("game {:>3}: {} wins", game, cfg_b.name); }
-            _ => { draws += 1; println!("game {:>3}: draw", game); }
+            1 => stats.w += 1,
+            -1 => stats.l += 1,
+            _ => stats.d += 1,
+        }
+
+        if (game + 1) % BATCH == 0 || game + 1 == games {
+            let (elo, lo, hi) = stats.elo_with_ci();
+            let line = format!(
+                "n={:>4}  W-L-D={}-{}-{}  score={:.3}  Elo {:+.1} [{:+.1}, {:+.1}]",
+                stats.n(), stats.w, stats.l, stats.d, stats.score(), elo, lo, hi,
+            );
+            match sprt {
+                Some(_) => {
+                    let llr = gsprt_llr(&stats, elo0, elo1);
+                    println!("{}  LLR={:+.2}", line, llr);
+                    if llr >= upper {
+                        println!("
+=== SPRT: H1 ACCEPTED — {} is stronger (>= +{} Elo) ===", cfg_a.name, elo1);
+                        println!("final: {}", line);
+                        return;
+                    }
+                    if llr <= lower {
+                        println!("
+=== SPRT: H0 ACCEPTED — no evidence that {} is >= +{} Elo ===", cfg_a.name, elo1);
+                        println!("final: {}", line);
+                        return;
+                    }
+                }
+                None => println!("{}", line),
+            }
         }
     }
 
-    let decided = a_wins + b_wins;
-    let a_pct = if decided > 0 { 100.0 * a_wins as f64 / decided as f64 } else { 50.0 };
-    println!("\n=== RESULT ===");
-    println!("{} (d{}): {} wins", cfg_a.name, cfg_a.depth, a_wins);
-    println!("{} (d{}): {} wins", cfg_b.name, cfg_b.depth, b_wins);
-    println!("draws: {} (of {} games)", draws, games);
-    println!("{} score: {:.1}% of decided games", cfg_a.name, a_pct);
-    println!("\nFor a publishable claim: run >= 1000 games and compute a");
-    println!("confidence interval or SPRT bounds on these W/L/D counts.");
+    let (elo, lo, hi) = stats.elo_with_ci();
+    println!("
+=== RESULT ===");
+    println!("{} (d{}{}): {} wins | {} (d{}{}): {} wins | draws {}",
+             cfg_a.name, cfg_a.depth, if cfg_a.nnue { "+nnue" } else { "" }, stats.w,
+             cfg_b.name, cfg_b.depth, if cfg_b.nnue { "+nnue" } else { "" }, stats.l, stats.d);
+    println!("Elo({} vs {}) = {:+.1}  [95% CI: {:+.1}, {:+.1}]",
+             cfg_a.name, cfg_b.name, elo, lo, hi);
+    println!("
+For a publishable claim: use the sprt=elo0:elo1 mode with many games,");
+    println!("or run >= 1000 games and report the confidence interval.");
 }

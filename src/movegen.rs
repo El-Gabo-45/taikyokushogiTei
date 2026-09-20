@@ -46,11 +46,14 @@ pub fn push_unique(moves: &mut Vec<Move>, m: Move) {
 }
 
 // ── PRECOMPUTED JUMP DESTINATIONS ──────────────────────────────
-static JUMP_TABLE: OnceLock<Box<[[[[u16; 8]; 2]; NUM_SQUARES]; 512]>> = OnceLock::new();
+static JUMP_TABLE: OnceLock<Box<[[[[u16; 8]; 2]; NUM_SQUARES]]>> = OnceLock::new();
 
-fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]; 512] {
+fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
     JUMP_TABLE.get_or_init(|| {
-        let mut table = Box::new([[[[INVALID_SQ; 8]; 2]; NUM_SQUARES]; 512]);
+        // Heap-allocated directly (a fixed-size Box<[[[..];..];512]> would
+        // materialize ~21 MB on the stack during construction).
+        let mut table: Vec<[[[u16; 8]; 2]; NUM_SQUARES]> =
+            vec![[[[INVALID_SQ; 8]; 2]; NUM_SQUARES]; 512];
         for pt in 1..=301u16 {
             let mv = pieces::movement(pt);
             if mv.jumps.is_empty() { continue; }
@@ -76,7 +79,7 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]; 512] {
                 }
             }
         }
-        table
+        table.into_boxed_slice()
     })
 }
 
@@ -209,7 +212,7 @@ fn gen_slides_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Moveme
 
 fn gen_jumps_captures(
     board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-    jt: &[[[[u16; 8]; 2]; NUM_SQUARES]; 512],
+    jt: &[[[[u16; 8]; 2]; NUM_SQUARES]],
     moves: &mut Vec<Move>,
 ) {
     if mv.jumps.is_empty() { return; }
@@ -407,7 +410,7 @@ fn gen_slides(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
 /// Fast jump generation using precomputed destination table.
 fn gen_jumps_fast(
     board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-    jt: &[[[[u16; 8]; 2]; NUM_SQUARES]; 512],
+    jt: &[[[[u16; 8]; 2]; NUM_SQUARES]],
     moves: &mut Vec<Move>,
 ) {
     if mv.jumps.is_empty() { return; }

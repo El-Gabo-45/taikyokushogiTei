@@ -56,6 +56,7 @@ mod tsfen;
 mod bitboard;
 mod debugging;
 pub mod selfplay;
+pub mod elo;
 
 #[cfg(feature = "python")]
 mod python;

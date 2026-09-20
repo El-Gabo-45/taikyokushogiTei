@@ -57,14 +57,18 @@ pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
     score
 }
 
-/// Precomputed PSQT table: [pt][sq][color]
-static PSQT_TABLE: OnceLock<Box<[[[i32; 2]; NUM_SQUARES]; 512]>> = OnceLock::new();
+/// Precomputed PSQT table: [pt][sq][color], heap-allocated as a boxed slice
+/// (a fixed-size `Box<[[[..]; N]; 512]>` would materialize the whole 5 MB
+/// table on the stack during construction and overflow test-thread stacks).
+static PSQT_TABLE: OnceLock<Box<[[[i32; 2]; NUM_SQUARES]]>> = OnceLock::new();
 
 /// Get the precomputed PSQT value for a piece.
 #[inline]
 pub fn psqt(pt: u16, sq: usize, color: u8) -> i32 {
     PSQT_TABLE.get_or_init(|| {
-        let mut table = Box::new([[[0i32; 2]; NUM_SQUARES]; 512]);
+        // vec! allocates on the heap immediately; into_boxed_slice gives a
+        // Box<[[[..]; NUM_SQUARES]]> without any large stack temporaries.
+        let mut table: Vec<[[i32; 2]; NUM_SQUARES]> = vec![[[0i32; 2]; NUM_SQUARES]; 512];
         for pt in 1..=301u16 {
             for sq in 0..NUM_SQUARES {
                 for color in 0..2u8 {
@@ -72,7 +76,7 @@ pub fn psqt(pt: u16, sq: usize, color: u8) -> i32 {
                 }
             }
         }
-        table
+        table.into_boxed_slice()
     })[(pt as usize).min(511)][sq][color as usize]
 }
 
