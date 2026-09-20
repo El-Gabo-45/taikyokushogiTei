@@ -196,6 +196,51 @@ taikyokushogiOu/
   Cargo.toml            # Rust project config (bins, features, examples)
 ```
 
+## Quick Start — Build & Run
+
+Build (release):
+
+```bash
+git clone https://github.com/El-Gabo-45/taikyokushogiTei.git
+cd taikyokushogiTei
+cargo build --release
+```
+
+Build with NNUE:
+
+```bash
+cargo build --release --features nnue
+```
+
+Build with NNUE + GPU features (example):
+
+```bash
+cargo build --release --features "nnue gpu-wgpu"
+```
+
+Build Python bindings (optional):
+
+```bash
+pip install maturin
+maturin build --release --cargo-extra-args "--features pyo3"
+```
+
+Run the HTTP server (REST API + static frontend):
+
+```bash
+cargo run --release --bin taikyokushogi-server
+# open http://localhost:8000
+```
+
+Run examples/benchmarks:
+
+```bash
+cargo run --release --example bench_fixed -- 4 5 6
+cargo run --release --example bench_nps
+```
+
+See `examples/README.md` for more details on examples and flags.
+
 ## Performance
 
 Measured on the development machine with the release-mode benchmarks
