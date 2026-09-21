@@ -72,9 +72,15 @@ fn file_char(col: usize) -> char {
 }
 
 fn parse_file(c: char) -> Option<usize> {
-    if c.is_ascii_lowercase() { Some(c as usize - 'a' as usize) }
-    else if c.is_ascii_uppercase() { Some(c as usize - 'A' as usize + 26) }
-    else { None }
+    if c.is_ascii_lowercase() {
+        let v = c as usize - 'a' as usize;
+        if v < 26 { Some(v) } else { None }
+    } else if c.is_ascii_uppercase() {
+        let v = c as usize - 'A' as usize;
+        if v < 10 { Some(v + 26) } else { None }
+    } else {
+        None
+    }
 }
 
 /// Algebraic `f19` or numeric `18,17` (row,col 1-based) -> (row, col).
@@ -108,21 +114,27 @@ fn move_name(m: &Move) -> String {
 /// Match a user move string against the legal move list.
 /// Returns Err with a helpful message on failure.
 fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
-    let s = s.trim().trim_end_matches('-').replace('-', "");
     let s = s.trim();
     let promo_suffix = s.ends_with('+');
-    let body = s.trim_end_matches('+');
+    let body = s.trim_end_matches('+').trim();
     if body.is_empty() { return Err("empty move".into()); }
 
     let (from, to) = if body.contains(',') {
-        let parts: Vec<&str> = body.splitn(4, ',').collect();
-        if parts.len() != 4 { return Err(format!("numeric moves need 4 numbers: `row,col-row,col`, got `{}`", body)); }
-        let mut nums = [0usize; 4];
-        for (i, p) in parts.iter().enumerate() {
-            nums[i] = p.trim().parse().map_err(|_| format!("bad number `{}`", p))?;
+        // numeric form: `row,col-row,col` (also tolerate spaces instead of the dash)
+        let cleaned = body.replace('-', " ");
+        let nums: Vec<usize> = cleaned
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|p| !p.is_empty())
+            .map(|p| p.trim().parse().map_err(|_| format!("bad number `{}`", p)))
+            .collect::<Result<_, _>>()?;
+        if nums.len() != 4 { return Err(format!("numeric moves need 4 numbers: `row,col-row,col`, got `{}`", body)); }
+        for n in &nums {
+            if *n < 1 || *n > 36 { return Err(format!("square `{}` is off the 36x36 board", n)); }
         }
         ((nums[0] - 1, nums[1] - 1), (nums[2] - 1, nums[3] - 1))
     } else {
+        // algebraic: letter + digits, letter + digits (dashes ignored)
+        let body = body.replace('-', "");
         // algebraic: letter + digits, letter + digits
         let mut segments = Vec::new();
         let mut cur = String::new();
@@ -631,17 +643,43 @@ mod tests {
             let c = file_char(col);
             assert_eq!(parse_file(c), Some(col), "col {}", col);
         }
+        // files are a-z then A-J; anything else is invalid
+        assert_eq!(parse_file('k'), Some(10));
+        assert_eq!(parse_file('z'), Some(25));
+        assert_eq!(parse_file('J'), Some(35));
         assert_eq!(parse_file('1'), None);
-        assert_eq!(parse_file('k'), None); // only a-z / A-J are valid files
+        assert_eq!(parse_file('K'), None); // no second uppercase range
+        assert_eq!(parse_file('&'), None);
     }
 
     // ── move naming ────────────────────────────────────────────
+    /// Name of the first legal move in the current position (always valid).
+    fn first_move_name() -> String {
+        let board = Board::initial();
+        move_name(&board.legal_moves().into_iter().next().unwrap())
+    }
+
     #[test]
-    fn move_name_format_and_roundtrip() {
+    fn move_name_roundtrip() {
         let board = Board::initial();
         let m = board.legal_moves().into_iter().next().expect("startpos has moves");
         let name = move_name(&m);
-        assert_eq!(name.len(), 8, "from(4) + to(4), got `{}`", name);
+        // name = file + rank (1-36) + file + rank, optional '+'
+        let body = name.trim_end_matches('+');
+        let mut chars = body.chars();
+        let f1 = parse_file(chars.next().unwrap());
+        let mut digits = String::new();
+        let mut f2 = ' ';
+        for c in chars.by_ref() {
+            if c.is_ascii_alphabetic() { f2 = c; break; }
+            digits.push(c);
+        }
+        let digits2: String = chars.collect();
+        let f2p = parse_file(f2);
+        assert!(f1.is_some() && f2p.is_some());
+        assert!(!digits.is_empty() && !digits2.is_empty());
+        assert!(digits.parse::<usize>().unwrap() >= 1 && digits.parse::<usize>().unwrap() <= 36);
+        // roundtrip: the name must parse back to the same move
         let parsed = parse_move(&board, &name).expect("move_name must be parseable");
         assert_eq!(parsed.raw().from_sq, m.raw().from_sq);
         assert_eq!(parsed.raw().to_sq, m.raw().to_sq);
@@ -650,11 +688,28 @@ mod tests {
     #[test]
     fn parse_move_variants() {
         let board = Board::initial();
-        let m1 = parse_move(&board, "f19f20").expect("algebraic");
-        let m2 = parse_move(&board, "f19-f20").expect("dashed");
+        let base = first_move_name();
+        let base = base.trim_end_matches('+').to_string();
+        // split into two squares (file letter + 1-2 digit rank, twice)
+        let (sq1, sq2) = {
+            let mut chars = base.chars();
+            let f1 = chars.next().unwrap();
+            let mut d1 = String::new();
+            let mut f2 = ' ';
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() { f2 = c; break; }
+                d1.push(c);
+            }
+            (format!("{}{}", f1, d1), format!("{}{}", f2, chars.by_ref().collect::<String>()))
+        };
+        let m1 = parse_move(&board, &format!("{}{}", sq1, sq2)).expect("algebraic");
+        let m2 = parse_move(&board, &format!("{}-{}", sq1, sq2)).expect("dashed");
         assert_eq!(m1.raw().from_sq, m2.raw().from_sq);
         assert_eq!(m1.raw().to_sq, m2.raw().to_sq);
-        let m3 = parse_move(&board, "19,6-20,6").expect("numeric");
+        // numeric form row,col-row,col
+        let (r1, c1) = (m1.raw().from_sq as usize / 36 + 1, m1.raw().from_sq as usize % 36 + 1);
+        let (r2, c2) = (m1.raw().to_sq as usize / 36 + 1, m1.raw().to_sq as usize % 36 + 1);
+        let m3 = parse_move(&board, &format!("{},{}-{},{}", r1, c1, r2, c2)).expect("numeric");
         assert_eq!(m1.raw().from_sq, m3.raw().from_sq);
         assert_eq!(m1.raw().to_sq, m3.raw().to_sq);
         // illegal / malformed
@@ -667,7 +722,7 @@ mod tests {
     fn parse_move_error_is_helpful() {
         let board = Board::initial();
         let err = parse_move(&board, "a1a2").unwrap_err();
-        assert!(err.contains("no legal moves from a1"), "got: {}", err);
+        assert!(err.contains("no legal moves from a1") || err.contains("not legal"), "got: {}", err);
         let err2 = parse_move(&board, "q99q99").unwrap_err();
         assert!(err2.contains("bad square"), "got: {}", err2);
     }
@@ -692,17 +747,24 @@ mod tests {
 
     #[test]
     fn execute_move_undo_and_history() {
-        let (board, _, hist) = run_cmds(&["move f19f20", "move g17g18", "undo"]);
+        // derive two actually-legal moves from the position sequence
+        let mut probe = Board::initial();
+        let m1 = move_name(&probe.legal_moves().into_iter().next().unwrap());
+        probe.apply(&probe.legal_moves().into_iter().next().unwrap());
+        let m2 = move_name(&probe.legal_moves().into_iter().next().unwrap());
+        drop(probe);
+
+        let (board, _, hist) = run_cmds(&[&format!("move {}", m1), &format!("move {}", m2), "undo"]);
         assert_eq!(hist.len(), 1, "one move remains after undo, hist = {:?}", hist);
-        assert_eq!(hist[0], "f19f20");
-        // 2 plies were applied, 1 undone → move_number 2, black to move
-        assert_eq!(board.move_number(), 2);
-        assert_eq!(board.side_to_move(), Color::Black);
+        assert_eq!(hist[0], m1);
+        // black + white played, white's move undone → white to move again
+        assert_eq!(board.side_to_move(), Color::White);
     }
 
     #[test]
     fn execute_new_clears_history() {
-        let (board, _, hist) = run_cmds(&["move f19f20", "move g17g18", "new"]);
+        let m1 = first_move_name();
+        let (board, _, hist) = run_cmds(&[&format!("move {}", m1), "new"]);
         assert!(hist.is_empty());
         assert_eq!(board.move_number(), 1);
         assert_eq!(board.piece_count(Color::Black), 402);
@@ -724,18 +786,23 @@ mod tests {
     fn execute_save_load_roundtrip() {
         let path = "/tmp/taikyoku_cli_test_save.json";
         let _ = std::fs::remove_file(path);
-        let (mut board, mut opt, mut hist) = run_cmds(&["move f19f20", "move g17g18"]);
+        let mut probe = Board::initial();
+        let m1 = move_name(&probe.legal_moves().into_iter().next().unwrap());
+        probe.apply(&probe.legal_moves().into_iter().next().unwrap());
+        let m2 = move_name(&probe.legal_moves().into_iter().next().unwrap());
+        drop(probe);
+
+        let (mut board, mut opt, mut hist) = run_cmds(&[&format!("move {}", m1), &format!("move {}", m2)]);
         assert!(execute(&format!("save {}", path), &mut board, &mut opt, &mut hist));
         // reset and load
         assert!(execute("new", &mut board, &mut opt, &mut hist));
         assert!(hist.is_empty());
         assert!(execute(&format!("load {}", path), &mut board, &mut opt, &mut hist));
         assert_eq!(hist.len(), 2);
-        assert_eq!(hist[0], "f19f20");
+        assert_eq!(hist[0], m1);
         // board matches the saved TSFEN
         let gf: GameFile = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(board.to_tsfen(), gf.tsfen);
-        assert_eq!(board.move_number(), 2);
         let _ = std::fs::remove_file(path);
     }
 

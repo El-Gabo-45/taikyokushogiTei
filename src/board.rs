@@ -347,27 +347,12 @@ impl Board {
             }
         }
 
-        // Handle igui
+        // Handle igui (stationary capture): the mover stays on `from`. The
+        // victim sits on `mid_sq` (stored there by movegen) and was already
+        // removed by the mid-capture block above. Here we only handle the
+        // optional in-place promotion — the mover itself must NOT be
+        // captured (from == to would otherwise delete the moving piece).
         if m.is_igui {
-            if to_cell != EMPTY_CELL {
-                self.hash ^= zobrist_piece_key(
-                    cell_piece(to_cell), to, cell_color(to_cell));
-                // Update incremental material score for igui-captured piece
-                let cap_val = pieces::value(cell_piece(to_cell)) as i32;
-                let cap_c = cell_color(to_cell);
-                if cap_c == BLACK { self.material_score -= cap_val; }
-                else { self.material_score += cap_val; }
-                // Update incremental PSQT score
-                let cap_pt = cell_piece(to_cell);
-                let cap_psq = psqt::psqt(cap_pt, to, cap_c);
-                if cap_c == BLACK { self.psqt_score -= cap_psq; }
-                else { self.psqt_score += cap_psq; }
-                self.remove_from_lists(to);
-                self.cells[to] = EMPTY_CELL;
-                if nnue_on {
-                    nnue_removed.push((to as u16, cap_pt, cap_c));
-                }
-            }
             if m.promotion {
                 if let Some(promo_pt) = pieces::promotes_to(pt) {
                     if nnue_on {

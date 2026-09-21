@@ -330,7 +330,10 @@ fn can_promote(pt: u16) -> bool {
     pieces::promotes_to(pt).is_some()
 }
 
-fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, target: Cell) {
+/// Add a move with promotion-variant handling (public: the fast bitboard
+/// path in attack.rs delegates here so promotion rules are identical in
+/// both generators).
+pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, target: Cell) {
     let captured = if target != EMPTY_CELL { cell_piece(target) } else { 0 };
     let cap_color = if target != EMPTY_CELL { cell_color(target) } else { 0 };
 
@@ -602,28 +605,31 @@ fn gen_igui(board: &Board, sq: usize, pt: u16, color: u8, moves: &mut Vec<Move>)
         if let Some(nsq) = step_sq(sq, d, color) {
             let target = board.cells[nsq];
             if target != EMPTY_CELL && cell_color(target) != color {
-                let in_zone = in_promo_zone(sq, color);
-                let may_promo = can_promote(pt) && in_zone;
-                if may_promo {
-                    let mut m1 = Move::simple(sq as u16, sq as u16);
-                    m1.captured_piece = cell_piece(target);
-                    m1.captured_color = cell_color(target);
-                    m1.is_igui = true;
-                    moves.push(m1);
-                    let mut m2 = Move::simple(sq as u16, sq as u16);
-                    m2.captured_piece = cell_piece(target);
-                    m2.captured_color = cell_color(target);
-                    m2.is_igui = true;
-                    m2.promotion = true;
-                    moves.push(m2);
-                } else {
-                    let mut m = Move::simple(sq as u16, sq as u16);
-                    m.captured_piece = cell_piece(target);
-                    m.captured_color = cell_color(target);
-                    m.is_igui = true;
-                    moves.push(m);
-                }
+                add_igui_move(moves, sq, nsq, pt, color, target);
             }
         }
+    }
+}
+
+/// Build an igui (stationary capture) move. The mover stays on `sq`; the
+/// victim sits on `victim_sq`, which is stored in `mid_sq` so that
+/// `Board::apply_move` / `undo_move` can remove and restore it.
+pub fn add_igui_move(moves: &mut Vec<Move>, sq: usize, victim_sq: usize, pt: u16,
+                     color: u8, target: Cell) {
+    let in_zone = in_promo_zone(sq, color);
+    let may_promo = can_promote(pt) && in_zone;
+    let captured = cell_piece(target);
+    let cap_color = cell_color(target);
+    let base = |promo: bool| Move {
+        from_sq: sq as u16, to_sq: sq as u16, promotion: promo,
+        captured_piece: captured, captured_color: cap_color,
+        is_igui: true, mid_sq: victim_sq as u16, mid_piece: 0, mid_color: 0,
+        range_cap: false, caps_value: 0,
+    };
+    if may_promo {
+        push_unique(moves, base(false));
+        push_unique(moves, base(true));
+    } else {
+        push_unique(moves, base(false));
     }
 }

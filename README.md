@@ -53,11 +53,73 @@ Range-capturing pieces (Great General, Vice General, etc.) can fly over and capt
 
 ### Draw by No Progress (500-Move Rule)
 
-The game is automatically drawn if **500 consecutive full moves** (1,000 plies) pass with neither player making a capture nor a promotion. This prevents games from continuing indefinitely when neither side can make progress. The counter resets whenever a piece is captured or a promotion occurs.
+The game is automatically drawn if **500 consecutive full moves** (1,000 plies) pass with neither player making a capture nor a promotion. The counter resets whenever a piece is captured or a promotion occurs.
 
 ### Initial Setup
 
 Each side's 402 pieces occupy 12 ranks. Black occupies the bottom of the board (rows 25-36); White mirrors from the top (rows 1-12). The King sits at the center of the back rank, flanked by the Crown Prince.
+
+## CLI
+
+The engine ships with a full user-facing CLI (not just a debug harness):
+
+```bash
+cargo build --release --bin taikyokushogi-cli
+./target/release/taikyokushogi-cli                 # interactive REPL
+./target/release/taikyokushogi-cli perft 2         # one-shot commands (`&&` chains)
+```
+
+Commands (REPL or one-shot):
+
+| Command | Description |
+|---------|-------------|
+| `new`, `position <tsfen>` | reset / load a TSFEN position |
+| `board`, `status`, `fen` | show board, status line, or TSFEN |
+| `legal [<square>]` | list legal moves |
+| `move <mv>` | apply a move (`f19f20`, `f19-f20`, `f19f20+`, `19,17-20,17`) |
+| `undo`, `history` | take back / list the session's moves |
+| `go [depth N \| movetime MS]`, `hint` | search and print the best move |
+| `play <black\|white\|both>`, `stop` | engine plays a side automatically |
+| `eval`, `perft <N>`, `bench` | evaluation, node counts, micro-benchmarks |
+| `save <file.json>` / `load <file.json>` | save/load a game (TSFEN + move list) |
+| `selfplay [G D PLIES MS]` | engine-vs-engine games |
+| `match <G> <dA> <dB> [movetime MS] [maxplies N]` | match between two configs + **Elo estimate** |
+| `sprt <elo0> <elo1> [G] [dA] [dB] [movetime MS]` | SPRT test between two configs |
+| `setoption depth <N> \| movetime <MS> \| nnue <on\|off>` | engine options |
+| `about`, `help`, `quit` | info, help, exit |
+
+## ELO measurement
+
+Strength changes are measured with the built-in `elo` module
+(`taikyokushogi::elo`), which the CLI exposes through the `match` and `sprt`
+commands:
+
+* **`match 20 2 3`** — plays 20 games alternating colors between a depth-2 and
+  a depth-3 configuration, then prints W/D/L and the Elo difference with a
+  95% confidence interval.
+* **`sprt 0 10 100 2 3`** — runs a sequential probability ratio test with
+  H0 ≤ 0 Elo vs H1 ≥ 10 Elo (α = β = 0.05), stopping as soon as the result
+  is statistically decided.
+
+The same machinery is available as a library:
+
+```rust
+use taikyokushogi::elo::{self, EngineConfig, MatchConfig, Sprt};
+
+let cfg = MatchConfig {
+    games: 50,
+    a: EngineConfig::depth(2),
+    b: EngineConfig::depth(3),
+    ..Default::default()
+};
+let report = elo::run_match(&cfg);   // report.elo, report.margin95
+let sprt = elo::run_sprt(&cfg, &Sprt::default());
+```
+
+Elo math follows the standard logistic model (`expected_score`,
+`elo_from_score`, `Wdl::elo` / `elo_interval95`), with SPRT bounds
+`±ln((1-β)/α)` in the Gaussian approximation used by fishtest.
+
 
 ## Getting Started
 

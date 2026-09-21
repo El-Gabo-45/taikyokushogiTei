@@ -200,7 +200,7 @@ pub fn generate_captures_bb(board: &Board) -> (Vec<crate::types::Move>, GenMode)
                 if let Some(nsq) = step_sq(sq, d, color) {
                     let target = board.cells[nsq];
                     if target != EMPTY_CELL && cell_color(target) != color {
-                        push_move_igui(&mut moves, sq as u16, pt, color, target);
+                        push_move_igui(&mut moves, sq as u16, nsq, pt, color, target);
                     }
                 }
             }
@@ -400,7 +400,7 @@ pub fn fast_piece(
             if let Some(nsq) = step_sq(sq, d, color) {
                 let target = board.cells[nsq];
                 if target != EMPTY_CELL && cell_color(target) != color {
-                    push_move_igui(moves, sq as u16, pt, color, target);
+                    push_move_igui(moves, sq as u16, nsq, pt, color, target);
                 }
             }
         }
@@ -415,30 +415,17 @@ pub enum GenMode {
 }
 
 #[inline]
-fn push_move(moves: &mut Vec<crate::types::Move>, from: u16, to: u16, _pt: u16,
-             _color: u8, target: Cell) {
-    let captured = if target != EMPTY_CELL { cell_piece(target) } else { 0 };
-    let cap_color = if target != EMPTY_CELL { cell_color(target) } else { 0 };
-    crate::movegen::push_unique(moves, crate::types::Move {
-        from_sq: from, to_sq: to, promotion: false,
-        captured_piece: captured, captured_color: cap_color,
-        is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-        range_cap: false, caps_value: 0,
-    });
+fn push_move(moves: &mut Vec<crate::types::Move>, from: u16, to: u16, pt: u16,
+             color: u8, target: Cell) {
+    // Delegate to the shared move builder so promotion variants are
+    // generated identically in the fast and slow paths.
+    crate::movegen::add_move(moves, from, to, pt, color, target);
 }
 
 #[inline]
-fn push_move_igui(moves: &mut Vec<crate::types::Move>, from: u16, _pt: u16,
-                  _color: u8, target: Cell) {
-    let captured = cell_piece(target);
-    let cap_color = cell_color(target);
-    crate::movegen::push_unique(moves, crate::types::Move {
-        from_sq: from, to_sq: from,
-        promotion: false,
-        captured_piece: captured, captured_color: cap_color,
-        is_igui: true, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-        range_cap: false, caps_value: 0,
-    });
+fn push_move_igui(moves: &mut Vec<crate::types::Move>, from: u16, victim_sq: usize,
+                  _pt: u16, color: u8, target: Cell) {
+    crate::movegen::add_igui_move(moves, from as usize, victim_sq, _pt, color, target);
 }
 
 #[inline]
