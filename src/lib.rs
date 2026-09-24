@@ -52,6 +52,29 @@ pub mod search;
 /// integration tests in `tests/` cannot link against.
 #[cfg(test)]
 mod correctness_tests;
+
+/// Serialises the tests that touch the engine's process-wide state.
+///
+/// `cargo test` runs the test cases in parallel threads of ONE process, but the
+/// engine deliberately shares state across calls: the evaluation backend
+/// (hand-crafted vs NNUE), the transposition table and the killer/history
+/// tables. Two tests that search at the same time therefore influence each
+/// other's scores, node counts and move choices, which surfaces as seemingly
+/// random failures in tests that assert on a result. Every such test holds this
+/// guard for its whole duration.
+#[cfg(test)]
+pub(crate) mod test_lock {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    pub(crate) fn lock() -> MutexGuard<'static, ()> {
+        LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
 mod tsfen;
 mod bitboard;
 mod debugging;
@@ -316,6 +339,18 @@ pub fn set_use_nnue(enabled: bool) {
 /// Whether the NNUE evaluation backend is currently active.
 pub fn using_nnue() -> bool {
     eval::using_nnue()
+}
+
+/// Resize the transposition table to `mb` MiB (see `search::set_hash_mb`).
+/// Returns the size actually allocated, which is rounded down to a
+/// power-of-two bucket count.
+pub fn set_hash_mb(mb: usize) -> usize {
+    search::set_hash_mb(mb)
+}
+
+/// Current transposition-table size in MiB.
+pub fn hash_mb() -> usize {
+    search::hash_mb()
 }
 
 /// Whether the given piece_type ID is a royal piece (King, Crown Prince,

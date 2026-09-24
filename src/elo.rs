@@ -496,6 +496,10 @@ mod tests {
 
     #[test]
     fn play_game_returns_valid_outcome() {
+        // `play_game` sets the process-wide evaluation backend from the config
+        // (elo::apply_best), and this test compares two games move-for-move: run
+        // alone (see crate::test_lock).
+        let _serial = crate::test_lock::lock();
         let a = EngineConfig::depth(1);
         let b = EngineConfig::depth(1);
         let o = play_game(&a, &b, 6); // ply-capped at 6 → draw
@@ -508,6 +512,8 @@ mod tests {
 
     #[test]
     fn match_smoke_and_alternation() {
+        // See play_game_returns_valid_outcome: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
         let cfg = MatchConfig {
             games: 2,
             a: EngineConfig::depth(1),
@@ -527,6 +533,8 @@ mod tests {
 
     #[test]
     fn match_callback_receives_every_game() {
+        // See play_game_returns_valid_outcome: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
         use std::sync::atomic::{AtomicUsize, Ordering};
         static COUNT: AtomicUsize = AtomicUsize::new(0);
         fn cb(_g: usize, _r: GameResult, _a_white: bool) {
@@ -547,6 +555,8 @@ mod tests {
 
     #[test]
     fn sprt_stops_early_on_trivial_results() {
+        // See play_game_returns_valid_outcome: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
         let cfg = MatchConfig {
             games: 200,
             a: EngineConfig::depth(1),

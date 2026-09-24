@@ -4,13 +4,15 @@
 //! 36×36 board, so caching here saves whole quiescence subtrees) and is
 //! depth-capped (MAX_QDEPTH) because without a cap a single call once
 //! consumed 300,000 nodes on this game's open boards.
+//!
+//! Like `pvs`, this module allocates nothing: the capture list and the
+//! scoring list come from the node's per-ply pooled buffer.
 
 use super::ordering::{self, piece_vals};
 use super::params;
 use super::pvs::Ctx;
 use super::tt;
 use crate::eval::{evaluate, MATE_SCORE};
-use crate::movegen::generate_pseudo_legal_captures;
 use crate::types::*;
 
 /// Quiescence entry (qd = 0 from the main search).
@@ -68,27 +70,42 @@ impl<'a> Ctx<'a> {
         // Reference: docx §3.2 Futility Pruning & §4.4 Quiescence Search).
         // The capture-only generator skips the ~700 quiet moves, so QS now
         // scales with the number of pieces that can actually capture.
-        let moves = generate_pseudo_legal_captures(self.board);
+        //
+        // QS gets its own slice of the pool above the PV plies: a PV node at
+        // ply P never holds a QS slot (qsearch is entered at d == 0, before
+        // the PV node takes its buffer), so `ply + qd` can never collide with
+        // a live PV buffer.
+        let slot = self.ply as usize + qd as usize;
+        let mut pb = self.pool.take(slot);
+        crate::movegen::generate_pseudo_legal_captures_into(&mut pb.caps, self.board);
         let values = piece_vals();
-        let mut scored: Vec<(i32, usize)> = Vec::with_capacity(moves.len());
-        for (i, m) in moves.iter().enumerate() {
+        pb.scored.clear();
+        for (i, m) in pb.caps.iter().enumerate() {
             let s = ordering::capture_qs_score(self.board, m, values);
             if s < params::QS_PREFILTER {
                 continue;
             }
-            scored.push((s, i));
+            pb.scored.push((s, i as u32, 0));
         }
-        scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        pb.scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
 
-        for (i_idx, &(_, i)) in scored.iter().enumerate() {
-            if i_idx > 0 && self.past_deadline() { return alpha; }
-            let m = &moves[i];
+        // `early` reproduces the old straight-line `return`s: a stop or a beta
+        // cutoff skips the TT store, while falling out of the loop stores.
+        let mut early: Option<i32> = None;
+        for (i_idx, &(_, i, _)) in pb.scored.iter().enumerate() {
+            if i_idx > 0 && self.past_deadline() { early = Some(alpha); break; }
+            let m = &pb.caps[i as usize];
             self.board.apply_move(m);
             let score = -self.qsearch(-beta, -alpha, qd + 1);
             self.board.undo_move();
-            if score >= beta { return beta; }
+            if score >= beta { early = Some(beta); break; }
             if score > alpha { alpha = score; }
         }
+        // The immutable borrow of `pb.scored` above ends here, so the buffer
+        // can go back to the pool before any return.
+        self.pool.put(slot, pb);
+
+        if let Some(score) = early { return score; }
 
         if qd > 0 {
             tt::tt_store(q_hash, tt::TTEntry {

@@ -18,6 +18,7 @@
 //! `in_check` bindings stay in the code (always false) so the gates read
 //! naturally and can be wired up if a check rule is ever added.
 
+use super::buffers::{PlyBuffers, SearchPool};
 use super::heuristics;
 use super::ordering::{self, piece_vals};
 use super::params;
@@ -26,10 +27,17 @@ use super::tt;
 use crate::board::Board;
 use crate::eval::{evaluate, MATE_SCORE};
 use crate::types::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Per-node search state threaded through the recursive calls, replacing the
 /// previous 8-argument `pvs(...)` signature.
+///
+/// Everything that used to be a process-wide global *and* everything that is
+/// naturally per-search lives here: the board cursor, the node counter, the
+/// deadline, the cooperative stop flag and the per-ply scratch pool. The
+/// genuinely shared state (transposition table, killer/history tables) stays
+/// in `tt`/`heuristics`, because Lazy SMP peers are *supposed* to share it.
 pub(crate) struct Ctx<'a> {
     pub board: &'a mut Board,
     pub nodes: &'a mut u64,
@@ -37,11 +45,20 @@ pub(crate) struct Ctx<'a> {
     pub ply: u32,
     /// Packed key of the move played at the parent node (for counter moves).
     pub prev_move: u32,
+    /// Cooperative stop flag shared by every worker of this search. The
+    /// master sets it once its own iterative deepening is done; helpers (which
+    /// may have no wall-clock deadline at all, e.g. fixed-depth runs) then
+    /// unwind promptly instead of searching to completion.
+    pub stop: &'a AtomicBool,
+    /// Per-ply scratch buffers: move lists and scoring arrays are recycled
+    /// instead of malloc'ed per node.
+    pub pool: &'a mut SearchPool,
 }
 
 impl<'a> Ctx<'a> {
     #[inline]
     pub(crate) fn past_deadline(&self) -> bool {
+        if self.stop.load(Ordering::Relaxed) { return true; }
         self.deadline.map_or(false, |dl| Instant::now() >= dl)
     }
 
@@ -194,7 +211,16 @@ impl<'a> Ctx<'a> {
         // If no TT move, do a shallow search to get one.
         let iid_move = self.iid_move(d, hash, tt_move, alpha, beta);
 
-        self.search_node(d, alpha, beta, static_eval, in_check, iid_move)
+        // ── SCRATCH BUFFER FOR THIS NODE ──────────────────────────
+        // Taken for our own ply and handed back before returning, so the move
+        // lists and scoring arrays are recycled instead of allocated. The
+        // buffer is an owned value, which is why the recursive calls below can
+        // borrow `&mut self` freely.
+        let ply = self.ply as usize;
+        let pb = self.pool.take(ply);
+        let (score, pb) = self.search_node(pb, d, alpha, beta, static_eval, in_check, iid_move);
+        self.pool.put(ply, pb);
+        score
     }
 
     /// Recursive PVS call used inside the node logic.
@@ -204,8 +230,11 @@ impl<'a> Ctx<'a> {
     }
 
     /// The move-generation + move-loop part of a PVS node, shared by `run`.
-    fn search_node(&mut self, d: u32, mut alpha: i32, beta: i32,
-                   static_eval: i32, in_check: bool, iid_move: u32) -> i32 {
+    ///
+    /// `pb` is this node's scratch buffer; it is returned to the caller so it
+    /// can be put back into the pool even on the early-return paths.
+    fn search_node(&mut self, mut pb: PlyBuffers, d: u32, mut alpha: i32, beta: i32,
+                   static_eval: i32, in_check: bool, iid_move: u32) -> (i32, PlyBuffers) {
         // Side to move at THIS node, captured before any apply_move flips it:
         // history tables are per-side, and the beta-cutoff blocks below run
         // after board.undo_move() has already restored the parent's side.
@@ -234,12 +263,10 @@ impl<'a> Ctx<'a> {
         // (~700 moves). This avoids generating ~700 quiet moves at every node
         // when a capture already causes a cutoff — the dominant cost of deep
         // search. Reference: docx §3.2 Futility Pruning & §4.4 Quiescence.
-        let (cap_moves, cap_mode) = crate::attack::generate_captures_bb(self.board);
-        let cap_moves = if cap_mode == crate::attack::GenMode::NeedsFallback {
-            crate::movegen::generate_pseudo_legal_captures(self.board)
-        } else {
-            cap_moves
-        };
+        // Both lists live in this node's pooled buffer: filling them costs no
+        // allocation.
+        crate::attack::generate_captures_bb_into(&mut pb.caps, self.board);
+        let cap_moves = &pb.caps;
         // With hundreds of tactical moves per node (median branching 944,
         // max 1254), a fixed 6-24 beam prunes a far larger FRACTION of moves
         // than intended. Scale the threshold with the actual list length so
@@ -252,12 +279,12 @@ impl<'a> Ctx<'a> {
         // Score once into a flat i32 buffer, then repeatedly select the best
         // remaining move: O(k·n) with k ≈ rps_beam (6-24) instead of a full
         // O(n log n) sort of the capture list at every node.
-        let mut cap_scores: Vec<i32> = Vec::with_capacity(cap_moves.len());
+        pb.cap_scores.clear();
         for m in cap_moves.iter() {
             let packed = ordering::m_pack(m);
             let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
             let cntr = heuristics::counter_score(self.prev_move, packed);
-            cap_scores.push(ordering::score_move(m, iid_move, hist, cntr, d));
+            pb.cap_scores.push(ordering::score_move(m, iid_move, hist, cntr, d));
         }
 
         let mut move_idx = 0usize;
@@ -266,12 +293,12 @@ impl<'a> Ctx<'a> {
             // Pick the best remaining capture.
             let mut idx = usize::MAX;
             let mut order_score = i32::MIN;
-            for (i, &s) in cap_scores.iter().enumerate() {
+            for (i, &s) in pb.cap_scores.iter().enumerate() {
                 if s > order_score { order_score = s; idx = i; }
             }
             if idx == usize::MAX { break; }
-            cap_scores[idx] = i32::MIN;
-            let packed = ordering::m_pack(&cap_moves[idx]);
+            pb.cap_scores[idx] = i32::MIN;
+            let packed = ordering::m_pack(&pb.caps[idx]);
             // 0-based index counting LEGAL captures searched so far. Illegal
             // pseudo-legal captures (verified below) never consume a beam slot:
             // move_idx previously advanced before the legality filter, so the
@@ -282,7 +309,7 @@ impl<'a> Ctx<'a> {
                 break;
             }
             if cur_move > 0 && self.past_deadline() { break; }
-            let m = &cap_moves[idx];
+            let m = &pb.caps[idx];
             // ── CAPTURE FUTILITY PRUNING (depth ≤ 2) ──────────────
             // If even capturing the most valuable pieces on the board plus a
             // safety margin cannot lift the static eval to alpha, this capture
@@ -342,29 +369,30 @@ impl<'a> Ctx<'a> {
         // is comparable to chess:
         //   lmp_n = (3 + d^2) / (improving ? 1 : 2) * (1 + quiets / 128)
         if alpha < beta {
-            let moves = crate::movegen::generate_pseudo_legal_moves(self.board);
-            if moves.is_empty() { return -(MATE_SCORE - self.ply as i32); }
-            let mut scored: Vec<(i32, usize, u32)> = Vec::with_capacity(moves.len());
-            for (i, m) in moves.iter().enumerate() {
+            crate::movegen::generate_pseudo_legal_moves_into(&mut pb.moves, self.board);
+            if pb.moves.is_empty() { return (-(MATE_SCORE - self.ply as i32), pb); }
+            pb.scored.clear();
+            for (i, m) in pb.moves.iter().enumerate() {
                 let packed = ordering::m_pack(m);
                 let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
                 let cntr = heuristics::counter_score(self.prev_move, packed);
                 let s = ordering::score_move(m, iid_move, hist, cntr, d);
-                scored.push((s, i, packed));
+                pb.scored.push((s, i as u32, packed));
             }
-            let n_quiets = scored.len();
+            let n_quiets = pb.scored.len();
             let improving = static_eval > alpha;
             let lmp_base = params::lmp_base(d, improving);
             let lmp_n = (lmp_base * (1 + n_quiets / params::LMP_BRANCH_SCALE))
                 .min(n_quiets).min(params::LMP_MAX);
             let select_n = lmp_n;
-            if select_n > 1 && scored.len() > select_n {
-                scored.select_nth_unstable_by(select_n - 1, |a, b| b.0.cmp(&a.0));
+            if select_n > 1 && pb.scored.len() > select_n {
+                pb.scored.select_nth_unstable_by(select_n - 1, |a, b| b.0.cmp(&a.0));
             } else {
-                scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+                pb.scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
             }
 
-            for &(order_score, idx, packed) in scored.iter() {
+            for &(order_score, idx, packed) in pb.scored.iter() {
+                let idx = idx as usize;
                 // cur_move = count of quiets searched so far; only moves that are
                 // actually searched consume a slot (the increment is after any
                 // pruning continue).
@@ -384,7 +412,7 @@ impl<'a> Ctx<'a> {
                     if static_eval + params::quiet_futility_margin(d) <= alpha { continue; }
                 }
                 if cur_move > 0 && self.past_deadline() { break; }
-                let m = &moves[idx];
+                let m = &pb.moves[idx];
                 self.board.apply_move(m);
                 // Every pseudo-legal move is legal in Taikyoku (no check): consume
                 // a beam slot now, before the search.
@@ -467,15 +495,17 @@ impl<'a> Ctx<'a> {
             });
         }
 
-        alpha
+        (alpha, pb)
     }
 }
 
-/// Free-function entry point with the classic signature, for callers that
-/// don't hold a `Ctx` (root search, tests).
-pub(crate) fn pvs(board: &mut Board, depth: u32, alpha: i32, beta: i32,
-                  nodes: &mut u64, deadline: Option<Instant>, ply: u32,
-                  prev_move: u32) -> i32 {
-    let mut ctx = Ctx { board, nodes, deadline, ply, prev_move };
+/// Entry point used by the root search, which owns the stop flag and the
+/// scratch pool so its buffers survive across moves and iterations.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pvs_with_pool(board: &mut Board, depth: u32, alpha: i32, beta: i32,
+                            nodes: &mut u64, deadline: Option<Instant>, ply: u32,
+                            prev_move: u32, stop: &AtomicBool,
+                            pool: &mut SearchPool) -> i32 {
+    let mut ctx = Ctx { board, nodes, deadline, ply, prev_move, stop, pool };
     ctx.run(depth, alpha, beta)
 }

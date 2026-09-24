@@ -141,7 +141,13 @@ pub const ROOT_WINDOW_REFINE_GATE: i32 = 100;
 pub const NEXT_ITER_COST_FACTOR: u64 = 4;
 
 // ── Transposition table ─────────────────────────────────────────
-pub const TT_SIZE: usize = 1 << 22;
+// The table size is a RUNTIME setting ([`super::set_hash_mb`]); these are the
+// default and the sanity bounds used when resizing. The historical
+// `TT_SIZE = 1 << 22` buckets × 4 entries × 16 B = 256 MiB is the default,
+// expressed here in MiB.
+pub const TT_DEFAULT_MB: usize = 256;
+pub const TT_MIN_MB: usize = 1;
+pub const TT_MAX_MB: usize = 4 * 1024;
 pub const TT_BUCKET_WIDTH: usize = 4;
 
 // ── History heuristics ──────────────────────────────────────────

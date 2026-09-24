@@ -1,12 +1,25 @@
 //! Root search: one iteration at a fixed depth, with aspiration-window
 //! refinement around the previous iteration's best score.
 //!
-//! Full root breadth: ALL root moves are ranked and searched every
-//! iteration (~500+). The root is a single node, so generating + ranking
-//! the whole list is a negligible fraction of the tree, and a narrow root
-//! beam would discard most candidate moves. Internal nodes keep their own
-//! beams, so depth is preserved by pruning BELOW the root.
+//! ## Root move list caching
+//! Full root breadth: ALL root moves are ranked and searched every iteration
+//! (~500+). The root is a single node, so the list is a negligible fraction of
+//! the tree, and a narrow root beam would discard most candidate moves.
+//! Internal nodes keep their own beams, so depth is preserved by pruning
+//! BELOW the root.
+//!
+//! What the root must NOT do is rebuild that list from scratch every
+//! iteration. It used to: each iteration generated the captures, scored and
+//! sorted them, then generated the ~700 quiets, scored and sorted those too —
+//! four `Vec` allocations plus ~1_400 ordering-score computations per
+//! iteration, repeated for every depth. [`RootState`] instead caches the move
+//! list for the position and keeps a best-first permutation across
+//! iterations: iteration *n+1* searches the moves in the order that iteration
+//! *n* proved good, so the alpha-beta window is tightened as early as
+//! possible and no move list is ever regenerated (unless the root position
+//! itself changed).
 
+use super::buffers::SearchPool;
 use super::heuristics;
 use super::ordering::{self, piece_vals};
 use super::params;
@@ -14,22 +27,94 @@ use super::pvs;
 use super::tt;
 use crate::board::Board;
 use crate::eval::{evaluate, material_score, MATE_SCORE};
-use crate::movegen::{generate_pseudo_legal_moves, generate_pseudo_legal_captures};
+use crate::movegen::{generate_pseudo_legal_moves, generate_pseudo_legal_moves_into};
 use crate::pieces;
 use crate::types::*;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
+
+/// Cached root move list plus the ordering carried over from the previous
+/// iteration. Owned by the searcher, so the buffers survive for the whole
+/// iterative-deepening loop (a caller that keeps one between moves — e.g. a
+/// future Lazy SMP master — gets the same benefit).
+pub(crate) struct RootState {
+    /// Zobrist hash of the position the list was built for.
+    hash: u64,
+    /// Every pseudo-legal root move, in generation order.
+    moves: Vec<Move>,
+    /// Last known score per move (`moves[i]`), used as the ordering key.
+    scores: Vec<i32>,
+    /// Permutation of `moves`, best first.
+    order: Vec<u32>,
+}
+
+impl RootState {
+    pub fn new() -> Self {
+        RootState { hash: 0, moves: Vec::new(), scores: Vec::new(), order: Vec::new() }
+    }
+
+    /// Number of cached root moves (diagnostics / tests).
+    #[allow(dead_code)]
+    pub fn len(&self) -> usize {
+        self.moves.len()
+    }
+
+    /// Rebuild the list if the root position changed; otherwise keep the list
+    /// and the ordering produced by the previous iteration.
+    fn prepare(&mut self, board: &Board, tt_move: u32, depth: u32, root_hint: Option<u32>) {
+        if self.hash != board.hash || self.moves.is_empty() {
+            self.hash = board.hash;
+            generate_pseudo_legal_moves_into(&mut self.moves, board);
+            self.scores.clear();
+            self.scores.resize(self.moves.len(), 0);
+            let stm = board.side_to_move;
+            for (i, m) in self.moves.iter().enumerate() {
+                let packed = ordering::m_pack(m);
+                let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
+                let mut s = ordering::score_move(m, tt_move, hist, 0, depth);
+                if root_hint == Some(packed) { s += params::ROOT_HINT_SCORE; }
+                self.scores[i] = s;
+            }
+        }
+        self.order.clear();
+        self.order.extend(0..self.moves.len() as u32);
+        self.sort_best_first();
+    }
+
+    /// Stable descending sort by cached score: the best move of the last
+    /// iteration is searched first, which is what makes the root alpha-beta
+    /// window as tight as it can be from move one.
+    fn sort_best_first(&mut self) {
+        let scores = &self.scores;
+        self.order.sort_by(|&a, &b| scores[b as usize].cmp(&scores[a as usize]));
+    }
+}
+
+/// Root-search bookkeeping shared by every root move of one iteration.
+pub(crate) struct RootCtx<'a> {
+    pub nodes: &'a mut u64,
+    pub deadline: Option<Instant>,
+    pub stop: &'a AtomicBool,
+    pub pool: &'a mut SearchPool,
+    pub root: &'a mut RootState,
+}
 
 /// Aspiration-window search of the root at one depth.
 pub(crate) fn search_root_window(
     board: &mut Board,
     depth: u32,
-    deadline: Option<Instant>,
+    rc: &mut RootCtx,
     root_hint: Option<u32>,
     root_alpha: i32,
     root_beta: i32,
 ) -> super::SearchResult {
     let start = Instant::now();
     piece_vals();
+    let deadline = rc.deadline;
+    let stop = rc.stop;
+    let nodes = &mut *rc.nodes;
+    let pool = &mut *rc.pool;
+    let root = &mut *rc.root;
 
     if depth == 0 {
         return super::SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
@@ -45,153 +130,112 @@ pub(crate) fn search_root_window(
         return material_delta_root(board, depth, start);
     }
 
-    let mut nodes: u64 = 0;
     let mut best_move = None;
     let mut best_score = -MATE_SCORE - 1;
     let root_tt_move = tt::tt_probe(board.hash).map(|e| e.best_move).unwrap_or(0);
-    let stm = board.side_to_move;
 
     // A depth-2 preliminary search warms the TT and gives the ordering a
     // cheap head start before the real iteration.
     if depth > 2 {
-        let _ = pvs::pvs(board, depth - 2, -MATE_SCORE - 1, MATE_SCORE + 1,
-                         &mut nodes, deadline, 0, 0);
+        let _ = pvs::pvs_with_pool(board, depth - 2, -MATE_SCORE - 1, MATE_SCORE + 1,
+                                   nodes, deadline, 0, 0, stop, pool);
     }
 
-    // ── ROOT-LEVEL STAGED GENERATION ──────────────────────────
-    // Generate captures first (cheap, ~10-50 moves), search them. Only if
-    // no beta cutoff is found do we generate the full quiet move list
-    // (~700 moves). This avoids generating + sorting all ~700 root moves
-    // when a capture already causes a cutoff — the dominant cost of deep
-    // search. Reference: docx §3.2 Futility Pruning & §4.4 Quiescence.
-    // Full root breadth: rank and search ALL root moves every iteration
-    // (~500+). The root is a single node, so generating + ranking the whole
-    // list is a negligible fraction of the tree, and a narrow root beam
-    // would discard most candidate moves. Internal nodes keep their own
-    // beams, so depth is preserved by pruning BELOW the root.
-    // (depth <= 3 never reaches here: the material-delta fast path above
-    // returns early, so no per-depth branch is needed at the root.)
-    let max_moves = usize::MAX;
+    // ── ROOT MOVE LIST (cached across iterations) ──────────────
+    // Rebuilt only when the root position changed; otherwise the moves keep
+    // the order the previous iteration discovered, which is the best possible
+    // move ordering for the root (the returned best move is tried first).
+    root.prepare(board, root_tt_move, depth, root_hint);
+    if root.moves.is_empty() {
+        // No legal move at all: the side to move loses (SPEC §7.3).
+        let score = -(MATE_SCORE - depth as i32);
+        return super::SearchResult {
+            best_move: None, score, nodes: *nodes, time_ms: start.elapsed().as_millis() as u64,
+        };
+    }
 
-    // Stage 1: captures + promotions (tactical moves).
-    // Use the fast bitboard capture generator. If a special piece triggers
-    // NeedsFallback, fall back to the full generator.
-    let (cap_moves_raw, cap_mode) = crate::attack::generate_captures_bb(board);
-    let cap_moves = if cap_mode == crate::attack::GenMode::NeedsFallback {
-        generate_pseudo_legal_captures(board)
-    } else {
-        cap_moves_raw
-    };
-    let mut cap_scored: Vec<(i32, usize)> = Vec::with_capacity(cap_moves.len());
-    for (i, m) in cap_moves.iter().enumerate() {
+    // ── SEARCH EVERY ROOT MOVE, BEST-FIRST ─────────────────────
+    // The list is not regenerated and not re-scored here: it comes from the
+    // cache, already ordered by the previous iteration's results. Captures
+    // naturally sort ahead of quiets because they scored higher last time (and
+    // MVV-LVA seeded them on the first iteration), so the historical
+    // "captures first" staging is preserved without a second generation pass.
+    // (The material-delta fast path above is disabled by default, so every
+    // depth from 1 upwards runs this loop — no per-depth branch is needed.)
+    let n_moves = root.moves.len();
+    for rank in 0..n_moves {
+        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) { break; }
+        if stop.load(std::sync::atomic::Ordering::Relaxed) { break; }
+        let idx = root.order[rank] as usize;
+        let m = &root.moves[idx];
         let packed = ordering::m_pack(m);
-        let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
-        let mut s = ordering::score_move(m, root_tt_move, hist, 0, depth);
-        if root_hint == Some(packed) { s += params::ROOT_HINT_SCORE; }
-        cap_scored.push((s, i));
-    }
-    cap_scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-
-    for rank in 0..cap_scored.len().min(max_moves) {
-        if let Some(dl) = deadline { if Instant::now() >= dl { break; } }
-        let idx = cap_scored[rank].1;
-        let m = &cap_moves[idx];
         board.apply_move(m);
-        nodes += 1;
+        *nodes += 1;
         let (sa, sb) = if rank == 0 && best_score > root_alpha + params::ROOT_WINDOW_REFINE_GATE {
             (best_score - params::ROOT_WINDOW_REFINE, best_score + params::ROOT_WINDOW_REFINE)
         } else {
             (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
         };
         let score = if rank == 0 {
-            -pvs::pvs(board, depth - 1, sa, sb, &mut nodes, deadline, 0, ordering::m_pack(m))
+            -pvs::pvs_with_pool(board, depth - 1, sa, sb, nodes, deadline, 0, packed, stop, pool)
         } else {
-            let nw = -pvs::pvs(board, depth - 1, -sa - 1, -sa, &mut nodes, deadline, 0, ordering::m_pack(m));
+            let nw = -pvs::pvs_with_pool(board, depth - 1, -sa - 1, -sa, nodes, deadline, 0,
+                                         packed, stop, pool);
             if nw > sa && nw < sb {
-                -pvs::pvs(board, depth - 1, -sb, -sa, &mut nodes, deadline, 0, ordering::m_pack(m))
+                -pvs::pvs_with_pool(board, depth - 1, -sb, -sa, nodes, deadline, 0,
+                                    packed, stop, pool)
             } else { nw }
         };
-        if score <= sa || score >= sb {
-            let full = -pvs::pvs(board, depth - 1, -MATE_SCORE - 1,
-                                 -best_score.max(-MATE_SCORE - 1),
-                                 &mut nodes, deadline, 0, ordering::m_pack(m));
+        let score = if score <= sa || score >= sb {
+            let full = -pvs::pvs_with_pool(board, depth - 1, -MATE_SCORE - 1,
+                                           -best_score.max(-MATE_SCORE - 1),
+                                           nodes, deadline, 0, packed, stop, pool);
             if full > best_score { best_score = full; best_move = Some(m.clone()); }
-        } else if score > best_score {
-            best_score = score;
-            best_move = Some(m.clone());
-        }
-        board.undo_move();
-        if best_score >= root_beta { break; }
-    }
-
-    // Stage 2: quiet moves (only if no beta cutoff from captures).
-    // Full root breadth: quiet moves are ALWAYS considered at the root
-    // (not just depth <= 3), so every iteration ranks and searches the
-    // complete root move list. This restores the coverage the narrow root
-    // beam removed.
-    if best_score < root_beta {
-        let moves = generate_pseudo_legal_moves(board);
-        if moves.is_empty() {
-            return super::SearchResult { best_move, score: best_score, nodes, time_ms: start.elapsed().as_millis() as u64 };
-        }
-        let mut scored: Vec<(i32, usize)> = Vec::with_capacity(moves.len());
-        for (i, m) in moves.iter().enumerate() {
-            let packed = ordering::m_pack(m);
-            let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
-            let mut s = ordering::score_move(m, root_tt_move, hist, 0, depth);
-            if root_hint == Some(packed) { s += params::ROOT_HINT_SCORE; }
-            scored.push((s, i));
-        }
-        scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
-        for rank in 0..scored.len().min(max_moves) {
-            if let Some(dl) = deadline { if Instant::now() >= dl { break; } }
-            let idx = scored[rank].1;
-            let m = &moves[idx];
-            board.apply_move(m);
-            nodes += 1;
-            let (sa, sb) = if rank == 0 && best_score > root_alpha + params::ROOT_WINDOW_REFINE_GATE {
-                (best_score - params::ROOT_WINDOW_REFINE, best_score + params::ROOT_WINDOW_REFINE)
-            } else {
-                (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
-            };
-            let score = if rank == 0 {
-                -pvs::pvs(board, depth - 1, sa, sb, &mut nodes, deadline, 0, ordering::m_pack(m))
-            } else {
-                let nw = -pvs::pvs(board, depth - 1, -sa - 1, -sa, &mut nodes, deadline, 0, ordering::m_pack(m));
-                if nw > sa && nw < sb {
-                    -pvs::pvs(board, depth - 1, -sb, -sa, &mut nodes, deadline, 0, ordering::m_pack(m))
-                } else { nw }
-            };
-            if score <= sa || score >= sb {
-                let full = -pvs::pvs(board, depth - 1, -MATE_SCORE - 1,
-                                     -best_score.max(-MATE_SCORE - 1),
-                                     &mut nodes, deadline, 0, ordering::m_pack(m));
-                if full > best_score { best_score = full; best_move = Some(m.clone()); }
-            } else if score > best_score {
+            full
+        } else {
+            if score > best_score {
                 best_score = score;
                 best_move = Some(m.clone());
             }
-            board.undo_move();
-            if best_score >= root_beta { break; }
+            score
+        };
+        // Feed the result back into the root ordering: next iteration tries
+        // the moves in decreasing order of THIS iteration's score.
+        root.scores[idx] = score;
+        board.undo_move();
+        if best_score >= root_beta { break; }
+    }
+    root.sort_best_first();
+
+    if best_move.is_none() {
+        // The budget (or a stop) expired before a single root move was scored.
+        // Returning None would tell the caller this side has no legal move at
+        // all — a loss, SPEC §7.3 — so hand back the first move of the root
+        // ordering together with the static score: the best guess available.
+        if let Some(&i) = root.order.first() {
+            best_move = Some(root.moves[i as usize].clone());
+            best_score = evaluate(board);
         }
     }
 
     super::SearchResult {
         best_move,
         score: best_score,
-        nodes,
+        nodes: *nodes,
         time_ms: start.elapsed().as_millis() as u64,
     }
 }
 
-/// Depth ≤ 3 root: evaluate each root move's material delta directly
-/// (O(1) per move) instead of applying + searching.
+/// Opt-in material-delta root, enabled with `MATERIAL_FAST_PATH_MAX_DEPTH`
+/// (0 = disabled, the default): score each root move by its material change
+/// directly (O(1) per move) instead of applying and searching it.
 ///
 /// On a 36×36 board with ~700 legal moves, the full apply+undo cycle made a
 /// real depth-2/3 search (716 root moves × 716 replies) take seconds per
-/// iteration. The material-delta shortcut evaluates each move's material
-/// change directly (O(1) per move) and completes in ~60-100µs — making
-/// depth-2 and depth-3 as fast as depth-1.
+/// iteration. This shortcut finishes in ~60-100µs — but it ignores the
+/// opponent's reply, which makes "depth 2/3" equivalent to depth 1, so it must
+/// NOT be used for strength measurements: only for movegen/apply
+/// micro-benchmarks.
 /// Reference: HaChu (hgm.nubati.net) — incremental evaluation scales with
 /// the board perimeter, not the area.
 fn material_delta_root(board: &mut Board, depth: u32, start: Instant) -> super::SearchResult {

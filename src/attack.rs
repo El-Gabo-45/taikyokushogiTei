@@ -131,20 +131,21 @@ pub fn templates() -> &'static [[Template; 2]; 512] {
     })
 }
 
-/// Generate pseudo-legal captures using the flat templates (memory-safe,
-/// no huge precomputed bitboard table). For each piece, walks its jumps
-/// (checking opponent occupancy) and slides (ray walk with blocking).
-/// Handles hooks and range-capturers directly so it does NOT fall back to
-/// the slow `movegen::generate_pseudo_legal_captures` for the common
-/// special pieces. Only lion mid-captures (area>=2 with jumps) trigger
-/// `NeedsFallback`.
-pub fn generate_captures_bb(board: &Board) -> (Vec<crate::types::Move>, GenMode) {
+/// Generate tactical (capture / promotion / igui / mid-capture) moves into a
+/// caller-owned buffer, in one pass over the moving side's pieces.
+///
+/// This is the fast bitboard generator used by the search (root and interior
+/// nodes): for each piece it walks the flat attack template, checking
+/// occupancy for slides and enemy occupancy for jumps. Hooks,
+/// range-capturers **and** lion mid-captures are all handled natively here
+/// (`gen_hook_captures` / `gen_range_capture_captures` / `gen_lion_captures`),
+/// so no caller needs a slow fallback into the generic movegen path.
+pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Board) {
+    moves.clear();
     let color = board.side_to_move;
     let c = color as usize;
     let t = templates();
     let rt = ray_table();
-    let mut moves = Vec::with_capacity(64);
-    let mode = GenMode::AllFast;
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
@@ -156,18 +157,17 @@ pub fn generate_captures_bb(board: &Board) -> (Vec<crate::types::Move>, GenMode)
         let tmpl = &t[(pt as usize).min(511)][color as usize];
 
         if !tmpl.valid {
-            // Special piece: handle hooks, range-capturers, AND lion
-            // mid-captures directly so we NEVER fall back to the slow
-            // movegen path.
+            // Special piece: handle hooks, range-capturers AND lion
+            // mid-captures directly.
             let mv = pieces::movement(pt);
             if mv.hook.is_some() {
-                gen_hook_captures(board, sq, pt, color, mv, rt, &mut moves);
+                gen_hook_captures(board, sq, pt, color, mv, rt, moves);
             }
             if !mv.range_capture.is_empty() {
-                gen_range_capture_captures(board, sq, pt, color, mv, rt, &mut moves);
+                gen_range_capture_captures(board, sq, pt, color, mv, rt, moves);
             }
             if mv.area >= 2 {
-                gen_lion_captures(board, sq, pt, color, mv, &mut moves);
+                gen_lion_captures(board, sq, pt, color, mv, moves);
             }
             continue;
         }
@@ -184,14 +184,14 @@ pub fn generate_captures_bb(board: &Board) -> (Vec<crate::types::Move>, GenMode)
             let nsq = (nr as usize) * BOARD_SIZE + (nc as usize);
             let target = board.cells[nsq];
             if target != EMPTY_CELL && cell_color(target) != color {
-                push_move(&mut moves, sq as u16, nsq as u16, pt, color, target);
+                push_move(moves, sq as u16, nsq as u16, pt, color, target);
             }
         }
 
         // Sliders: walk rays (occupancy-dependent blocking).
         for j in 0..tmpl.n_slides as usize {
             let (dir, max_range) = tmpl.slides[j];
-            walk_ray_captures(board, rt, sq, pt, color, dir as usize, max_range, &mut moves);
+            walk_ray_captures(board, rt, sq, pt, color, dir as usize, max_range, moves);
         }
 
         // Igui (capture in place).
@@ -200,14 +200,12 @@ pub fn generate_captures_bb(board: &Board) -> (Vec<crate::types::Move>, GenMode)
                 if let Some(nsq) = step_sq(sq, d, color) {
                     let target = board.cells[nsq];
                     if target != EMPTY_CELL && cell_color(target) != color {
-                        push_move_igui(&mut moves, sq as u16, nsq, pt, color, target);
+                        push_move_igui(moves, sq as u16, nsq, pt, color, target);
                     }
                 }
             }
         }
     }
-
-    (moves, mode)
 }
 
 /// Generate hook-move captures (orthogonal or diagonal hook movers).
@@ -405,13 +403,6 @@ pub fn fast_piece(
             }
         }
     }
-}
-
-/// Indicates whether the fast-path generator covered all pieces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GenMode {
-    AllFast,
-    NeedsFallback,
 }
 
 #[inline]

@@ -1,6 +1,8 @@
 //! Alpha-beta search for Taikyoku Shogi (36x36 board, ~700 legal moves/node).
 //!
 //! Module layout (one responsibility per file):
+//! * [`buffers`]    — per-ply pooled scratch buffers and ordering arrays, so
+//!   the search issues no heap allocations after warmup.
 //! * [`params`]     — every tunable constant and margin formula, in one place.
 //! * [`tt`]         — lock-free bucketed transposition table (race-safe
 //!   publish/reverify protocol for Lazy SMP).
@@ -12,8 +14,9 @@
 //!   move generation with incremental pick-next ordering.
 //! * [`qsearch`]    — capture-only quiescence with its own TT traffic.
 //! * [`root`]       — one root iteration at a fixed depth (aspiration
-//!   windows around the previous score), plus the depth≤3 material-delta
-//!   fast path.
+//!   windows around the previous score), with the root move list cached
+//!   across iterations; the opt-in material-delta root (disabled by default)
+//!   lives here too.
 //!
 //! Iterative deepening with predictive time management lives in [`search`]
 //! below.
@@ -21,6 +24,7 @@
 //! NOTE: this variant has NO check and NO checkmate (SPEC §7.3): the game
 //! only ends when a side captures the opponent's LAST royal (SPEC §7.2).
 
+mod buffers;
 mod heuristics;
 mod ordering;
 mod params;
@@ -56,7 +60,13 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
     tt::tt_new_generation();
     ordering::piece_vals();
     let mut best_result = SearchResult { best_move: None, score: evaluate(board), nodes: 0, time_ms: 0 };
-    let mut total_nodes: u64 = 0;
+    // Search-lifetime scratch state, allocated once and reused by every
+    // iteration: `nodes` is cumulative for the whole search, `pool` recycles
+    // the per-ply move buffers and `root_state` caches the root move list.
+    let mut nodes: u64 = 0;
+    let mut pool = buffers::SearchPool::new();
+    let mut root_state = root::RootState::new();
+    let stop = std::sync::atomic::AtomicBool::new(false);
     let mut root_hint: Option<u32> = None;
     let mut score_guess = best_result.score;
     let mut prev_iter_ms: u64 = 0;
@@ -83,8 +93,18 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
             if prev_iter_ms.saturating_mul(params::NEXT_ITER_COST_FACTOR) > remaining { break; }
         }
 
+        // Search context shared by every root move of this iteration. The
+        // node counter, scratch pool and cached root move list all outlive the
+        // iteration, so nothing is reallocated or regenerated between depths.
+        let mut rc = root::RootCtx {
+            nodes: &mut nodes,
+            deadline,
+            stop: &stop,
+            pool: &mut pool,
+            root: &mut root_state,
+        };
         let result = if current_depth <= 1 {
-            root::search_root_window(board, current_depth, deadline, root_hint, -MATE_SCORE - 1, MATE_SCORE + 1)
+            root::search_root_window(board, current_depth, &mut rc, root_hint, -MATE_SCORE - 1, MATE_SCORE + 1)
         } else {
             // Aspiration windows at ALL depths >= 2. The previous version
             // disabled them for d >= 5 because a *narrow* (±64) window failed
@@ -101,7 +121,7 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
             let mut beta = score_guess.saturating_add(window);
             let mut local_result;
             loop {
-                local_result = root::search_root_window(board, current_depth, deadline, root_hint, alpha, beta);
+                local_result = root::search_root_window(board, current_depth, &mut rc, root_hint, alpha, beta);
                 if let Some(dl) = deadline {
                     if Instant::now() >= dl { break; }
                 }
@@ -126,10 +146,21 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
             local_result
         };
 
-        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) { break; }
-        total_nodes = total_nodes.saturating_add(result.nodes);
+        // A time limit (or a stop) can cut an iteration short. Its partial
+        // result is only adopted when there is nothing better to return: the
+        // FIRST iteration running out of budget mid-way still ranks the root
+        // moves it reached, while for later iterations the last COMPLETED
+        // iteration is the more reliable answer.
+        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) {
+            if best_result.best_move.is_none() && result.best_move.is_some() {
+                best_result = result;
+            }
+            break;
+        }
+        // `nodes` is cumulative across the whole search (the root shares one
+        // counter with every iteration), so there is nothing to add up here.
         if debug_log {
-            eprintln!("iter d={} nodes={} score={} t={}ms", current_depth, result.nodes, result.score, result.time_ms);
+            eprintln!("iter d={} nodes={} score={} t={}ms", current_depth, nodes, result.score, result.time_ms);
         }
         root_hint = result.best_move.as_ref().map(|m| ordering::m_pack(m));
         score_guess = result.score;
@@ -141,9 +172,38 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
     SearchResult {
         best_move: best_result.best_move,
         score: best_result.score,
-        nodes: total_nodes.max(best_result.nodes),
+        nodes: nodes.max(best_result.nodes),
         time_ms: elapsed,
     }
+}
+
+/// Resize the transposition table to `mb` MiB; returns the size actually
+/// allocated (rounded down to a power-of-two bucket count).
+///
+/// The table persists across [`search`] calls, so this is the knob behind a
+/// UI's "hash" setting. Calling it is safe at any time — in-flight lookups
+/// keep the table they started on alive until they finish.
+pub fn set_hash_mb(mb: usize) -> usize {
+    tt::resize_mb(mb)
+}
+
+/// Current transposition-table size in MiB.
+pub fn hash_mb() -> usize {
+    tt::size_mb()
+}
+
+/// Reset the state that the search shares between *searches*: the transposition
+/// table and the killer/history tables.
+///
+/// These tables are global on purpose — carrying information from one search
+/// into the next is what makes the engine fast across moves — so two
+/// consecutive searches on the same position may legitimately return different
+/// scores. Call this when a reproducible run is required (tests) or when the
+/// caller knows the previous search is irrelevant (a new game).
+#[allow(dead_code)] // used by tests; the natural hook for a UI "new game"
+pub(crate) fn reset_shared_tables() {
+    tt::clear();
+    heuristics::clear();
 }
 
 #[cfg(test)]
@@ -153,6 +213,8 @@ mod tests {
 
     #[test]
     fn search_initial_reaches_depth_and_finds_a_move() {
+        // Engine-global state is shared: run alone (see crate::test_lock).
+        let _serial = crate::test_lock::lock();
         heuristics::clear();
         let mut board = Board::initial();
         let r = board.search(4, 0);
@@ -163,6 +225,8 @@ mod tests {
 
     #[test]
     fn history_clear_zeroes_counters() {
+        // The history tables are engine-global: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
         heuristics::history_store(3, 4, 5, 0);
         assert!(heuristics::history_score(3, 4, 0) > 0);
         heuristics::clear();
@@ -172,6 +236,8 @@ mod tests {
 
     #[test]
     fn killer_store_is_read_back() {
+        // The killer slots are engine-global: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
         heuristics::killer_store(10, 0xABCD);
         assert_eq!(heuristics::killer_score(10, 0xABCD), params::KILLER1_SCORE);
     }

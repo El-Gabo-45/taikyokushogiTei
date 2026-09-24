@@ -96,7 +96,7 @@ fn apply_undo_restores_state() {
 // Crafted-position and rule tests (board.rs internals are crate-visible)
 // ══════════════════════════════════════════════════════════════════
 use crate::board;
-use crate::types::{self, make_cell, cell_piece, cell_color, BLACK, WHITE, EMPTY_CELL, NUM_SQUARES, INVALID_SQ, DRAW_PLIES, GameResult, Move};
+use crate::types::{make_cell, cell_piece, cell_color, BLACK, WHITE, EMPTY_CELL, NUM_SQUARES, INVALID_SQ, DRAW_PLIES, GameResult, Move};
 use crate::pieces;
 use crate::movegen;
 
@@ -444,6 +444,8 @@ fn material_score_matches_piece_sum() {
 // ── Search respects its time budget ─────────────────────────────
 #[test]
 fn search_terminates_with_time_limit() {
+    // Engine-global state is shared: run alone (see crate::test_lock).
+    let _serial = crate::test_lock::lock();
     let start = std::time::Instant::now();
     let mut b = initial_int();
     let r = crate::search::search(&mut b, 6, 300);
@@ -455,6 +457,8 @@ fn search_terminates_with_time_limit() {
 // ── Selfplay smoke: a short game always stays legal ─────────────
 #[test]
 fn short_selfplay_game_smoke() {
+    // Engine-global state is shared: run alone (see crate::test_lock).
+    let _serial = crate::test_lock::lock();
     let mut b = initial_int();
     let mut plies = 0;
     while b.game_result().is_none() && plies < 30 {
@@ -545,6 +549,8 @@ fn range_capture_empties_intermediates() {
 // ── Search: returns a legal move and leaves the board untouched ─────
 #[test]
 fn search_returns_legal_move_and_preserves_state() {
+    // Engine-global state is shared: run alone (see crate::test_lock).
+    let _serial = crate::test_lock::lock();
     let mut board = Board::initial();
     let before = board.to_tsfen();
     let r = board.search(2, 0);
@@ -561,6 +567,8 @@ fn search_returns_legal_move_and_preserves_state() {
 
 #[test]
 fn search_expands_a_real_tree() {
+    // Engine-global state is shared: run alone (see crate::test_lock).
+    let _serial = crate::test_lock::lock();
     let mut board = Board::initial();
     let r = board.search(3, 0);
     assert!(r.score.abs() < 1_000_000, "non-mate score must be below MATE_SCORE");
@@ -708,10 +716,22 @@ fn perft_two_via_manual_expansion() {
 
 #[test]
 fn repeated_search_is_deterministic() {
+    // Engine-global state is shared: run alone (see crate::test_lock).
+    let _serial = crate::test_lock::lock();
+    // The transposition table and the killer/history tables are global and are
+    // *meant* to carry information from one search to the next, so two
+    // consecutive searches on the same position may legitimately differ (that
+    // is also what makes Lazy SMP workers cooperate). Determinism is therefore
+    // asserted for two searches started from the same state: reset the shared
+    // tables before each one.
+    crate::search::reset_shared_tables();
     let mut b1 = Board::initial();
-    let mut b2 = Board::initial();
     let r1 = b1.search(2, 0);
+
+    crate::search::reset_shared_tables();
+    let mut b2 = Board::initial();
     let r2 = b2.search(2, 0);
+
     assert_eq!(r1.score, r2.score);
     match (&r1.best_move, &r2.best_move) {
         (Some(m1), Some(m2)) => {
@@ -725,6 +745,8 @@ fn repeated_search_is_deterministic() {
 
 #[test]
 fn search_survives_back_to_back_runs_without_tt_corruption() {
+    // Engine-global state is shared: run alone (see crate::test_lock).
+    let _serial = crate::test_lock::lock();
     let mut board = Board::initial();
     for _ in 0..3 {
         let r = board.search(3, 0);
@@ -790,6 +812,8 @@ fn sprt_accepts_a_dominant_engine() {
 
 #[test]
 fn selfplay_one_game_terminates_and_counts_plies() {
+    // `play_game` sets the global evaluation backend (see elo::apply_best).
+    let _serial = crate::test_lock::lock();
     let a = crate::elo::EngineConfig::depth(1);
     let o = crate::elo::play_game(&a, &a, 20);
     assert!(o.plies <= 20);

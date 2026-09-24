@@ -661,6 +661,8 @@ mod tests {
     /// transpose bug on a square-ish matrix).
     #[test]
     fn incremental_accumulator_matches_refresh() {
+        // The backend switch is process-wide: run alone (see crate::test_lock).
+        let _serial = crate::test_lock::lock();
         use crate::Board;
         crate::eval::set_use_nnue(true);
         let mut board = Board::initial();

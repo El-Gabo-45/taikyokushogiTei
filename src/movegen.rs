@@ -92,12 +92,23 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
 /// path. Reference: docx §5.3 — bitboard generation scales with the
 /// board perimeter.
 pub fn generate_pseudo_legal_moves(board: &Board) -> Vec<Move> {
+    let mut moves = Vec::with_capacity(512);
+    generate_pseudo_legal_moves_into(&mut moves, board);
+    moves
+}
+
+/// [`generate_pseudo_legal_moves`], but writing into a caller-owned buffer.
+///
+/// The search reuses one buffer per ply (see `search::buffers`), so this is
+/// the allocation-free entry point used in the hot path: after the first few
+/// nodes the buffer already has capacity and nothing is allocated at all.
+pub fn generate_pseudo_legal_moves_into(moves: &mut Vec<Move>, board: &Board) {
+    moves.clear();
     let color = board.side_to_move;
     let c = color as usize;
     let rt = ray_table();
     let jt = jump_table();
     let t = crate::attack::templates();
-    let mut moves = Vec::with_capacity(512);
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
@@ -110,31 +121,29 @@ pub fn generate_pseudo_legal_moves(board: &Board) -> Vec<Move> {
 
         // Fast path: pure jumps/steps/slides/area/igui.
         if tmpl.valid {
-            crate::attack::fast_piece(board, sq, pt, color, tmpl, rt, &mut moves);
+            crate::attack::fast_piece(board, sq, pt, color, tmpl, rt, moves);
             continue;
         }
 
         // Fallback: special pieces need the original movement logic.
         let mv = pieces::movement(pt);
 
-        gen_slides(board, sq, pt, color, mv, rt, &mut moves);
-        gen_jumps_fast(board, sq, pt, color, mv, jt, &mut moves);
+        gen_slides(board, sq, pt, color, mv, rt, moves);
+        gen_jumps_fast(board, sq, pt, color, mv, jt, moves);
 
         if mv.hook.is_some() {
-            gen_hooks(board, sq, pt, color, mv, rt, &mut moves);
+            gen_hooks(board, sq, pt, color, mv, rt, moves);
         }
         if mv.area > 0 {
-            gen_area(board, sq, pt, color, mv, &mut moves);
+            gen_area(board, sq, pt, color, mv, moves);
         }
         if !mv.range_capture.is_empty() {
-            gen_range_capture(board, sq, pt, color, mv, rt, &mut moves);
+            gen_range_capture(board, sq, pt, color, mv, rt, moves);
         }
         if mv.igui {
-            gen_igui(board, sq, pt, color, &mut moves);
+            gen_igui(board, sq, pt, color, moves);
         }
     }
-    
-    moves
 }
 
 /// Generate legal moves.
@@ -148,13 +157,15 @@ pub fn generate_legal_moves(board: &Board) -> Vec<Move> {
     generate_pseudo_legal_moves(board)
 }
 
-/// Generate pseudo-legal capture/promotion moves only (fast).
-pub fn generate_pseudo_legal_captures(board: &Board) -> Vec<Move> {
+/// Generate pseudo-legal capture/promotion moves only (fast), writing them
+/// into a caller-owned buffer (the search's per-ply scratch, so the hot path
+/// never allocates).
+pub fn generate_pseudo_legal_captures_into(moves: &mut Vec<Move>, board: &Board) {
+    moves.clear();
     let color = board.side_to_move;
     let c = color as usize;
     let rt = ray_table();
     let jt = jump_table();
-    let mut moves = Vec::with_capacity(64);
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
@@ -165,24 +176,22 @@ pub fn generate_pseudo_legal_captures(board: &Board) -> Vec<Move> {
         dedup_begin();
         let mv = pieces::movement(pt);
 
-        gen_slides_captures(board, sq, pt, color, mv, rt, &mut moves);
-        gen_jumps_captures(board, sq, pt, color, mv, jt, &mut moves);
+        gen_slides_captures(board, sq, pt, color, mv, rt, moves);
+        gen_jumps_captures(board, sq, pt, color, mv, jt, moves);
 
         if mv.hook.is_some() {
-            gen_hooks_captures(board, sq, pt, color, mv, rt, &mut moves);
+            gen_hooks_captures(board, sq, pt, color, mv, rt, moves);
         }
         if mv.area > 0 {
-            gen_area_captures(board, sq, pt, color, mv, &mut moves);
+            gen_area_captures(board, sq, pt, color, mv, moves);
         }
         if !mv.range_capture.is_empty() {
-            gen_range_capture(board, sq, pt, color, mv, rt, &mut moves);
+            gen_range_capture(board, sq, pt, color, mv, rt, moves);
         }
         if mv.igui {
-            gen_igui(board, sq, pt, color, &mut moves);
+            gen_igui(board, sq, pt, color, moves);
         }
     }
-
-    moves
 }
 
 // capture generators
