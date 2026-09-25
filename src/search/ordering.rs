@@ -3,7 +3,7 @@
 //! Priority ladder: 1) TT/hash move, 2) root hint, 3) tactical MVV-LVA,
 //! 4) killers, 5) counter moves, 6) butterfly history.
 
-use super::heuristics;
+use super::heuristics::Heuristics;
 use super::params;
 use crate::board::Board;
 use crate::pieces;
@@ -35,7 +35,8 @@ pub(crate) fn is_tactical(m: &Move) -> bool {
 
 /// Priority: 1) Hash move (TT)  2) MVV-LVA captures  3) Killers
 /// 4) History  5) Counter
-pub(crate) fn score_move(m: &Move, tt_move: u32, hist: i32, cntr: i32, depth: u32) -> i32 {
+pub(crate) fn score_move(heur: &Heuristics, m: &Move, tt_move: u32, hist: i32, cntr: i32,
+                         depth: u32) -> i32 {
     let packed = m_pack(m);
     // 1) Hash move (from TT)
     if packed == tt_move { return params::TT_MOVE_SCORE; }
@@ -50,7 +51,7 @@ pub(crate) fn score_move(m: &Move, tt_move: u32, hist: i32, cntr: i32, depth: u3
         return score;
     }
     // 3) Killer moves
-    let kscore = heuristics::killer_score(depth, packed);
+    let kscore = heur.killer_score(depth, packed);
     if kscore > 0 { return kscore; }
     // 4) History heuristic
     // 5) Counter move heuristic

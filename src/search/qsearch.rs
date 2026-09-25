@@ -50,11 +50,11 @@ impl<'a> Ctx<'a> {
         // caching here saves whole quiescence subtrees.
         let q_hash = self.board.hash;
         if qd > 0 {
-            if let Some(entry) = tt::tt_probe(q_hash) {
+            if let Some(entry) = self.tt.probe(q_hash) {
                 match entry.flag {
                     0 => return entry.score,
-                    1 => if entry.score >= beta { return entry.score; },
-                    2 => if entry.score <= alpha { return entry.score; },
+                    1 if entry.score >= beta => return entry.score,
+                    2 if entry.score <= alpha => return entry.score,
                     _ => {}
                 }
             }
@@ -87,7 +87,7 @@ impl<'a> Ctx<'a> {
             }
             pb.scored.push((s, i as u32, 0));
         }
-        pb.scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+        pb.scored.sort_unstable_by_key(|e| std::cmp::Reverse(e.0));
 
         // `early` reproduces the old straight-line `return`s: a stop or a beta
         // cutoff skips the TT store, while falling out of the loop stores.
@@ -108,11 +108,11 @@ impl<'a> Ctx<'a> {
         if let Some(score) = early { return score; }
 
         if qd > 0 {
-            tt::tt_store(q_hash, tt::TTEntry {
+            self.tt.store(q_hash, tt::TTEntry {
                 score: alpha,
                 depth: 0,
                 flag: if alpha <= init_q_alpha { 2 } else { 0 },
-                generation: tt::tt_gen(),
+                generation: self.tt.gen(),
                 best_move: 0,
                 // Taikyoku has no check (SPEC §7.3) — always false.
                 in_check: false,

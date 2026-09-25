@@ -15,8 +15,7 @@
 //! * [`qsearch`]    — capture-only quiescence with its own TT traffic.
 //! * [`root`]       — one root iteration at a fixed depth (aspiration
 //!   windows around the previous score), with the root move list cached
-//!   across iterations; the opt-in material-delta root (disabled by default)
-//!   lives here too.
+//!   across iterations.
 //!
 //! Iterative deepening with predictive time management lives in [`search`]
 //! below.
@@ -33,9 +32,16 @@ mod qsearch;
 mod root;
 mod tt;
 
+use self::buffers::SearchPool;
+use self::heuristics::Heuristics;
+use self::root::RootState;
+use self::tt::Tt;
 use crate::board::Board;
 use crate::eval::{evaluate, MATE_SCORE};
 use crate::types::Move;
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Result of a completed search.
@@ -47,26 +53,92 @@ pub struct SearchResult {
     pub time_ms: u64,
 }
 
-/// Full search: iterative deepening with aspiration windows and predictive
-/// time management.
-pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult {
-    let start = Instant::now();
+/// A complete search engine in a box: transposition table, killer/history
+/// tables, per-ply scratch pool, cached root move list and cooperative stop
+/// flag.
+///
+/// Owning this is what makes the search reentrant. Two searchers — two threads,
+/// two tests, a UI searching while a match runner works — never see each
+/// other's state, and a caller that keeps its searcher alive between moves
+/// keeps the tables warm. It replaces the process-global statics the search
+/// used to hide behind.
+pub struct Searcher {
+    /// Shared with Lazy SMP workers through an `Arc` clone (see
+    /// [`Searcher::share_tt`]): the table is the one piece of state workers are
+    /// *supposed* to pool.
+    tt: Arc<Tt>,
+    heur: Heuristics,
+    pool: SearchPool,
+    root: RootState,
+    stop: AtomicBool,
+}
+
+impl Searcher {
+    pub fn new() -> Self {
+        Searcher {
+            tt: Arc::new(Tt::new()),
+            heur: Heuristics::new(),
+            pool: SearchPool::new(),
+            root: RootState::new(),
+            stop: AtomicBool::new(false),
+        }
+    }
+
+    /// A second searcher that shares this one's transposition table but owns
+    /// its heuristics, scratch pool and root cache.
+    ///
+    /// This is the shape Lazy SMP wants (workers pool what they learn into the
+    /// shared table), and it is also how a self-play pool avoids allocating one
+    /// table per worker.
+    pub fn share_tt(&self) -> Self {
+        Searcher {
+            tt: Arc::clone(&self.tt),
+            heur: Heuristics::new(),
+            pool: SearchPool::new(),
+            root: RootState::new(),
+            stop: AtomicBool::new(false),
+        }
+    }
+
+    /// Resize this searcher's transposition table to `mb` MiB; returns the size
+    /// actually allocated (rounded down to a power-of-two bucket count). Safe
+    /// to call at any time, including while a search is running.
+    pub fn set_hash_mb(&self, mb: usize) -> usize {
+        self.tt.resize_mb(mb)
+    }
+
+    /// This searcher's current transposition-table size in MiB.
+    pub fn hash_mb(&self) -> usize {
+        self.tt.size_mb()
+    }
+
+    /// Drop everything this searcher learned — the "new game" hook: the
+    /// transposition table, the killer/history tables and the cached root move
+    /// list. Deterministic tests call it between runs.
+    pub fn clear(&mut self) {
+        self.tt.clear();
+        self.heur.clear();
+        self.root = RootState::new();
+    }
+
+    /// Full search: iterative deepening with aspiration windows and predictive
+    /// time management.
+    pub fn search(&mut self, board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult {
+        let start = Instant::now();
     // env::var takes a global lock — cache it once per search, not per iteration.
     let debug_log = std::env::var_os("RPS_DEBUG").is_some();
     let deadline = if time_limit_ms > 0 {
         Some(start + std::time::Duration::from_millis(time_limit_ms))
     } else { None };
 
-    tt::tt_new_generation();
+    self.tt.new_generation();
     ordering::piece_vals();
     let mut best_result = SearchResult { best_move: None, score: evaluate(board), nodes: 0, time_ms: 0 };
-    // Search-lifetime scratch state, allocated once and reused by every
-    // iteration: `nodes` is cumulative for the whole search, `pool` recycles
-    // the per-ply move buffers and `root_state` caches the root move list.
+    // `nodes` is cumulative for the whole search; the scratch pool, the cached
+    // root move list and the stop flag live on `self`, so they survive between
+    // iterations — and between searches when the caller keeps the searcher.
     let mut nodes: u64 = 0;
-    let mut pool = buffers::SearchPool::new();
-    let mut root_state = root::RootState::new();
-    let stop = std::sync::atomic::AtomicBool::new(false);
+    self.stop.store(false, Ordering::Relaxed);
     let mut root_hint: Option<u32> = None;
     let mut score_guess = best_result.score;
     let mut prev_iter_ms: u64 = 0;
@@ -99,9 +171,11 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
         let mut rc = root::RootCtx {
             nodes: &mut nodes,
             deadline,
-            stop: &stop,
-            pool: &mut pool,
-            root: &mut root_state,
+            stop: &self.stop,
+            pool: &mut self.pool,
+            root: &mut self.root,
+            tt: &self.tt,
+            heur: &mut self.heur,
         };
         let result = if current_depth <= 1 {
             root::search_root_window(board, current_depth, &mut rc, root_hint, -MATE_SCORE - 1, MATE_SCORE + 1)
@@ -162,48 +236,54 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
         if debug_log {
             eprintln!("iter d={} nodes={} score={} t={}ms", current_depth, nodes, result.score, result.time_ms);
         }
-        root_hint = result.best_move.as_ref().map(|m| ordering::m_pack(m));
+        root_hint = result.best_move.as_ref().map(ordering::m_pack);
         score_guess = result.score;
         prev_iter_ms = result.time_ms;
         best_result = result;
     }
 
-    let elapsed = start.elapsed().as_millis() as u64;
-    SearchResult {
-        best_move: best_result.best_move,
-        score: best_result.score,
-        nodes: nodes.max(best_result.nodes),
-        time_ms: elapsed,
+        let elapsed = start.elapsed().as_millis() as u64;
+        SearchResult {
+            best_move: best_result.best_move,
+            score: best_result.score,
+            nodes: nodes.max(best_result.nodes),
+            time_ms: elapsed,
+        }
     }
 }
 
-/// Resize the transposition table to `mb` MiB; returns the size actually
-/// allocated (rounded down to a power-of-two bucket count).
+impl Default for Searcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+thread_local! {
+    /// The searcher behind the free [`search`] entry point: one per thread, so
+    /// the tables persist across calls on the same thread (which is what keeps
+    /// the engine fast across moves in a game loop) while two threads never
+    /// touch each other's state.
+    static DEFAULT_SEARCHER: RefCell<Searcher> = RefCell::new(Searcher::new());
+}
+
+/// Search `board` with the calling thread's default [`Searcher`].
 ///
-/// The table persists across [`search`] calls, so this is the knob behind a
-/// UI's "hash" setting. Calling it is safe at any time — in-flight lookups
-/// keep the table they started on alive until they finish.
+/// Use a [`Searcher`] you own when you want to control the transposition-table
+/// size, share the table with other workers, or hold the learned state
+/// explicitly (see [`Searcher::clear`] for the "new game" case).
+pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult {
+    DEFAULT_SEARCHER.with(|s| s.borrow_mut().search(board, depth, time_limit_ms))
+}
+
+/// Resize the default (per-thread) searcher's transposition table to `mb` MiB.
+/// See [`Searcher::set_hash_mb`] for a searcher you own.
 pub fn set_hash_mb(mb: usize) -> usize {
-    tt::resize_mb(mb)
+    DEFAULT_SEARCHER.with(|s| s.borrow().set_hash_mb(mb))
 }
 
-/// Current transposition-table size in MiB.
+/// The default (per-thread) searcher's transposition-table size in MiB.
 pub fn hash_mb() -> usize {
-    tt::size_mb()
-}
-
-/// Reset the state that the search shares between *searches*: the transposition
-/// table and the killer/history tables.
-///
-/// These tables are global on purpose — carrying information from one search
-/// into the next is what makes the engine fast across moves — so two
-/// consecutive searches on the same position may legitimately return different
-/// scores. Call this when a reproducible run is required (tests) or when the
-/// caller knows the previous search is irrelevant (a new game).
-#[allow(dead_code)] // used by tests; the natural hook for a UI "new game"
-pub(crate) fn reset_shared_tables() {
-    tt::clear();
-    heuristics::clear();
+    DEFAULT_SEARCHER.with(|s| s.borrow().hash_mb())
 }
 
 #[cfg(test)]
@@ -213,9 +293,6 @@ mod tests {
 
     #[test]
     fn search_initial_reaches_depth_and_finds_a_move() {
-        // Engine-global state is shared: run alone (see crate::test_lock).
-        let _serial = crate::test_lock::lock();
-        heuristics::clear();
         let mut board = Board::initial();
         let r = board.search(4, 0);
         assert!(r.best_move.is_some(), "depth-4 search must return a move");
@@ -224,21 +301,39 @@ mod tests {
     }
 
     #[test]
+    fn hash_size_is_configurable_and_reported() {
+        let s = Searcher::new();
+        let before = s.hash_mb();
+        let actual = s.set_hash_mb(8);
+        assert_eq!(actual, s.hash_mb(), "the reported size must be the allocated one");
+        assert!(actual >= params::TT_MIN_MB);
+        assert_eq!(s.set_hash_mb(before), s.hash_mb());
+        assert_eq!(s.hash_mb(), before, "restoring the previous size must round-trip");
+    }
+
+    #[test]
+    fn shared_tt_searchers_see_the_same_table() {
+        let master = Searcher::new();
+        let worker = master.share_tt();
+        let mb = master.set_hash_mb(16);
+        assert_eq!(worker.hash_mb(), mb, "workers must see the shared table");
+    }
+
+    #[test]
     fn history_clear_zeroes_counters() {
-        // The history tables are engine-global: run alone (crate::test_lock).
-        let _serial = crate::test_lock::lock();
-        heuristics::history_store(3, 4, 5, 0);
-        assert!(heuristics::history_score(3, 4, 0) > 0);
-        heuristics::clear();
-        assert_eq!(heuristics::history_score(3, 4, 1), 0);
-        assert_eq!(heuristics::history_score(0, 0, 0), 0);
+        let mut h = Heuristics::new();
+        h.history_store(3, 4, 5, 0);
+        assert!(h.history_score(3, 4, 0) > 0);
+        h.clear();
+        assert_eq!(h.history_score(3, 4, 1), 0);
+        assert_eq!(h.history_score(0, 0, 0), 0);
     }
 
     #[test]
     fn killer_store_is_read_back() {
-        // The killer slots are engine-global: run alone (crate::test_lock).
-        let _serial = crate::test_lock::lock();
-        heuristics::killer_store(10, 0xABCD);
-        assert_eq!(heuristics::killer_score(10, 0xABCD), params::KILLER1_SCORE);
+        let mut h = Heuristics::new();
+        h.killer_store(10, 0xABCD);
+        assert_eq!(h.killer_score(10, 0xABCD), params::KILLER1_SCORE);
+        assert_eq!(h.killer_score(10, 0x1234), 0);
     }
 }

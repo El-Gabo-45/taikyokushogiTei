@@ -73,21 +73,37 @@ impl TtStorage {
     }
 }
 
-static TT_STORAGE: OnceLock<RwLock<Arc<TtStorage>>> = OnceLock::new();
-
-pub(crate) static TT_GEN: AtomicU64 = AtomicU64::new(1);
-
-#[inline]
-fn storage() -> &'static RwLock<Arc<TtStorage>> {
-    TT_STORAGE.get_or_init(|| RwLock::new(Arc::new(TtStorage::with_mb(params::TT_DEFAULT_MB))))
+/// A transposition table. The searcher owns one (Lazy SMP workers share it
+/// through an `Arc`); nothing here is process-global, so two searches — two
+/// threads, two tests, a UI next to a match runner — can never read each
+/// other's entries.
+pub(crate) struct Tt {
+    /// `None` until the first lookup, so a searcher that never searches never
+    /// pays for the table (256 MiB of lazily-faulted memory by default).
+    storage: OnceLock<RwLock<Arc<TtStorage>>>,
+    /// Bumped once per search; entries from older generations lose the
+    /// replace race, which ages the table without clearing it.
+    generation: AtomicU64,
 }
 
-/// Take a read guard, ignoring poisoning: a panicking search must not brick
-/// the table for the rest of the process (the release profile is
-/// `panic = "abort"`, but the test profile unwinds).
-#[inline]
-fn read_table() -> std::sync::RwLockReadGuard<'static, Arc<TtStorage>> {
-    storage().read().unwrap_or_else(|e| e.into_inner())
+impl Tt {
+    pub fn new() -> Self {
+        Tt { storage: OnceLock::new(), generation: AtomicU64::new(1) }
+    }
+
+    #[inline]
+    fn storage(&self) -> &RwLock<Arc<TtStorage>> {
+        self.storage
+            .get_or_init(|| RwLock::new(Arc::new(TtStorage::with_mb(params::TT_DEFAULT_MB))))
+    }
+
+    /// Take a read guard, ignoring poisoning: a panicking search must not
+    /// brick the table for the rest of the process (the release profile is
+    /// `panic = "abort"`, but the test profile unwinds).
+    #[inline]
+    fn read_table(&self) -> std::sync::RwLockReadGuard<'_, Arc<TtStorage>> {
+        self.storage().read().unwrap_or_else(|e| e.into_inner())
+    }
 }
 
 #[inline]
@@ -122,112 +138,120 @@ pub(crate) fn tt_unpack(packed: u64) -> TTEntry {
     }
 }
 
-/// Bump on every new `search()` call: entries from older generations lose
-/// the replace race, achieving aging without clearing the table.
-#[inline]
-pub(crate) fn tt_gen() -> u8 {
-    (TT_GEN.load(Ordering::Relaxed) & 0xFF) as u8
-}
-
-/// Advance the generation counter (called at the start of a new search).
-pub(crate) fn tt_new_generation() {
-    TT_GEN.fetch_add(1, Ordering::Relaxed);
-}
-
-/// Configure the table size in MiB. Returns the size actually allocated
-/// (rounded down to a power-of-two bucket count). Safe to call at any time,
-/// including while a search is running: readers hold an `Arc` to whichever
-/// table was current when their lookup started.
-pub(crate) fn resize_mb(mb: usize) -> usize {
-    let table = Arc::new(TtStorage::with_mb(mb));
-    let actual = table.actual_mb();
-    {
-        let mut guard = storage().write().unwrap_or_else(|e| e.into_inner());
-        *guard = table;
+impl Tt {
+    /// Generation tag for entries stored right now: entries from older
+    /// generations lose the replacement race, achieving aging without
+    /// clearing the table.
+    #[inline]
+    pub fn gen(&self) -> u8 {
+        (self.generation.load(Ordering::Relaxed) & 0xFF) as u8
     }
-    // Fresh table: nothing is worth keeping, and an aged generation would
-    // make the very first stores look like ancient history.
-    tt_new_generation();
-    actual
-}
 
-/// Current table size in MiB.
-pub(crate) fn size_mb() -> usize {
-    read_table().mb
-}
-
-/// Raw slot count (diagnostics / tests).
-#[allow(dead_code)]
-pub(crate) fn num_slots() -> usize {
-    read_table().slots.len()
-}
-
-/// Clear every entry (new match / test isolation).
-#[allow(dead_code)]
-pub(crate) fn clear() {
-    let table = read_table().clone();
-    for slot in table.slots.iter() {
-        slot.store(0, Ordering::Relaxed);
+    /// Advance the generation counter (called at the start of a new search).
+    pub fn new_generation(&self) {
+        self.generation.fetch_add(1, Ordering::Relaxed);
     }
-    tt_new_generation();
-}
 
-pub(crate) fn tt_probe(hash: u64) -> Option<TTEntry> {
-    let guard = read_table();
-    let table: &TtStorage = guard.as_ref();
-    let base = bucket_index(hash, table.buckets);
-    let t: &[AtomicU64] = &table.slots;
-    for i in 0..params::TT_BUCKET_WIDTH {
-        let idx = base + i * 2;
-        // ── Race-safe read ────────────────────────────────────────
-        // Read hash with Acquire, snapshot the data, then RE-VERIFY the
-        // hash: if it changed, the slot was overwritten mid-read and the
-        // entry is treated as a miss.
-        let stored = t[idx].load(Ordering::Acquire);
-        if stored == hash {
-            let entry = tt_unpack(t[idx + 1].load(Ordering::Acquire));
-            if t[idx].load(Ordering::Acquire) != stored {
-                continue; // slot overwritten mid-read — try next bucket slot
+    /// Configure the table size in MiB. Returns the size actually allocated
+    /// (rounded down to a power-of-two bucket count). Safe to call at any time,
+    /// including while a search is running: readers hold an `Arc` to whichever
+    /// table was current when their lookup started.
+    pub fn resize_mb(&self, mb: usize) -> usize {
+        let table = Arc::new(TtStorage::with_mb(mb));
+        let actual = table.actual_mb();
+        {
+            let mut guard = self.storage().write().unwrap_or_else(|e| e.into_inner());
+            *guard = table;
+        }
+        // Fresh table: nothing is worth keeping, and an aged generation would
+        // make the very first stores look like ancient history.
+        self.new_generation();
+        actual
+    }
+
+    /// Current table size in MiB.
+    pub fn size_mb(&self) -> usize {
+        self.read_table().mb
+    }
+
+    /// Raw slot count (diagnostics / tests).
+    #[allow(dead_code)]
+    pub fn num_slots(&self) -> usize {
+        self.read_table().slots.len()
+    }
+
+    /// Clear every entry (new game / test isolation).
+    pub fn clear(&self) {
+        let table = self.read_table().clone();
+        for slot in table.slots.iter() {
+            slot.store(0, Ordering::Relaxed);
+        }
+        self.new_generation();
+    }
+
+    pub fn probe(&self, hash: u64) -> Option<TTEntry> {
+        let guard = self.read_table();
+        let table: &TtStorage = guard.as_ref();
+        let base = bucket_index(hash, table.buckets);
+        let t: &[AtomicU64] = &table.slots;
+        for i in 0..params::TT_BUCKET_WIDTH {
+            let idx = base + i * 2;
+            // ── Race-safe read ────────────────────────────────────────
+            // Read hash with Acquire, snapshot the data, then RE-VERIFY the
+            // hash: if it changed, the slot was overwritten mid-read and the
+            // entry is treated as a miss.
+            let stored = t[idx].load(Ordering::Acquire);
+            if stored == hash {
+                let entry = tt_unpack(t[idx + 1].load(Ordering::Acquire));
+                if t[idx].load(Ordering::Acquire) != stored {
+                    continue; // slot overwritten mid-read — try next bucket slot
+                }
+                if entry.depth >= 0 { return Some(entry); }
             }
-            if entry.depth >= 0 { return Some(entry); }
         }
+        None
     }
-    None
+
+    pub fn store(&self, hash: u64, entry: TTEntry) {
+        // Pin BOTH the generation and the table for the whole write: a
+        // concurrent `resize_mb` would otherwise install a fresh table whose
+        // generation counter is unrelated to the entries we compare against.
+        let gen = self.gen();
+        let guard = self.read_table();
+        let table: &TtStorage = guard.as_ref();
+        let base = bucket_index(hash, table.buckets);
+        let t: &[AtomicU64] = &table.slots;
+        let mut replace_idx = 0;
+        let mut replace_score = i32::MAX;
+
+        for i in 0..params::TT_BUCKET_WIDTH {
+            let idx = base + i * 2;
+            let old_hash = t[idx].load(Ordering::Relaxed);
+            if old_hash == 0 {
+                replace_idx = idx;
+                break;
+            }
+            let old = tt_unpack(t[idx + 1].load(Ordering::Relaxed));
+            let score = ((old.depth as i32) << 16) - (gen.wrapping_sub(old.generation) as i32);
+            if score < replace_score {
+                replace_score = score;
+                replace_idx = idx;
+            }
+        }
+
+        // ── Race-safe write ─────────────────────────────────────────
+        // Publish data BEFORE the hash, both with Release: a reader that
+        // observes the hash (Acquire) is guaranteed to see at least this data
+        // snapshot, never a torn mix of old and new entries.
+        t[replace_idx + 1].store(tt_pack(&entry, gen), Ordering::Release);
+        t[replace_idx].store(hash, Ordering::Release);
+    }
 }
 
-pub(crate) fn tt_store(hash: u64, entry: TTEntry) {
-    // Pin BOTH the generation and the table for the whole write: a concurrent
-    // `resize_mb` would otherwise install a fresh table whose generation
-    // counter is unrelated to the entries we are comparing against.
-    let gen = tt_gen();
-    let guard = read_table();
-    let table: &TtStorage = guard.as_ref();
-    let base = bucket_index(hash, table.buckets);
-    let t: &[AtomicU64] = &table.slots;
-    let mut replace_idx = 0;
-    let mut replace_score = i32::MAX;
-
-    for i in 0..params::TT_BUCKET_WIDTH {
-        let idx = base + i * 2;
-        let old_hash = t[idx].load(Ordering::Relaxed);
-        if old_hash == 0 {
-            replace_idx = idx;
-            break;
-        }
-        let old = tt_unpack(t[idx + 1].load(Ordering::Relaxed));
-        let score = ((old.depth as i32) << 16) - (gen.wrapping_sub(old.generation) as i32);
-        if score < replace_score {
-            replace_score = score;
-            replace_idx = idx;
-        }
+impl Default for Tt {
+    fn default() -> Self {
+        Self::new()
     }
-
-    // ── Race-safe write ─────────────────────────────────────────
-    // Publish data BEFORE the hash, both with Release: a reader that observes
-    // the hash (Acquire) is guaranteed to see at least this data snapshot,
-    // never a torn mix of old and new entries.
-    t[replace_idx + 1].store(tt_pack(&entry, gen), Ordering::Release);
-    t[replace_idx].store(hash, Ordering::Release);
 }
 
 #[cfg(test)]
@@ -261,29 +285,31 @@ mod tests {
 
     #[test]
     fn resize_rounds_down_to_a_power_of_two_and_keeps_working() {
-        let before = size_mb();
-        let actual = resize_mb(8);
+        let tt = Tt::new();
+        let before = tt.size_mb();
+        let actual = tt.resize_mb(8);
         assert!(actual >= 4 && actual <= 8, "8 MiB request rounded to {} MiB", actual);
-        assert_eq!(size_mb(), actual);
+        assert_eq!(tt.size_mb(), actual);
         // A store/probe round-trip must survive the resize.
-        tt_store(0xDEAD_BEEF, TTEntry {
+        tt.store(0xDEAD_BEEF, TTEntry {
             score: 42, depth: 3, flag: 0, generation: 0, best_move: 7, in_check: false,
         });
-        let hit = tt_probe(0xDEAD_BEEF).expect("entry must be found after resize");
+        let hit = tt.probe(0xDEAD_BEEF).expect("entry must be found after resize");
         assert_eq!(hit.score, 42);
         assert_eq!(hit.best_move, 7);
-        resize_mb(before);
-        assert_eq!(size_mb(), before);
+        tt.resize_mb(before);
+        assert_eq!(tt.size_mb(), before);
     }
 
     #[test]
     fn resize_clamps_absurd_requests() {
-        let before = size_mb();
-        resize_mb(0); // clamped up to the minimum
-        assert!(size_mb() >= params::TT_MIN_MB);
-        resize_mb(usize::MAX / 2); // clamped down to the maximum
-        assert!(size_mb() <= params::TT_MAX_MB);
-        resize_mb(before);
-        assert_eq!(size_mb(), before);
+        let tt = Tt::new();
+        let before = tt.size_mb();
+        tt.resize_mb(0); // clamped up to the minimum
+        assert!(tt.size_mb() >= params::TT_MIN_MB);
+        tt.resize_mb(usize::MAX / 2); // clamped down to the maximum
+        assert!(tt.size_mb() <= params::TT_MAX_MB);
+        tt.resize_mb(before);
+        assert_eq!(tt.size_mb(), before);
     }
 }

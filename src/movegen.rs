@@ -563,11 +563,12 @@ fn gen_range_capture(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
                     // INTERMEDIATE capture for all subsequent moves along
                     // this ray, and its value joins caps_value after this
                     // move is emitted.
-                    let from_in = in_promo_zone(sq, color);
-                    let to_in = in_promo_zone(rsq as usize, color);
-                    let may_promo = can_promote(pt) && (
-                        (!from_in && to_in) || (from_in && to_in)
-                    );
+                    // The move that stops here ALWAYS captures (rsq holds an
+                    // enemy piece), so the general rule in the quiet generator
+                    // — "may promote when entering the zone, or when capturing
+                    // while inside it" — reduces to "lands inside the zone":
+                    // the capture half of that rule is already satisfied.
+                    let may_promo = can_promote(pt) && in_promo_zone(rsq as usize, color);
                     let must_promo = may_promo && is_farthest_rank(rsq as usize, color)
                         && pieces::must_promote_at_far_rank(pt);
                     if must_promo {

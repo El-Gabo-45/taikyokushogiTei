@@ -19,11 +19,11 @@
 //! naturally and can be wired up if a check rule is ever added.
 
 use super::buffers::{PlyBuffers, SearchPool};
-use super::heuristics;
+use super::heuristics::Heuristics;
 use super::ordering::{self, piece_vals};
 use super::params;
 use super::qsearch;
-use super::tt;
+use super::tt::{self, Tt};
 use crate::board::Board;
 use crate::eval::{evaluate, MATE_SCORE};
 use crate::types::*;
@@ -33,11 +33,11 @@ use std::time::Instant;
 /// Per-node search state threaded through the recursive calls, replacing the
 /// previous 8-argument `pvs(...)` signature.
 ///
-/// Everything that used to be a process-wide global *and* everything that is
-/// naturally per-search lives here: the board cursor, the node counter, the
-/// deadline, the cooperative stop flag and the per-ply scratch pool. The
-/// genuinely shared state (transposition table, killer/history tables) stays
-/// in `tt`/`heuristics`, because Lazy SMP peers are *supposed* to share it.
+/// Everything the search needs to reach lives here: the board cursor, the node
+/// counter, the deadline, the cooperative stop flag, the per-ply scratch pool,
+/// the transposition table and the heuristic tables. Nothing in this struct is
+/// process-global, so two searches running at the same time are independent by
+/// construction (see [`super::Searcher`]).
 pub(crate) struct Ctx<'a> {
     pub board: &'a mut Board,
     pub nodes: &'a mut u64,
@@ -53,13 +53,19 @@ pub(crate) struct Ctx<'a> {
     /// Per-ply scratch buffers: move lists and scoring arrays are recycled
     /// instead of malloc'ed per node.
     pub pool: &'a mut SearchPool,
+    /// Transposition table of the searcher that started this search. Lazy SMP
+    /// workers hold a clone of the same `Arc` — that sharing is deliberate.
+    pub tt: &'a Tt,
+    /// Killer / history / counter tables. Owned by the searcher (one per
+    /// worker under Lazy SMP), so peers never fight over ordering counters.
+    pub heur: &'a mut Heuristics,
 }
 
 impl<'a> Ctx<'a> {
     #[inline]
     pub(crate) fn past_deadline(&self) -> bool {
         if self.stop.load(Ordering::Relaxed) { return true; }
-        self.deadline.map_or(false, |dl| Instant::now() >= dl)
+        self.deadline.is_some_and(|dl| Instant::now() >= dl)
     }
 
     /// Returns the score of a terminal position, or None if the game is on.
@@ -143,7 +149,7 @@ impl<'a> Ctx<'a> {
         }
         let iid_d = d / 2 - 1;
         let _ = self.pvs(iid_d, -beta, -alpha);
-        tt::tt_probe(hash).map(|e| e.best_move).unwrap_or(0)
+        self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0)
     }
 
     /// Entry point kept free of state plumbing (see `Ctx`).
@@ -167,7 +173,7 @@ impl<'a> Ctx<'a> {
 
         // ── TT PROBE ──────────────────────────────────────────────
         let hash = self.board.hash;
-        let tt_move = tt::tt_probe(hash).map(|e| e.best_move).unwrap_or(0);
+        let tt_move = self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0);
 
         // Taikyoku has NO check (SPEC §7.3) — see module docs.
         let in_check = false;
@@ -233,6 +239,7 @@ impl<'a> Ctx<'a> {
     ///
     /// `pb` is this node's scratch buffer; it is returned to the caller so it
     /// can be put back into the pool even on the early-return paths.
+    #[allow(clippy::too_many_arguments)] // node state, bundled on purpose
     fn search_node(&mut self, mut pb: PlyBuffers, d: u32, mut alpha: i32, beta: i32,
                    static_eval: i32, in_check: bool, iid_move: u32) -> (i32, PlyBuffers) {
         // Side to move at THIS node, captured before any apply_move flips it:
@@ -282,9 +289,9 @@ impl<'a> Ctx<'a> {
         pb.cap_scores.clear();
         for m in cap_moves.iter() {
             let packed = ordering::m_pack(m);
-            let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
-            let cntr = heuristics::counter_score(self.prev_move, packed);
-            pb.cap_scores.push(ordering::score_move(m, iid_move, hist, cntr, d));
+            let hist = self.heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
+            let cntr = self.heur.counter_score(self.prev_move, packed);
+            pb.cap_scores.push(ordering::score_move(self.heur, m, iid_move, hist, cntr, d));
         }
 
         let mut move_idx = 0usize;
@@ -347,15 +354,15 @@ impl<'a> Ctx<'a> {
             if alpha >= beta {
                 tt_flag = 1;
                 if order_score < params::TACTICAL_BASE_SCORE {
-                    heuristics::killer_store(d, packed);
-                    heuristics::history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
+                    self.heur.killer_store(d, packed);
+                    self.heur.history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
                 }
-                if self.prev_move != 0 { heuristics::counter_store(self.prev_move, packed); }
+                if self.prev_move != 0 { self.heur.counter_store(self.prev_move, packed); }
                 // History gravity: penalize the quiets that failed to cause a
                 // cutoff, so next time the cutting move (and similar ones) are
                 // tried first. (Standard technique: Stockfish's history malus.)
                 for &(hf, ht) in &quiet_tried[..quiet_tried_n] {
-                    heuristics::history_malus(hf as usize, ht as usize, d, stm);
+                    self.heur.history_malus(hf as usize, ht as usize, d, stm);
                 }
                 break;
             }
@@ -374,9 +381,9 @@ impl<'a> Ctx<'a> {
             pb.scored.clear();
             for (i, m) in pb.moves.iter().enumerate() {
                 let packed = ordering::m_pack(m);
-                let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
-                let cntr = heuristics::counter_score(self.prev_move, packed);
-                let s = ordering::score_move(m, iid_move, hist, cntr, d);
+                let hist = self.heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
+                let cntr = self.heur.counter_score(self.prev_move, packed);
+                let s = ordering::score_move(self.heur, m, iid_move, hist, cntr, d);
                 pb.scored.push((s, i as u32, packed));
             }
             let n_quiets = pb.scored.len();
@@ -388,7 +395,7 @@ impl<'a> Ctx<'a> {
             if select_n > 1 && pb.scored.len() > select_n {
                 pb.scored.select_nth_unstable_by(select_n - 1, |a, b| b.0.cmp(&a.0));
             } else {
-                pb.scored.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+                pb.scored.sort_unstable_by_key(|e| std::cmp::Reverse(e.0));
             }
 
             for &(order_score, idx, packed) in pb.scored.iter() {
@@ -408,8 +415,9 @@ impl<'a> Ctx<'a> {
                 // hundreds of remaining quiets at each node).
                 if d <= params::QUIET_FUTILITY_MAX_DEPTH && !in_check && cur_move > 0
                     && order_score < params::TACTICAL_BASE_SCORE && params::mate_gate_ok(alpha)
+                    && static_eval + params::quiet_futility_margin(d) <= alpha
                 {
-                    if static_eval + params::quiet_futility_margin(d) <= alpha { continue; }
+                    continue;
                 }
                 if cur_move > 0 && self.past_deadline() { break; }
                 let m = &pb.moves[idx];
@@ -418,11 +426,9 @@ impl<'a> Ctx<'a> {
                 // a beam slot now, before the search.
                 move_idx += 1;
                 searched = true;
-                if order_score < params::TACTICAL_BASE_SCORE {
-                    if quiet_tried_n < quiet_tried.len() {
-                        quiet_tried[quiet_tried_n] = (m.from_sq, m.to_sq);
-                        quiet_tried_n += 1;
-                    }
+                if order_score < params::TACTICAL_BASE_SCORE && quiet_tried_n < quiet_tried.len() {
+                    quiet_tried[quiet_tried_n] = (m.from_sq, m.to_sq);
+                    quiet_tried_n += 1;
                 }
                 // Hash-move extension: give the TT's best move one extra ply.
                 // NOTE: not a true singular extension (which would re-search at
@@ -440,7 +446,7 @@ impl<'a> Ctx<'a> {
                     // soften its reduction so it is not searched too shallowly
                     // (LMR + history interaction, standard in modern engines).
                     let soften = params::lmr_history_soften(
-                        heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm));
+                        self.heur.history_score(m.from_sq as usize, m.to_sq as usize, stm));
                     (base + depth_factor).saturating_sub(soften)
                 } else { 0 };
                 let mut new_d = d.saturating_sub(1 + reduction);
@@ -468,10 +474,10 @@ impl<'a> Ctx<'a> {
                 if alpha >= beta {
                     tt_flag = 1;
                     if order_score < params::TACTICAL_BASE_SCORE {
-                        heuristics::killer_store(d, packed);
-                        heuristics::history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
+                        self.heur.killer_store(d, packed);
+                        self.heur.history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
                     }
-                    if self.prev_move != 0 { heuristics::counter_store(self.prev_move, packed); }
+                    if self.prev_move != 0 { self.heur.counter_store(self.prev_move, packed); }
                     break;
                 }
             }
@@ -482,14 +488,14 @@ impl<'a> Ctx<'a> {
         // nodes (valid UPPERBOUND entries). Skipping those used to waste TT
         // probes on positions the tree reaches repeatedly via transpositions.
         if searched {
-            tt::tt_store(self.board.hash, tt::TTEntry {
+            self.tt.store(self.board.hash, tt::TTEntry {
                 score: alpha,
                 depth: d.min(120) as i8,
                 flag: if alpha <= init_alpha { 2 } else { tt_flag },
                 // Coherence: tt_pack overrides this field with the ACTIVE
                 // generation, so a hardcoded 0 had no packed effect — but an
                 // inspected struct must not lie. Set the real generation.
-                generation: tt::tt_gen(),
+                generation: self.tt.gen(),
                 best_move: best_packed,
                 in_check: false, // no such thing as check in Taikyoku
             });
@@ -499,13 +505,14 @@ impl<'a> Ctx<'a> {
     }
 }
 
-/// Entry point used by the root search, which owns the stop flag and the
-/// scratch pool so its buffers survive across moves and iterations.
+/// Entry point used by the root search, which owns the stop flag, the scratch
+/// pool, the transposition table and the heuristic tables so all four survive
+/// across moves and iterations.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pvs_with_pool(board: &mut Board, depth: u32, alpha: i32, beta: i32,
                             nodes: &mut u64, deadline: Option<Instant>, ply: u32,
                             prev_move: u32, stop: &AtomicBool,
-                            pool: &mut SearchPool) -> i32 {
-    let mut ctx = Ctx { board, nodes, deadline, ply, prev_move, stop, pool };
+                            pool: &mut SearchPool, tt: &Tt, heur: &mut Heuristics) -> i32 {
+    let mut ctx = Ctx { board, nodes, deadline, ply, prev_move, stop, pool, tt, heur };
     ctx.run(depth, alpha, beta)
 }

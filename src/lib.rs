@@ -210,7 +210,7 @@ impl Piece {
 
     /// What this piece promotes to, if anything.
     pub fn promotes_to(&self) -> Option<&'static str> {
-        pieces::promotes_to(self.type_id).map(|pt| pieces::abbrev(pt))
+        pieces::promotes_to(self.type_id).map(pieces::abbrev)
     }
 }
 
@@ -307,7 +307,7 @@ pub struct PieceInfo {
 pub fn piece_info(abbrev: &str) -> Option<PieceInfo> {
     let pt = pieces::find_by_abbrev(abbrev)?;
     let mv = pieces::movement(pt);
-    let promo = pieces::promotes_to(pt).map(|p| pieces::abbrev(p));
+    let promo = pieces::promotes_to(pt).map(pieces::abbrev);
     Some(PieceInfo {
         abbrev: pieces::abbrev(pt),
         name: pieces::name(pt),
@@ -507,6 +507,23 @@ impl Board {
     /// - `time_limit_ms`: wall-clock time limit in milliseconds (0 = unlimited)
     pub fn search(&mut self, depth: u32, time_limit_ms: u64) -> SearchResult {
         let r = search::search(&mut self.inner, depth, time_limit_ms);
+        SearchResult {
+            best_move: r.best_move.map(|m| Move { inner: m }),
+            score: r.score,
+            nodes: r.nodes,
+            time_ms: r.time_ms,
+        }
+    }
+
+    /// Like [`Board::search`], but with a searcher you own.
+    ///
+    /// Keep one [`Searcher`] around to carry the transposition table and the
+    /// ordering heuristics from move to move, to size the table
+    /// ([`Searcher::set_hash_mb`]) or to share it between workers
+    /// ([`Searcher::share_tt`]). Call [`Searcher::clear`] for a new game.
+    pub fn search_with(&mut self, searcher: &mut search::Searcher, depth: u32,
+                       time_limit_ms: u64) -> SearchResult {
+        let r = searcher.search(&mut self.inner, depth, time_limit_ms);
         SearchResult {
             best_move: r.best_move.map(|m| Move { inner: m }),
             score: r.score,

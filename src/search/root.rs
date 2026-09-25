@@ -20,15 +20,14 @@
 //! itself changed).
 
 use super::buffers::SearchPool;
-use super::heuristics;
+use super::heuristics::Heuristics;
 use super::ordering::{self, piece_vals};
 use super::params;
 use super::pvs;
-use super::tt;
+use super::tt::Tt;
 use crate::board::Board;
-use crate::eval::{evaluate, material_score, MATE_SCORE};
-use crate::movegen::{generate_pseudo_legal_moves, generate_pseudo_legal_moves_into};
-use crate::pieces;
+use crate::eval::{evaluate, MATE_SCORE};
+use crate::movegen::generate_pseudo_legal_moves_into;
 use crate::types::*;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
@@ -61,7 +60,8 @@ impl RootState {
 
     /// Rebuild the list if the root position changed; otherwise keep the list
     /// and the ordering produced by the previous iteration.
-    fn prepare(&mut self, board: &Board, tt_move: u32, depth: u32, root_hint: Option<u32>) {
+    fn prepare(&mut self, board: &Board, tt_move: u32, depth: u32, root_hint: Option<u32>,
+               heur: &Heuristics) {
         if self.hash != board.hash || self.moves.is_empty() {
             self.hash = board.hash;
             generate_pseudo_legal_moves_into(&mut self.moves, board);
@@ -70,8 +70,8 @@ impl RootState {
             let stm = board.side_to_move;
             for (i, m) in self.moves.iter().enumerate() {
                 let packed = ordering::m_pack(m);
-                let hist = heuristics::history_score(m.from_sq as usize, m.to_sq as usize, stm);
-                let mut s = ordering::score_move(m, tt_move, hist, 0, depth);
+                let hist = heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
+                let mut s = ordering::score_move(heur, m, tt_move, hist, 0, depth);
                 if root_hint == Some(packed) { s += params::ROOT_HINT_SCORE; }
                 self.scores[i] = s;
             }
@@ -97,6 +97,10 @@ pub(crate) struct RootCtx<'a> {
     pub stop: &'a AtomicBool,
     pub pool: &'a mut SearchPool,
     pub root: &'a mut RootState,
+    /// Transposition table of the owning searcher (shared by SMP workers).
+    pub tt: &'a Tt,
+    /// Heuristic tables of the owning searcher (one set per worker).
+    pub heur: &'a mut Heuristics,
 }
 
 /// Aspiration-window search of the root at one depth.
@@ -115,37 +119,35 @@ pub(crate) fn search_root_window(
     let nodes = &mut *rc.nodes;
     let pool = &mut *rc.pool;
     let root = &mut *rc.root;
+    let tt = rc.tt;
+    let heur = &mut *rc.heur;
 
     if depth == 0 {
         return super::SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
     }
 
-    // NOTE: depth 1-3 used to take a "material-delta fast path" that scored
-    // each root move by its material change only (no opponent replies). That
-    // made "depth 2/3" equivalent to depth 1 and silently invalidated any
-    // strength comparison across depths. It is now DISABLED by default and
-    // every depth runs the real alpha-beta root below. Re-enable only for
-    // movegen/apply micro-benchmarks, never for strength measurements.
-    if depth <= params::MATERIAL_FAST_PATH_MAX_DEPTH {
-        return material_delta_root(board, depth, start);
-    }
-
+    // Historical note: depths 1-3 used to take a "material-delta fast path"
+    // that scored each root move on its material change alone, ignoring the
+    // opponent's reply — which made "depth 2/3" behave like depth 1 and
+    // silently invalidated every strength comparison across depths. The
+    // shortcut was removed outright instead of being left behind as a switch:
+    // every depth runs the real alpha-beta root below.
     let mut best_move = None;
     let mut best_score = -MATE_SCORE - 1;
-    let root_tt_move = tt::tt_probe(board.hash).map(|e| e.best_move).unwrap_or(0);
+    let root_tt_move = tt.probe(board.hash).map(|e| e.best_move).unwrap_or(0);
 
     // A depth-2 preliminary search warms the TT and gives the ordering a
     // cheap head start before the real iteration.
     if depth > 2 {
         let _ = pvs::pvs_with_pool(board, depth - 2, -MATE_SCORE - 1, MATE_SCORE + 1,
-                                   nodes, deadline, 0, 0, stop, pool);
+                                   nodes, deadline, 0, 0, stop, pool, tt, heur);
     }
 
     // ── ROOT MOVE LIST (cached across iterations) ──────────────
     // Rebuilt only when the root position changed; otherwise the moves keep
     // the order the previous iteration discovered, which is the best possible
     // move ordering for the root (the returned best move is tried first).
-    root.prepare(board, root_tt_move, depth, root_hint);
+    root.prepare(board, root_tt_move, depth, root_hint, heur);
     if root.moves.is_empty() {
         // No legal move at all: the side to move loses (SPEC §7.3).
         let score = -(MATE_SCORE - depth as i32);
@@ -177,19 +179,19 @@ pub(crate) fn search_root_window(
             (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
         };
         let score = if rank == 0 {
-            -pvs::pvs_with_pool(board, depth - 1, sa, sb, nodes, deadline, 0, packed, stop, pool)
+            -pvs::pvs_with_pool(board, depth - 1, sa, sb, nodes, deadline, 0, packed, stop, pool, tt, heur)
         } else {
             let nw = -pvs::pvs_with_pool(board, depth - 1, -sa - 1, -sa, nodes, deadline, 0,
-                                         packed, stop, pool);
+                                         packed, stop, pool, tt, heur);
             if nw > sa && nw < sb {
                 -pvs::pvs_with_pool(board, depth - 1, -sb, -sa, nodes, deadline, 0,
-                                    packed, stop, pool)
+                                    packed, stop, pool, tt, heur)
             } else { nw }
         };
         let score = if score <= sa || score >= sb {
             let full = -pvs::pvs_with_pool(board, depth - 1, -MATE_SCORE - 1,
                                            -best_score.max(-MATE_SCORE - 1),
-                                           nodes, deadline, 0, packed, stop, pool);
+                                           nodes, deadline, 0, packed, stop, pool, tt, heur);
             if full > best_score { best_score = full; best_move = Some(m.clone()); }
             full
         } else {
@@ -226,48 +228,3 @@ pub(crate) fn search_root_window(
     }
 }
 
-/// Opt-in material-delta root, enabled with `MATERIAL_FAST_PATH_MAX_DEPTH`
-/// (0 = disabled, the default): score each root move by its material change
-/// directly (O(1) per move) instead of applying and searching it.
-///
-/// On a 36×36 board with ~700 legal moves, the full apply+undo cycle made a
-/// real depth-2/3 search (716 root moves × 716 replies) take seconds per
-/// iteration. This shortcut finishes in ~60-100µs — but it ignores the
-/// opponent's reply, which makes "depth 2/3" equivalent to depth 1, so it must
-/// NOT be used for strength measurements: only for movegen/apply
-/// micro-benchmarks.
-/// Reference: HaChu (hgm.nubati.net) — incremental evaluation scales with
-/// the board perimeter, not the area.
-fn material_delta_root(board: &mut Board, depth: u32, start: Instant) -> super::SearchResult {
-    let moves = generate_pseudo_legal_moves(board);
-    if moves.is_empty() {
-        return super::SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
-    }
-    let mut best_move = None;
-    let mut best_score = -MATE_SCORE - 1;
-    let mut nodes: u64 = 0;
-    let base_mat = material_score(board);
-    let sign = if board.side_to_move == BLACK { 1 } else { -1 };
-    let values = piece_vals();
-    for m in &moves {
-        nodes += 1;
-        let mut delta = 0i32;
-        if m.promotion {
-            let pt = cell_piece(board.cells[m.from_sq as usize]);
-            if let Some(p) = pieces::promotes_to(pt) {
-                delta += sign * (values[p as usize] - values[pt as usize]);
-            }
-        }
-        if m.captured_piece != 0 { delta += sign * values[m.captured_piece as usize]; }
-        if m.mid_piece != 0 { delta += sign * values[m.mid_piece as usize]; }
-        if m.range_cap { delta += sign * m.caps_value; }
-        let s = -(base_mat + delta);
-        if s > best_score { best_score = s; best_move = Some(m.clone()); }
-    }
-    // No legal move at all: the side to move loses (SPEC §7.3).
-    if best_move.is_none() {
-        let score = -(MATE_SCORE - depth as i32);
-        return super::SearchResult { best_move: None, score, nodes, time_ms: start.elapsed().as_millis() as u64 };
-    }
-    super::SearchResult { best_move, score: best_score, nodes, time_ms: start.elapsed().as_millis() as u64 }
-}

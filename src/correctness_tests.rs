@@ -716,21 +716,21 @@ fn perft_two_via_manual_expansion() {
 
 #[test]
 fn repeated_search_is_deterministic() {
-    // Engine-global state is shared: run alone (see crate::test_lock).
+    // The evaluation backend (hand-crafted vs NNUE) is still process-wide, and
+    // the match-runner tests flip it: hold them off so both searches below use
+    // the same one. Everything else is per-searcher state.
     let _serial = crate::test_lock::lock();
-    // The transposition table and the killer/history tables are global and are
-    // *meant* to carry information from one search to the next, so two
-    // consecutive searches on the same position may legitimately differ (that
-    // is also what makes Lazy SMP workers cooperate). Determinism is therefore
-    // asserted for two searches started from the same state: reset the shared
-    // tables before each one.
-    crate::search::reset_shared_tables();
+    // One searcher, cleared between the two runs: same position, same state,
+    // same result. (Without the reset the second run would legitimately
+    // inherit the first run's transposition table and history — the behaviour
+    // that makes the engine fast across moves in a real game.)
+    let mut searcher = crate::search::Searcher::new();
     let mut b1 = Board::initial();
-    let r1 = b1.search(2, 0);
+    let r1 = b1.search_with(&mut searcher, 2, 0);
 
-    crate::search::reset_shared_tables();
+    searcher.clear();
     let mut b2 = Board::initial();
-    let r2 = b2.search(2, 0);
+    let r2 = b2.search_with(&mut searcher, 2, 0);
 
     assert_eq!(r1.score, r2.score);
     match (&r1.best_move, &r2.best_move) {
