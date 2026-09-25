@@ -10,39 +10,55 @@ const HOOK_TURN_SE: [usize; 2] = [NE, SW];
 const HOOK_TURN_SW: [usize; 2] = [SE, NW];
 const HOOK_TURN_NW: [usize; 2] = [NE, SW];
 
-use std::cell::RefCell;
-use std::collections::HashSet;
-
-thread_local! {
-    static DEDUP: RefCell<HashSet<u64>> = RefCell::new(HashSet::with_capacity(4096));
-}
-
+/// Compact key for effect-dedup: two moves from the same piece are duplicates
+/// when they move to the same square with the same promotion flag, capture
+/// the same piece, and capture the same mid piece on the same square. Sorting
+/// the per-piece range by this key makes duplicates adjacent, so one linear
+/// pass removes them with no hash table and no thread-local state.
 #[inline]
-fn effect_key(from: u16, to: u16, promo: bool, captured: u16,
-              mid: u16, mid_occupied: bool) -> u64 {
-    (from as u64)
-        | ((to as u64) << 11)
-        | ((promo as u64) << 22)
-        | ((captured as u64) << 23)
-        | ((mid_occupied as u64) << 32)
-        | (((mid as u64) & 0xFFF) << 33)
+fn effect_key(m: &Move) -> u64 {
+    (m.from_sq as u64)
+        | ((m.to_sq as u64) << 11)
+        | ((m.promotion as u64) << 22)
+        | ((m.captured_piece as u64) << 23)
+        | (((m.mid_piece != 0) as u64) << 32)
+        | (((m.mid_sq as u64) & 0xFFF) << 33)
 }
 
-/// Clear the per-piece dedup set. Call once per moving piece before its
-/// generators run.
-pub fn dedup_begin() {
-    DEDUP.with(|d| d.borrow_mut().clear());
-}
-
-#[inline]
-pub fn push_unique(moves: &mut Vec<Move>, m: Move) {
-    let key = effect_key(m.from_sq, m.to_sq, m.promotion, m.captured_piece,
-                         m.mid_sq, m.mid_piece != 0);
-    DEDUP.with(|d| {
-        if d.borrow_mut().insert(key) {
-            moves.push(m);
+/// Remove duplicate-effect moves appended in `moves[start..]`.
+///
+/// Every generator emits one piece's moves contiguously into the shared
+/// buffer, so dedup only ever needs the range that piece just wrote. Sorting
+/// that range by [`effect_key`] and compacting in place keeps the buffer (and
+/// its allocation) owned by the caller — the search's pooled buffers flow
+/// straight through, and no global or thread-local set is involved.
+pub fn dedup_piece_range(moves: &mut Vec<Move>, start: usize) {
+    let len = moves.len() - start;
+    if len < 2 {
+        return;
+    }
+    moves[start..].sort_unstable_by_key(effect_key);
+    let mut write = start + 1;
+    let mut prev = effect_key(&moves[start]);
+    for read in start + 1..moves.len() {
+        let key = effect_key(&moves[read]);
+        if key != prev {
+            prev = key;
+            if write != read {
+                moves[write] = moves[read].clone();
+            }
+            write += 1;
         }
-    });
+    }
+    moves.truncate(write);
+}
+
+/// Push `m` without any dedup bookkeeping. Public so the fast bitboard path
+/// in attack.rs builds promotion variants with identical rules in both
+/// generators; the per-piece `dedup_piece_range` pass removes duplicates after.
+#[inline]
+pub fn push_move_raw(moves: &mut Vec<Move>, m: Move) {
+    moves.push(m);
 }
 
 // ── PRECOMPUTED JUMP DESTINATIONS ──────────────────────────────
@@ -116,12 +132,13 @@ pub fn generate_pseudo_legal_moves_into(moves: &mut Vec<Move>, board: &Board) {
         let cell = board.cells[sq];
         if cell == EMPTY_CELL { continue; }
         let pt = cell_piece(cell);
-        dedup_begin();
+        let start = moves.len();
         let tmpl = &t[(pt as usize).min(511)][color as usize];
 
         // Fast path: pure jumps/steps/slides/area/igui.
         if tmpl.valid {
             crate::attack::fast_piece(board, sq, pt, color, tmpl, rt, moves);
+            dedup_piece_range(moves, start);
             continue;
         }
 
@@ -143,6 +160,7 @@ pub fn generate_pseudo_legal_moves_into(moves: &mut Vec<Move>, board: &Board) {
         if mv.igui {
             gen_igui(board, sq, pt, color, moves);
         }
+        dedup_piece_range(moves, start);
     }
 }
 
@@ -173,7 +191,7 @@ pub fn generate_pseudo_legal_captures_into(moves: &mut Vec<Move>, board: &Board)
         let cell = board.cells[sq];
         if cell == EMPTY_CELL { continue; }
         let pt = cell_piece(cell);
-        dedup_begin();
+        let start = moves.len();
         let mv = pieces::movement(pt);
 
         gen_slides_captures(board, sq, pt, color, mv, rt, moves);
@@ -191,6 +209,7 @@ pub fn generate_pseudo_legal_captures_into(moves: &mut Vec<Move>, board: &Board)
         if mv.igui {
             gen_igui(board, sq, pt, color, moves);
         }
+        dedup_piece_range(moves, start);
     }
 }
 
@@ -347,7 +366,7 @@ pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, t
     let cap_color = if target != EMPTY_CELL { cell_color(target) } else { 0 };
 
     if !can_promote(pt) {
-        push_unique(moves, Move {
+        push_move_raw(moves, Move {
             from_sq: from, to_sq: to, promotion: false,
             captured_piece: captured, captured_color: cap_color,
             is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
@@ -369,27 +388,27 @@ pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, t
         && pieces::must_promote_at_far_rank(pt);
 
     if must_promote {
-        push_unique(moves, Move {
+        push_move_raw(moves, Move {
             from_sq: from, to_sq: to, promotion: true,
             captured_piece: captured, captured_color: cap_color,
             is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
             range_cap: false, caps_value: 0,
         });
     } else if may_promote {
-        push_unique(moves, Move {
+        push_move_raw(moves, Move {
             from_sq: from, to_sq: to, promotion: false,
             captured_piece: captured, captured_color: cap_color,
             is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
             range_cap: false, caps_value: 0,
         });
-        push_unique(moves, Move {
+        push_move_raw(moves, Move {
             from_sq: from, to_sq: to, promotion: true,
             captured_piece: captured, captured_color: cap_color,
             is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
             range_cap: false, caps_value: 0,
         });
     } else {
-        push_unique(moves, Move {
+        push_move_raw(moves, Move {
             from_sq: from, to_sq: to, promotion: false,
             captured_piece: captured, captured_color: cap_color,
             is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
@@ -526,7 +545,7 @@ fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
                         m.captured_piece = cell_piece(t2);
                         m.captured_color = cell_color(t2);
                     }
-                    push_unique(moves, m);
+                    push_move_raw(moves, m);
                 } else {
                     add_move(moves, sq as u16, sq2 as u16, pt, color, t2);
                 }
@@ -637,9 +656,9 @@ pub fn add_igui_move(moves: &mut Vec<Move>, sq: usize, victim_sq: usize, pt: u16
         range_cap: false, caps_value: 0,
     };
     if may_promo {
-        push_unique(moves, base(false));
-        push_unique(moves, base(true));
+        push_move_raw(moves, base(false));
+        push_move_raw(moves, base(true));
     } else {
-        push_unique(moves, base(false));
+        push_move_raw(moves, base(false));
     }
 }

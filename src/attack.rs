@@ -153,7 +153,7 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
         let cell = board.cells[sq];
         if cell == EMPTY_CELL { continue; }
         let pt = cell_piece(cell);
-        crate::movegen::dedup_begin();
+        let start = moves.len();
         let tmpl = &t[(pt as usize).min(511)][color as usize];
 
         if !tmpl.valid {
@@ -169,6 +169,7 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
             if mv.area >= 2 {
                 gen_lion_captures(board, sq, pt, color, mv, moves);
             }
+            crate::movegen::dedup_piece_range(moves, start);
             continue;
         }
 
@@ -205,6 +206,7 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
                 }
             }
         }
+        crate::movegen::dedup_piece_range(moves, start);
     }
 }
 
@@ -277,7 +279,7 @@ fn gen_range_capture_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: 
                 m.captured_color = cell_color(target);
                 m.range_cap = true;
                 m.caps_value = caps_value;
-                crate::movegen::push_unique(moves, m);
+                crate::movegen::push_move_raw(moves, m);
                 caps_value += pieces::value(t_pt) as i32;
             } else { break; }
         }
@@ -327,7 +329,7 @@ fn gen_lion_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
                         m.captured_piece = cell_piece(t2);
                         m.captured_color = cell_color(t2);
                     }
-                    crate::movegen::push_unique(moves, m);
+                    crate::movegen::push_move_raw(moves, m);
                 } else if t2 != EMPTY_CELL && cell_color(t2) != color {
                     // Direct capture at second step (path empty).
                     push_move(moves, sq as u16, sq2 as u16, pt, color, t2);

@@ -1,0 +1,52 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run debug-cli",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin", "debug-cli"],
+        "filter": {
+          "kind": "bin",
+          "name": "debug-cli"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopOnEntry": false
+    },
+    {
+      "name": "Run taikyokushogi-server",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin", "taikyokushogi-server"],
+        "filter": {
+          "kind": "bin",
+          "name": "taikyokushogi-server"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopOnEntry": false
+    },
+    {
+      "name": "Run cargo test",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["test"],
+        "filter": {
+          "kind": "test",
+          "name": "taikyokushogi"
+        }
+      },
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopOnEntry": false
+    }
+  ]
+}
