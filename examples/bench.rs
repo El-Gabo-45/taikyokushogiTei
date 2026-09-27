@@ -34,7 +34,7 @@ fn main() {
     let mut board = Board::initial();
     let t = Instant::now();
     let mut total_nodes = 0u64;
-    for i in 0..10 {
+    for _i in 0..10 {
         let result = board.search(1, 0);
         if let Some(mv) = result.best_move {
             board.apply(&mv);

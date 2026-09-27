@@ -29,7 +29,7 @@ fn main() {
     let mut scr = std::time::Duration::ZERO;
     let mut n_ok = 0;
     for _ in 0..10 {
-        if let Ok(mut b) = Board::from_tsfen(&tsfen) {
+        if let Ok(b) = Board::from_tsfen(&tsfen) {
             let t0 = std::time::Instant::now();
             let _ = b.evaluate();
             scr += t0.elapsed();

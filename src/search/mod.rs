@@ -30,11 +30,13 @@ mod params;
 mod pvs;
 mod qsearch;
 mod root;
+mod smp;
 mod tt;
 
 use self::buffers::SearchPool;
 use self::heuristics::Heuristics;
 use self::root::RootState;
+use self::smp::SharedBest;
 use self::tt::Tt;
 use crate::board::Board;
 use crate::eval::{evaluate, MATE_SCORE};
@@ -71,6 +73,10 @@ pub struct Searcher {
     pool: SearchPool,
     root: RootState,
     stop: AtomicBool,
+    /// Lazy SMP workers start the root move list at a different position so
+    /// they do not all walk the same tree in lockstep. The master keeps 0
+    /// (pure best-first ordering); worker `i` uses `i`.
+    order_offset: usize,
 }
 
 impl Searcher {
@@ -81,6 +87,7 @@ impl Searcher {
             pool: SearchPool::new(),
             root: RootState::new(),
             stop: AtomicBool::new(false),
+            order_offset: 0,
         }
     }
 
@@ -97,6 +104,7 @@ impl Searcher {
             pool: SearchPool::new(),
             root: RootState::new(),
             stop: AtomicBool::new(false),
+            order_offset: 0,
         }
     }
 
@@ -122,30 +130,48 @@ impl Searcher {
     }
 
     /// Full search: iterative deepening with aspiration windows and predictive
-    /// time management.
+    /// time management. Single-threaded; see [`Searcher::search_threads`] for
+    /// the Lazy SMP variant.
     pub fn search(&mut self, board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult {
-        let start = Instant::now();
-    // env::var takes a global lock — cache it once per search, not per iteration.
-    let debug_log = std::env::var_os("RPS_DEBUG").is_some();
-    let deadline = if time_limit_ms > 0 {
-        Some(start + std::time::Duration::from_millis(time_limit_ms))
-    } else { None };
-
-    self.tt.new_generation();
-    ordering::piece_vals();
-    let mut best_result = SearchResult { best_move: None, score: evaluate(board), nodes: 0, time_ms: 0 };
-    // `nodes` is cumulative for the whole search; the scratch pool, the cached
-    // root move list and the stop flag live on `self`, so they survive between
-    // iterations — and between searches when the caller keeps the searcher.
-    let mut nodes: u64 = 0;
-    self.stop.store(false, Ordering::Relaxed);
-    let mut root_hint: Option<u32> = None;
-    let mut score_guess = best_result.score;
-    let mut prev_iter_ms: u64 = 0;
-
-    if depth == 0 {
-        return SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
+        let deadline = deadline_from(time_limit_ms);
+        // A searcher used on its own owns its stop flag; the workers of a Lazy
+        // SMP group share the master's instead (see `search_threads`).
+        let stop = AtomicBool::new(false);
+        self.search_impl(board, depth, time_limit_ms, deadline, &stop, None).0
     }
+
+    /// The iterative-deepening loop behind [`Searcher::search`] and
+    /// [`Searcher::search_threads`].
+    ///
+    /// `stop` is supplied by the caller so Lazy SMP workers can share one flag,
+    /// and `publish` receives every completed iteration so the SMP master can
+    /// adopt a worker's deeper result. Returns the result plus the depth of the
+    /// last completed iteration (0 when none finished).
+    fn search_impl(&mut self, board: &mut Board, depth: u32, time_limit_ms: u64,
+                   deadline: Option<Instant>, stop: &AtomicBool,
+                   publish: Option<&SharedBest>) -> (SearchResult, u32) {
+        let start = Instant::now();
+        // env::var takes a global lock — cache it once per search, not per iteration.
+        let debug_log = std::env::var_os("RPS_DEBUG").is_some();
+
+        self.tt.new_generation();
+        ordering::piece_vals();
+        let mut best_result =
+            SearchResult { best_move: None, score: evaluate(board), nodes: 0, time_ms: 0 };
+        // `nodes` is cumulative for the whole search; the scratch pool, the
+        // cached root move list and the worker's own heuristics tables live on
+        // `self`, so they survive between iterations — and between searches
+        // when the caller keeps the searcher.
+        let mut nodes: u64 = 0;
+        let mut root_hint: Option<u32> = None;
+        let mut score_guess = best_result.score;
+        let mut prev_iter_ms: u64 = 0;
+        let mut last_depth: u32 = 0;
+
+        if depth == 0 {
+            let r = SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
+            return (r, 0);
+        }
 
     for current_depth in 1..=depth {
         if let Some(dl) = deadline {
@@ -171,11 +197,12 @@ impl Searcher {
         let mut rc = root::RootCtx {
             nodes: &mut nodes,
             deadline,
-            stop: &self.stop,
+            stop,
             pool: &mut self.pool,
             root: &mut self.root,
             tt: &self.tt,
             heur: &mut self.heur,
+            order_offset: self.order_offset,
         };
         let result = if current_depth <= 1 {
             root::search_root_window(board, current_depth, &mut rc, root_hint, -MATE_SCORE - 1, MATE_SCORE + 1)
@@ -240,21 +267,44 @@ impl Searcher {
         score_guess = result.score;
         prev_iter_ms = result.time_ms;
         best_result = result;
+        last_depth = current_depth;
+        // Tell the Lazy SMP master that this iteration is done, so it can adopt
+        // our result if it is deeper than what the master has reached itself.
+        if let Some(shared) = publish {
+            if let Some(m) = best_result.best_move.as_ref() {
+                shared.publish(current_depth, best_result.score, ordering::m_pack(m));
+            }
+        }
     }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        SearchResult {
+        if let Some(shared) = publish {
+            shared.add_nodes(nodes);
+        }
+        let result = SearchResult {
             best_move: best_result.best_move,
             score: best_result.score,
             nodes: nodes.max(best_result.nodes),
             time_ms: elapsed,
-        }
+        };
+        (result, last_depth)
     }
 }
 
 impl Default for Searcher {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// A `time_limit_ms` budget turned into an absolute deadline (`None` = no
+/// limit). Lazy SMP workers share the master's deadline so they all stop on
+/// the same wall-clock moment.
+fn deadline_from(time_limit_ms: u64) -> Option<Instant> {
+    if time_limit_ms > 0 {
+        Some(Instant::now() + std::time::Duration::from_millis(time_limit_ms))
+    } else {
+        None
     }
 }
 

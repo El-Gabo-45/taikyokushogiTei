@@ -1,6 +1,6 @@
 use taikyokushogi::Board;
 
-fn perft(mut board: &mut Board, depth: u32) -> u64 {
+fn perft(board: &mut Board, depth: u32) -> u64 {
     if depth == 0 { return 1; }
     let moves = board.legal_moves();
     if depth == 1 { return moves.len() as u64; }
