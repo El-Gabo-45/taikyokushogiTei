@@ -61,7 +61,7 @@ impl RootState {
     /// Rebuild the list if the root position changed; otherwise keep the list
     /// and the ordering produced by the previous iteration.
     fn prepare(&mut self, board: &Board, tt_move: u32, depth: u32, root_hint: Option<u32>,
-               heur: &Heuristics) {
+               heur: &Heuristics, order_offset: usize) {
         if self.hash != board.hash || self.moves.is_empty() {
             self.hash = board.hash;
             generate_pseudo_legal_moves_into(&mut self.moves, board);
@@ -79,6 +79,13 @@ impl RootState {
         self.order.clear();
         self.order.extend(0..self.moves.len() as u32);
         self.sort_best_first();
+        // Lazy SMP diversity: worker `i` starts from a different point in the
+        // (still best-first sorted) list. The master keeps offset 0, so its own
+        // ordering — and therefore its result quality — is unaffected.
+        if order_offset > 0 && !self.order.is_empty() {
+            let by = order_offset % self.order.len();
+            self.order.rotate_left(by);
+        }
     }
 
     /// Stable descending sort by cached score: the best move of the last
@@ -101,6 +108,8 @@ pub(crate) struct RootCtx<'a> {
     pub tt: &'a Tt,
     /// Heuristic tables of the owning searcher (one set per worker).
     pub heur: &'a mut Heuristics,
+    /// Root move list rotation: 0 for the master, `i` for Lazy SMP worker `i`.
+    pub order_offset: usize,
 }
 
 /// Aspiration-window search of the root at one depth.
@@ -121,6 +130,7 @@ pub(crate) fn search_root_window(
     let root = &mut *rc.root;
     let tt = rc.tt;
     let heur = &mut *rc.heur;
+    let order_offset = rc.order_offset;
 
     if depth == 0 {
         return super::SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
@@ -147,7 +157,7 @@ pub(crate) fn search_root_window(
     // Rebuilt only when the root position changed; otherwise the moves keep
     // the order the previous iteration discovered, which is the best possible
     // move ordering for the root (the returned best move is tried first).
-    root.prepare(board, root_tt_move, depth, root_hint, heur);
+    root.prepare(board, root_tt_move, depth, root_hint, heur, order_offset);
     if root.moves.is_empty() {
         // No legal move at all: the side to move loses (SPEC §7.3).
         let score = -(MATE_SCORE - depth as i32);

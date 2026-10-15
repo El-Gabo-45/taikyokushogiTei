@@ -42,7 +42,7 @@ use crate::board::Board;
 use crate::eval::{evaluate, MATE_SCORE};
 use crate::types::Move;
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -72,7 +72,6 @@ pub struct Searcher {
     heur: Heuristics,
     pool: SearchPool,
     root: RootState,
-    stop: AtomicBool,
     /// Lazy SMP workers start the root move list at a different position so
     /// they do not all walk the same tree in lockstep. The master keeps 0
     /// (pure best-first ordering); worker `i` uses `i`.
@@ -86,7 +85,6 @@ impl Searcher {
             heur: Heuristics::new(),
             pool: SearchPool::new(),
             root: RootState::new(),
-            stop: AtomicBool::new(false),
             order_offset: 0,
         }
     }
@@ -103,7 +101,6 @@ impl Searcher {
             heur: Heuristics::new(),
             pool: SearchPool::new(),
             root: RootState::new(),
-            stop: AtomicBool::new(false),
             order_offset: 0,
         }
     }
@@ -335,6 +332,25 @@ pub fn set_hash_mb(mb: usize) -> usize {
 pub fn hash_mb() -> usize {
     DEFAULT_SEARCHER.with(|s| s.borrow().hash_mb())
 }
+
+/// Search `board` with the calling thread's default [`Searcher`] using Lazy
+/// SMP: `threads` workers (1 = plain [`search`], clamped to 1..=[`MAX_THREADS`])
+/// share the default searcher's transposition table.
+///
+/// Like [`search`], the tables persist across calls on this thread. Results
+/// with `threads > 1` are not bit-reproducible (see
+/// [`Searcher::search_threads`]).
+pub fn search_threads(board: &mut Board, depth: u32, time_limit_ms: u64,
+                      threads: usize) -> SearchResult {
+    DEFAULT_SEARCHER.with(|s| s.borrow_mut().search_threads(board, depth, time_limit_ms, threads))
+}
+
+// ── Lazy SMP tuning surface (the numbers callers may rely on) ────
+/// Default worker count: 1 keeps the plain single-threaded search (and stays
+/// deterministic).
+pub use self::params::DEFAULT_THREADS;
+/// Hard cap on Lazy SMP worker threads; `search_threads` clamps to it.
+pub use self::params::MAX_THREADS;
 
 #[cfg(test)]
 mod tests {

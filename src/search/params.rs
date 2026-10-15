@@ -143,6 +143,13 @@ pub const TT_MIN_MB: usize = 1;
 pub const TT_MAX_MB: usize = 4 * 1024;
 pub const TT_BUCKET_WIDTH: usize = 4;
 
+// ── Lazy SMP ────────────────────────────────────────────────────
+/// Worker count when the caller asks for nothing specific: 1 keeps the plain
+/// single-threaded search (and stays deterministic).
+pub const DEFAULT_THREADS: usize = 1;
+/// Hard cap on worker threads, so a typo cannot spawn thousands of OS threads.
+pub const MAX_THREADS: usize = 64;
+
 // ── History heuristics ──────────────────────────────────────────
 pub const HIST_BONUS_CAP: i32 = 400;   // (depth*depth).min(400)
 pub const HIST_MAX: i32 = 32_767;

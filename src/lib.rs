@@ -515,6 +515,20 @@ impl Board {
         }
     }
 
+    /// [`Board::search`] with Lazy SMP: `threads` workers (1 = plain search)
+    /// share the default searcher's transposition table. See
+    /// [`search::search_threads`].
+    pub fn search_threads(&mut self, depth: u32, time_limit_ms: u64,
+                          threads: usize) -> SearchResult {
+        let r = search::search_threads(&mut self.inner, depth, time_limit_ms, threads);
+        SearchResult {
+            best_move: r.best_move.map(|m| Move { inner: m }),
+            score: r.score,
+            nodes: r.nodes,
+            time_ms: r.time_ms,
+        }
+    }
+
     /// Like [`Board::search`], but with a searcher you own.
     ///
     /// Keep one [`Searcher`] around to carry the transposition table and the
@@ -523,7 +537,18 @@ impl Board {
     /// ([`Searcher::share_tt`]). Call [`Searcher::clear`] for a new game.
     pub fn search_with(&mut self, searcher: &mut search::Searcher, depth: u32,
                        time_limit_ms: u64) -> SearchResult {
-        let r = searcher.search(&mut self.inner, depth, time_limit_ms);
+        self.search_with_threads(searcher, depth, time_limit_ms, 1)
+    }
+
+    /// [`Board::search_with`] with Lazy SMP: `threads` workers (1 = plain
+    /// single-threaded search) share `searcher`'s transposition table.
+    ///
+    /// With more than one thread the result is no longer bit-reproducible —
+    /// workers fill the table in a timing-dependent order — so use
+    /// `threads = 1` for tests and for A/B comparisons.
+    pub fn search_with_threads(&mut self, searcher: &mut search::Searcher, depth: u32,
+                               time_limit_ms: u64, threads: usize) -> SearchResult {
+        let r = searcher.search_threads(&mut self.inner, depth, time_limit_ms, threads);
         SearchResult {
             best_move: r.best_move.map(|m| Move { inner: m }),
             score: r.score,

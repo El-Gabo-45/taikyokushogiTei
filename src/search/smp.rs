@@ -23,10 +23,8 @@
 //! redundancy; a rotation means worker *i* dives into a different (still
 //! playable) move first, which is where the TT-filling diversity comes from.
 
-use super::root;
 use super::{deadline_from, Searcher};
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
-use std::time::Instant;
 
 /// Best completed iteration published by any worker of a search group.
 ///
@@ -166,6 +164,13 @@ fn adopt_deeper_worker_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search::SearchResult;
+
+    fn start_board() -> crate::board::Board {
+        let mut b = crate::board::Board::new();
+        b.setup_initial();
+        b
+    }
 
     #[test]
     fn publish_only_accepts_deeper_results() {
@@ -188,5 +193,70 @@ mod tests {
         b.add_nodes(10);
         b.add_nodes(32);
         assert_eq!(b.total_nodes(), 42);
+    }
+
+    #[test]
+    fn worker_result_is_adopted_only_when_deeper() {
+        let board = start_board();
+        let legal = crate::movegen::generate_pseudo_legal_moves(&board);
+        let target = &legal[3];
+        let master = SearchResult {
+            best_move: Some(legal[0].clone()), score: 10, nodes: 100, time_ms: 5,
+        };
+
+        // A worker that searched deeper wins, and its packed key resolves back
+        // to a real move of this position.
+        let shared = SharedBest::new();
+        shared.publish(5, 4242, crate::search::ordering::m_pack(target));
+        let out = adopt_deeper_worker_result(&board, master.clone(), 3, &shared);
+        assert_eq!(out.score, 4242);
+        let m = out.best_move.expect("adopted move must exist");
+        assert_eq!((m.from_sq, m.to_sq, m.promotion),
+                   (target.from_sq, target.to_sq, target.promotion));
+
+        // The same depth as the master does not count as "deeper".
+        let shared = SharedBest::new();
+        shared.publish(3, 999, crate::search::ordering::m_pack(target));
+        let out = adopt_deeper_worker_result(&board, master.clone(), 3, &shared);
+        assert_eq!(out.score, 10, "the master's own result must stand");
+    }
+
+    #[test]
+    fn one_thread_is_the_plain_single_threaded_search() {
+        let mut s = Searcher::new();
+        let mut b1 = crate::Board::initial();
+        let r1 = b1.search_with_threads(&mut s, 2, 0, 1);
+        // Same searcher, cleared: the contract is that threads == 1 takes the
+        // exact single-threaded path, bit for bit.
+        s.clear();
+        let mut b2 = crate::Board::initial();
+        let r2 = b2.search_with(&mut s, 2, 0);
+        assert_eq!(r1.score, r2.score);
+        assert_eq!(r1.nodes, r2.nodes);
+        assert_eq!(r1.best_move.as_ref().map(|m| m.to_string()),
+                   r2.best_move.as_ref().map(|m| m.to_string()));
+    }
+
+    #[test]
+    fn multi_worker_search_returns_a_legal_move_and_reports_its_work() {
+        // No time budget on purpose: a deadline smaller than the cold first
+        // iteration would exercise the root's "budget expired" fallback
+        // (a legal move with nodes = 0), not the SMP machinery. Depth 2 runs
+        // the full iterative deepening with three workers to completion.
+        let mut s = Searcher::new();
+        let mut b = crate::Board::initial();
+        let started = std::time::Instant::now();
+        let r = b.search_with_threads(&mut s, 2, 0, 3);
+        assert!(started.elapsed() < std::time::Duration::from_secs(60),
+                "SMP search overran: {:?}", started.elapsed());
+        let m = r.best_move.expect("SMP search must return a move");
+        assert!(r.nodes > 0, "master and workers must report their nodes");
+        assert!(r.time_ms > 0, "the reported time must reflect real work");
+        let legal = b.legal_moves();
+        assert!(legal.iter().any(|l| l.raw().from_sq == m.raw().from_sq
+            && l.raw().to_sq == m.raw().to_sq && l.raw().promotion == m.raw().promotion),
+            "SMP best move must be legal");
+        // The board must be untouched.
+        assert_eq!(b.piece_count(crate::Color::Black), 402);
     }
 }

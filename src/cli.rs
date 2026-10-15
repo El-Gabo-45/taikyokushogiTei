@@ -21,16 +21,17 @@
 //!   legal [<square>]           list legal moves (optionally from one square)
 //!   move <mv>                  apply a move, e.g. `f19f20` or `f19f20+`
 //!   undo                       take back the last move
-//!   go [depth N | movetime MS] search and print the best move (no auto-apply)
+//!   go [depth N | movetime MS | threads N]
+//!                        search and print the best move (no auto-apply)
 //!   play <black|white|both>    engine plays the given side after your moves
 //!   stop                       engine stops auto-playing
 //!   eval                       static evaluation (side-to-move perspective)
 //!   perft <N>                  node count from the current position
 //!   bench                      micro-benchmark: movegen / eval / apply+undo
-//!   perft <N>                  node count from the current position
-//!   bench                      micro-benchmark: movegen / eval / apply+undo
 //!   setoption depth <N>        engine search depth (default 3)
 //!   setoption movetime <MS>    engine time budget per move (0 = no limit)
+//!   setoption threads <N>      Lazy SMP workers (1..=64, default 1)
+//!   setoption hash <MiB>       transposition table size in MiB
 //!   setoption nnue <on|off>    switch evaluation backend
 //!   fen                        print the current TSFEN
 //!   history                    list the moves played in this session
@@ -42,6 +43,15 @@
 //!   sprt <elo0> <elo1> ...     SPRT test between two configs
 //!   about                      engine version / build info
 //!   quit
+//!
+//! ## Command-line flags (non-interactive)
+//! ```
+//! taikyokushogi-cli [--depth N] [--movetime MS] [--threads N] [--hash MiB]
+//!                   [--position <tsfen>|startpos] [--go | --perft N] [COMMANDS...]
+//! ```
+//! Remaining arguments are interactive commands (`&&`-chained), e.g.
+//! `taikyokushogi-cli --threads 4 "position <tsfen>" && go depth 6`.
+//! Run `taikyokushogi-cli --help` for the full usage.
 //!
 //! Run: `taikyokushogi-cli` (REPL), or `taikyokushogi-cli perft 2` etc.
 
@@ -58,11 +68,20 @@ struct Options {
     movetime: u64,
     nnue: bool,
     engine_side: EngineSide,
+    /// Lazy SMP workers used by `go` / the engine's own turns (1 = plain
+    /// single-threaded search).
+    threads: usize,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { depth: 3, movetime: 0, nnue: false, engine_side: EngineSide::None }
+        Options {
+            depth: 3,
+            movetime: 0,
+            nnue: false,
+            engine_side: EngineSide::None,
+            threads: taikyokushogi::search::DEFAULT_THREADS,
+        }
     }
 }
 
@@ -200,7 +219,7 @@ fn perft(board: &Board, depth: u32) -> u64 {
 }
 
 fn cmd_go(board: &mut Board, opt: &Options) {
-    let r = board.search(opt.depth, opt.movetime);
+    let r = board.search_threads(opt.depth, opt.movetime, opt.threads);
     match &r.best_move {
         Some(m) => println!(
             "bestmove {} score {} nodes {} time {}ms",
@@ -220,7 +239,7 @@ fn engine_turn(board: &mut Board, opt: &Options) -> Option<String> {
     };
     if !engine_moves { return None; }
     taikyokushogi::set_use_nnue(opt.nnue);
-    let r = board.search(opt.depth, opt.movetime);
+    let r = board.search_threads(opt.depth, opt.movetime, opt.threads);
     match r.best_move {
         Some(m) => {
             let name = move_name(&m);
@@ -291,8 +310,10 @@ fn status(board: &Board, opt: &Options) {
     println!("legal moves:  {}", board.legal_moves().len());
     println!("eval:         {}", board.evaluate());
     println!("result:       {}", board.game_result().map_or("ongoing".to_string(), |r| r.to_string()));
-    println!("engine:       depth {} movetime {}ms nnue {} plays {:?}",
-             opt.depth, opt.movetime, if opt.nnue { "on" } else { "off" }, opt.engine_side);
+    println!("engine:       depth {} movetime {}ms threads {} nnue {} hash {}MiB plays {:?}",
+             opt.depth, opt.movetime, opt.threads,
+             if opt.nnue { "on" } else { "off" },
+             taikyokushogi::search::hash_mb(), opt.engine_side);
     println!("tsfen:        {}", board.to_tsfen());
 }
 
@@ -462,20 +483,24 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             println!("taikyokushogi v{} — Taikyoku Shogi engine", env!("CARGO_PKG_VERSION"));
             println!("  board: 36x36 (1296 squares), 804 pieces, {} piece types", taikyokushogi::num_piece_types());
             println!("  evaluator: {} (setoption nnue on|off)", if taikyokushogi::using_nnue() { "NNUE" } else { "hand-crafted" });
+            println!("  search: threads {}..={} (setoption threads <N>), hash {}MiB (setoption hash <MiB>)",
+                     taikyokushogi::search::DEFAULT_THREADS, taikyokushogi::search::MAX_THREADS,
+                     taikyokushogi::search::hash_mb());
         }
         "go" => {
-            // inline overrides: `go depth 5` / `go movetime 1000`
-            let mut d = opt.depth; let mut t = opt.movetime;
+            // inline overrides: `go depth 5` / `go movetime 1000` / `go threads 4`
+            let mut d = opt.depth; let mut t = opt.movetime; let mut th = opt.threads;
             let mut args = rest.iter();
             while let Some(k) = args.next() {
                 match *k {
                     "depth" => d = args.next().and_then(|v| v.parse().ok()).unwrap_or(d),
                     "movetime" => t = args.next().and_then(|v| v.parse().ok()).unwrap_or(t),
+                    "threads" => th = args.next().and_then(|v| v.parse().ok()).unwrap_or(th),
                     other => println!("warning: ignored `{}`", other),
                 }
             }
             taikyokushogi::set_use_nnue(opt.nnue);
-            cmd_go(board, &Options { depth: d, movetime: t, ..*opt });
+            cmd_go(board, &Options { depth: d, movetime: t, threads: th, ..*opt });
         }
         "play" => {
             opt.engine_side = match rest.first().map(|s| s.to_ascii_lowercase()).as_deref() {
@@ -516,7 +541,10 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                      mg, ev, au, ITERS);
         }
         "setoption" => {
-            if rest.len() < 2 { println!("error: `setoption depth <N>` | `setoption movetime <MS>` | `setoption nnue <on|off>`"); return true; }
+            if rest.len() < 2 {
+                println!("error: `setoption depth <N>` | `setoption movetime <MS>` | `setoption threads <N>` | `setoption hash <MiB>` | `setoption nnue <on|off>`");
+                return true;
+            }
             let key = rest[0].to_ascii_lowercase();
             let val = rest[1].to_ascii_lowercase();
             match key.as_str() {
@@ -527,6 +555,23 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 "movetime" => match val.parse() {
                     Ok(t) => { opt.movetime = t; println!("movetime = {}ms", t); }
                     Err(_) => println!("error: bad movetime"),
+                },
+                "threads" => match val.parse::<usize>() {
+                    Ok(n) if n >= 1 => {
+                        let capped = n.min(taikyokushogi::search::MAX_THREADS);
+                        if capped != n { println!("warning: threads capped at {}", capped); }
+                        opt.threads = capped;
+                        println!("threads = {}", opt.threads);
+                    }
+                    Ok(_) => println!("error: threads must be >= 1"),
+                    Err(_) => println!("error: bad threads"),
+                },
+                "hash" => match val.parse::<usize>() {
+                    Ok(mb) => {
+                        let actual = taikyokushogi::set_hash_mb(mb);
+                        println!("hash = {}MiB", actual);
+                    }
+                    Err(_) => println!("error: bad hash size"),
                 },
                 "nnue" => {
                     opt.nnue = matches!(val.as_str(), "on" | "true" | "1");
@@ -557,7 +602,8 @@ fn print_help() {
   undo                        deshacer la última jugada
   fen                         imprimir el TSFEN actual
   history                     lista de jugadas de la sesión
-  go [depth N | movetime MS]  buscar y mostrar la mejor jugada (no la aplica)
+  go [depth N | movetime MS | threads N]
+                              buscar y mostrar la mejor jugada (no la aplica)
   hint                        igual que `go`
   play <black|white|both>     el motor juega ese lado tras tus movimientos
   stop                        el motor deja de jugar
@@ -573,6 +619,8 @@ fn print_help() {
                               test SPRT entre 2 configs
   setoption depth <N>         profundidad del motor (por defecto 3)
   setoption movetime <MS>     presupuesto de tiempo por jugada (0 = sin límite)
+  setoption threads <N>       hilos Lazy SMP (1..=64, por defecto 1)
+  setoption hash <MiB>        tamaño de la tabla de transposiciones
   setoption nnue <on|off>     cambiar evaluador (NNUE requiere TAIKYOKU_NNUE_PATH)
   about                       versión e info del motor
   quit | exit                 salir
@@ -582,18 +630,69 @@ La notación coincide con el orden de filas del TSFEN. El sufijo '+' promociona.
 }
 
 fn main() {
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    let args = match parse_args(&argv) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("error: {}\n", e);
+            eprintln!("{}", usage());
+            std::process::exit(2);
+        }
+    };
+    if args.help { println!("{}", usage()); return; }
+
     let mut board = Board::initial();
     let mut opt = Options::default();
     let mut hist: Vec<String> = Vec::new();
 
-    // Non-interactive: argv joined as one command line (`&&` chains commands).
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    if !argv.is_empty() {
-        for line in argv.join(" ").split("&&") {
+    if let Some(mb) = args.hash_mb {
+        println!("hash = {}MiB", taikyokushogi::set_hash_mb(mb));
+    }
+    if let Some(d) = args.depth { opt.depth = d; }
+    if let Some(t) = args.movetime { opt.movetime = t; }
+    if let Some(n) = args.threads {
+        let capped = n.min(taikyokushogi::search::MAX_THREADS);
+        if capped != n { eprintln!("warning: threads capped at {}", capped); }
+        opt.threads = capped;
+    }
+    if let Some(pos) = &args.position {
+        if pos == "startpos" {
+            board = Board::initial();
+        } else {
+            match Board::from_tsfen(pos) {
+                Ok(b) => board = b,
+                Err(e) => {
+                    eprintln!("error: bad position: {}", e);
+                    std::process::exit(2);
+                }
+            }
+        }
+    }
+
+    // Traditional command line: remaining tokens joined as one command line
+    // (`&&` chains commands) — exactly the pre-flags behaviour.
+    let mut ran_command = false;
+    if !args.commands.is_empty() {
+        ran_command = true;
+        for line in args.commands.join(" ").split("&&") {
             if !execute(line, &mut board, &mut opt, &mut hist) { return; }
         }
+    }
+
+    if let Some(n) = args.perft {
+        let t = std::time::Instant::now();
+        let nodes = perft(&board, n);
+        let secs = t.elapsed().as_secs_f64().max(1e-9);
+        println!("perft({}) = {}  ({:.1}ms, {:.1} Mnps)", n, nodes,
+                 secs * 1000.0, nodes as f64 / secs / 1e6);
         return;
     }
+    if args.go {
+        taikyokushogi::set_use_nnue(opt.nnue);
+        cmd_go(&mut board, &opt);
+        return;
+    }
+    if ran_command { return; }
 
     println!("Taikyoku Shogi CLI — `help` para comandos.");
     let stdin = std::io::stdin();
@@ -605,10 +704,123 @@ fn main() {
     }
     let _ = std::io::stdout().flush();
 }
+// ── Command-line arguments (scripting / non-interactive use) ────
+/// Parsed argv. Kept out of `main` so the flag grammar is unit-testable.
+#[derive(Debug, Default, PartialEq)]
+struct CliArgs {
+    depth: Option<u32>,
+    movetime: Option<u64>,
+    threads: Option<usize>,
+    hash_mb: Option<usize>,
+    position: Option<String>,
+    go: bool,
+    perft: Option<u32>,
+    help: bool,
+    /// Remaining tokens: interactive commands, joined with spaces and
+    /// `&&`-chained exactly like the pre-flags argv handling.
+    commands: Vec<String>,
+}
+
+fn usage() -> &'static str {
+    "\
+taikyokushogi-cli — Taikyoku Shogi engine
+
+USAGE:
+    taikyokushogi-cli [OPTIONS] [COMMANDS...]
+
+OPTIONS:
+    -d, --depth <N>        default search depth in plies (default 3)
+    -t, --movetime <MS>    time budget per move in ms (0 = none)
+    -j, --threads <N>      Lazy SMP workers, 1..=64 (default 1)
+        --hash <MiB>       transposition table size in MiB
+    -p, --position <TSFEN> start from this position (`startpos` = initial board;
+                           quote a TSFEN so it arrives as one argument)
+        --go               run one search, print `bestmove ...`, exit
+        --perft <N>        print perft(N) for the position, exit
+    -h, --help             show this help
+
+COMMANDS:
+    Remaining arguments are interactive commands; `&&` chains them:
+        taikyokushogi-cli --threads 4 \"position <tsfen>\" && go depth 6
+    With no arguments the CLI reads commands from stdin (REPL)."
+}
+
 
 // ============================================================
 // Tests — parsing helpers and command plumbing
 // ============================================================
+
+/// Parse the raw argv (without the program name). Unknown `-`/`--` tokens are
+/// errors so typos do not silently fall through to the command interpreter;
+/// bare tokens keep the old behaviour of being run as commands.
+fn parse_args(args: &[String]) -> Result<CliArgs, String> {
+    let mut out = CliArgs::default();
+    let mut i = 0usize;
+    while i < args.len() {
+        let tok = args[i].clone();
+        // Consume the value token after a flag.
+        let take_value = |i: &mut usize, flag: &str| -> Result<String, String> {
+            *i += 1;
+            args.get(*i).cloned().ok_or_else(|| format!("`{}` needs a value", flag))
+        };
+        match tok.as_str() {
+            "--depth" | "-d" => {
+                let v = take_value(&mut i, &tok)?;
+                out.depth = Some(v.parse().map_err(|_| format!("bad depth `{}`", v))?);
+            }
+            "--movetime" | "--time" | "-t" => {
+                let v = take_value(&mut i, &tok)?;
+                out.movetime = Some(v.parse().map_err(|_| format!("bad movetime `{}`", v))?);
+            }
+            "--threads" | "-j" => {
+                let v = take_value(&mut i, &tok)?;
+                let n: usize = v.parse().map_err(|_| format!("bad thread count `{}`", v))?;
+                if n == 0 { return Err("`--threads` must be at least 1".to_string()); }
+                out.threads = Some(n);
+            }
+            "--hash" => {
+                let v = take_value(&mut i, &tok)?;
+                let mb: usize = v.parse().map_err(|_| format!("bad hash size `{}`", v))?;
+                if mb == 0 { return Err("`--hash` must be at least 1 MiB".to_string()); }
+                out.hash_mb = Some(mb);
+            }
+            "--position" | "-p" => {
+                let v = take_value(&mut i, &tok)?;
+                if v == "startpos" {
+                    out.position = Some(v);
+                } else {
+                    // A shell-quoted TSFEN arrives as one token. Also accept
+                    // an unquoted one: keep appending tokens until we hold a
+                    // complete position (ranks + side + move number).
+                    let mut pos = v;
+                    while i + 1 < args.len()
+                        && !args[i + 1].starts_with('-')
+                        && !(pos.split_whitespace().count() >= 3
+                             && Board::from_tsfen(&pos).is_ok())
+                    {
+                        i += 1;
+                        pos.push(' ');
+                        pos.push_str(&args[i]);
+                    }
+                    out.position = Some(pos);
+                }
+            }
+            "--go" => out.go = true,
+            "--perft" => {
+                let v = take_value(&mut i, &tok)?;
+                out.perft = Some(v.parse().map_err(|_| format!("bad perft depth `{}`", v))?);
+            }
+            "--help" | "-h" => out.help = true,
+            "--" => { out.commands.extend_from_slice(&args[i + 1..]); break; }
+            other if other.starts_with('-') => {
+                return Err(format!("unknown flag `{}` — see `--help`", other));
+            }
+            other => out.commands.push(other.to_string()),
+        }
+        i += 1;
+    }
+    Ok(out)
+}
 
 #[cfg(test)]
 mod tests {
@@ -819,5 +1031,104 @@ mod tests {
         // board unchanged (still the initial position)
         assert_eq!(board.piece_count(Color::Black), 402);
         assert_eq!(board.move_number(), 1);
+    }
+
+    // ── command-line flags ─────────────────────────────────────
+    fn argv(tokens: &[&str]) -> Vec<String> {
+        tokens.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_args_reads_engine_flags() {
+        let a = parse_args(&argv(&[
+            "--depth", "6", "--movetime", "1500", "--threads", "4",
+            "--hash", "128", "--position", "startpos", "--go",
+        ])).expect("flags must parse");
+        assert_eq!(a.depth, Some(6));
+        assert_eq!(a.movetime, Some(1500));
+        assert_eq!(a.threads, Some(4));
+        assert_eq!(a.hash_mb, Some(128));
+        assert_eq!(a.position.as_deref(), Some("startpos"));
+        assert!(a.go);
+        assert!(!a.help);
+        assert!(a.commands.is_empty());
+    }
+
+    #[test]
+    fn parse_args_keeps_traditional_commands() {
+        // Flags first, then the pre-flags argv behaviour: bare tokens are
+        // commands, joined with spaces and `&&`-chained.
+        let a = parse_args(&argv(&["--threads", "2", "status"])).expect("must parse");
+        assert_eq!(a.threads, Some(2));
+        assert_eq!(a.commands, vec!["status"]);
+        assert_eq!(a.commands.join(" "), "status");
+        // short aliases + `--` terminator + bare perft command
+        let a = parse_args(&argv(&["-d", "4", "-t", "500", "--", "perft", "2"]))
+            .expect("must parse");
+        assert_eq!(a.depth, Some(4));
+        assert_eq!(a.movetime, Some(500));
+        assert_eq!(a.commands, vec!["perft", "2"]);
+        // short help
+        assert!(parse_args(&argv(&["-h"])).expect("-h parses").help);
+    }
+
+    #[test]
+    fn parse_args_rejects_bad_values() {
+        assert!(parse_args(&argv(&["--depth"])).is_err(), "missing value");
+        assert!(parse_args(&argv(&["--depth", "x"])).is_err(), "bad number");
+        assert!(parse_args(&argv(&["--threads", "0"])).is_err(), "zero workers");
+        assert!(parse_args(&argv(&["--threads", "lots"])).is_err(), "non-number");
+        assert!(parse_args(&argv(&["--hash", "0"])).is_err(), "zero hash");
+        assert!(parse_args(&argv(&["--nope"])).is_err(), "unknown flag");
+    }
+
+    #[test]
+    fn parse_args_position_accepts_quoted_and_split_tsfen() {
+        // quoted: one token, parses immediately
+        let tsfen = Board::initial().to_tsfen();
+        let a = parse_args(&argv(&["--position", &tsfen, "status"])).expect("quoted parses");
+        assert_eq!(a.position.as_deref(), Some(tsfen.as_str()));
+        assert_eq!(a.commands, vec!["status"], "commands after a full TSFEN stay commands");
+        // unquoted: three tokens (ranks side number) reassembled
+        let parts: Vec<&str> = tsfen.split_whitespace().collect();
+        assert_eq!(parts.len(), 3, "TSFEN must be ranks + side + move number");
+        let a = parse_args(&argv(&["--position", parts[0], parts[1], parts[2]]))
+            .expect("split parses");
+        assert_eq!(a.position.as_deref(), Some(tsfen.as_str()));
+    }
+
+    #[test]
+    fn setoption_threads_stores_and_caps() {
+        let mut board = Board::initial();
+        let mut opt = Options::default();
+        let mut hist = Vec::new();
+        assert_eq!(opt.threads, taikyokushogi::search::DEFAULT_THREADS);
+        assert!(execute("setoption threads 4", &mut board, &mut opt, &mut hist));
+        assert_eq!(opt.threads, 4);
+        // above the cap → clamped to MAX_THREADS
+        let over = taikyokushogi::search::MAX_THREADS * 2;
+        assert!(execute(&format!("setoption threads {}", over), &mut board, &mut opt, &mut hist));
+        assert_eq!(opt.threads, taikyokushogi::search::MAX_THREADS);
+        // 0 rejected, previous value kept
+        assert!(execute("setoption threads 0", &mut board, &mut opt, &mut hist));
+        assert_eq!(opt.threads, taikyokushogi::search::MAX_THREADS);
+        // garbage rejected, previous value kept
+        assert!(execute("setoption threads banana", &mut board, &mut opt, &mut hist));
+        assert_eq!(opt.threads, taikyokushogi::search::MAX_THREADS);
+    }
+
+    #[test]
+    fn setoption_hash_resizes_the_default_searcher() {
+        let mut board = Board::initial();
+        let mut opt = Options::default();
+        let mut hist = Vec::new();
+        assert!(execute("setoption hash 8", &mut board, &mut opt, &mut hist));
+        let actual = taikyokushogi::search::hash_mb();
+        assert!(actual >= 1, "the table must report a real size");
+        // the reported size is the allocated one (round trip)
+        assert!(execute("setoption hash 16", &mut board, &mut opt, &mut hist));
+        assert!(taikyokushogi::search::hash_mb() >= 1);
+        // garbage rejected
+        assert!(execute("setoption hash huge", &mut board, &mut opt, &mut hist));
     }
 }
