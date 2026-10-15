@@ -5,7 +5,7 @@
 //!
 //! - **36 x 36** board (1,296 squares)
 //! - **804 pieces** (402 per side)
-//! - **209 piece types** with distinct movement patterns
+//! - **209 initial piece types** / **92 promoted forms** (301 movement classes)
 //!
 //! ## Quick Start
 //!
@@ -16,7 +16,7 @@
 //! assert_eq!(board.piece_count(taikyokushogi::Color::Black), 402);
 //!
 //! let moves = board.legal_moves();
-//! println!("{} legal moves from starting position", moves.len());
+//! println!("{} legal moves from starting position", moves.len()); // 512
 //!
 //! // Apply the first move
 //! board.apply(&moves[0]);
@@ -28,6 +28,9 @@
 //!
 //! ## Search
 //!
+//! Single-threaded by default (depth + optional time limit in ms,
+//! `0 = no limit`):
+//!
 //! ```rust,no_run
 //! use taikyokushogi::Board;
 //!
@@ -36,6 +39,22 @@
 //! if let Some(mv) = result.best_move {
 //!     println!("Best move: {}, score: {}", mv, result.score);
 //! }
+//! ```
+//!
+//! Lazy SMP workers are **opt-in** per call (`1..=`
+//! [`search::MAX_THREADS`], default [`search::DEFAULT_THREADS`] = 1) and
+//! share one transposition table; results with `threads > 1` are not
+//! bit-reproducible:
+//!
+//! ```rust,no_run
+//! use taikyokushogi::Board;
+//!
+//! let mut board = Board::initial();
+//! let result = board.search_threads(3, 5000, 4); // depth 3, 5s, 4 workers
+//! println!("nodes = {}", result.nodes);
+//!
+//! // Transposition-table size in MiB (returns what was actually allocated)
+//! let mb = taikyokushogi::set_hash_mb(64);
 //! ```
 
 #![allow(unexpected_cfgs)] // `python` cfg is set via RUSTFLAGS by the pyo3 build

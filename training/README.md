@@ -67,8 +67,10 @@ From the repo root:
 
 ```bash
 cargo build --release --bin selfplay
-./target/release/selfplay <num_games> <depth> <time_limit_ms>
-# e.g.: ./target/release/selfplay 1000 3 200
+./target/release/selfplay <num_games> <depth> <max_moves> <num_workers> <time_limit_ms>
+# e.g.: 1000 games, depth 3, no move cap, 4 parallel workers, 200 ms/move
+# e.g.: ./target/release/selfplay 1000 3 0 4 200
+# defaults (missing args fall back to): 10 / 2 / 0 (unlimited) / 4 / 500
 ```
 
 This writes `training_data/samples_*.bin`. **If you have .bin files from
@@ -156,8 +158,8 @@ python3 export.py --checkpoint checkpoints/latest.pt --output ../trained.nnue
 export TAIKYOKU_NNUE_PATH=/absolute/path/to/trained.nnue
 ```
 
-Then, from Rust code (or the Python bindings, or `debug-cli`), call
-`taikyokushogi::set_use_nnue(true)` to switch the evaluator. Without
+Then, from Rust code (`taikyokushogi::set_use_nnue(true)`), or from the
+CLI (`taikyokushogi-cli` → `setoption nnue on`), switch the evaluator. Without
 `TAIKYOKU_NNUE_PATH` set, the engine falls back to randomly-initialized
 (untrained) NNUE weights with a loud warning on stderr -- it will NOT
 silently use the hand-crafted evaluator instead, so don't forget to set
@@ -274,13 +276,20 @@ turns out to matter (have `selfplay.rs` record king_sq directly into
 
 ## Memory budget reference (FT_BUCKETS = 200,000)
 
-| Component | Params | Size (fp32, training) |
-|---|---|---|
-| Feature transformer | 200,000 × 512 ≈ 102.4M | ~1.6 GB (weights only) |
-| Adam optimizer state (2×) | | ~3.3 GB |
-| L1/L2/L3/output | ~1.5M | ~24 MB |
-| **Total (weights+grad+Adam, FT only)** | | **~6.5 GB** |
+fp32 arithmetic from the model definition
+(`FeatureTransformer = nn.Embedding(200_000, 512)`):
 
-Leaves headroom on an 8GB card for activations and batch size, but not a
-huge amount -- if you hit OOM, first try reducing `--batch-size`, then
-consider whether `FT_BUCKETS` needs to come down further.
+| Component | Params | Size |
+|---|---|---|
+| Feature transformer **weights** | 200,000 × 512 ≈ 102.4M | ~0.4 GB (4 B/param) |
+| Feature transformer **gradients** | ≈ 102.4M | ~0.4 GB |
+| Feature transformer **Adam moments** (2 buffers) | ≈ 2 × 102.4M | ~0.8 GB |
+| **Feature transformer training state (weights + grad + Adam)** | | **~1.6 GB** |
+| L1/L2/L3/output (weights + grad + Adam) | ~1.5M | ~24 MB |
+
+The network has ~104M parameters in total (the feature transformer
+dominates). Peak VRAM is higher than the training-state numbers above
+because activations also scale with `--batch-size` — at the default
+`--batch-size 4096` this leaves usable but not huge headroom on an 8 GB
+card. If you hit OOM, first reduce `--batch-size`, then consider whether
+`FT_BUCKETS` needs to come down further.

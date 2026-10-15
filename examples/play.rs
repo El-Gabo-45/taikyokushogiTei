@@ -1,5 +1,6 @@
 //! Play a real game of Taikyoku Shogi with actual search.
-//! Plays a complete game until checkmate or draw.
+//! Plays a complete game until `game_result()` ends it (all royal pieces
+//! captured, or a draw rule) or one side has no legal move.
 //!
 //! ```sh
 //! cargo run --release --example play

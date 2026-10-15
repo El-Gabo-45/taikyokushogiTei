@@ -5,13 +5,19 @@ Thank you for contributing. Quick guidelines and development steps.
 Development requirements
 
 - Install Rust via `rustup` and use the stable toolchain.
-- Run `cargo fmt` to format your code.
+- Style: match the surrounding code. The historical codebase is **not**
+  rustfmt-clean, so do *not* run `cargo fmt` across the tree (it would
+  reformat hundreds of unrelated lines); format only the code you touch.
 
 Before submitting a PR
 
-- Run `cargo build --release` and `cargo test`.
-- Run `cargo fmt` and fix formatting issues.
-- Update documentation if your change affects the public API or behavior.
+- Run `cargo build --release` and `cargo test` (the whole suite must stay
+  green: unit + `src/correctness_tests.rs` + doc-tests).
+- Run `cargo build --all-targets` and keep it warning-free.
+- Update documentation if your change affects the public API or behavior
+  (README.md, docs/ARCHITECTURE.md, examples/README.md, training/README.md
+  and the CLI `--help` / `help` texts must stay in sync with what the
+  engine actually does).
 
 Commit & PR checklist
 

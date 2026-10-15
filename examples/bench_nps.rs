@@ -5,7 +5,7 @@
 //   1. Perft-style NPS (pure movegen + apply/undo, no search)
 //   2. Search NPS at various depths with fixed time budgets
 //   3. Component-level timing: legal_moves, evaluate, apply+undo
-//   4. Pseudo-legal vs legal movegen cost (is_in_check overhead)
+//   4. Board-clone cost (Lazy SMP workers each get their own board copy)
 //   5. Scaling analysis: how NPS changes with depth
 use taikyokushogi::Board;
 use std::time::Instant;
@@ -53,7 +53,7 @@ fn main() {
     {
         let board = Board::initial();
 
-        // legal_moves (includes is_in_check filtering)
+        // legal_moves (no check filtering — Taikyoku Shogi has no check rule)
         bench_component("legal_moves()", 200, || {
             let b = Board::initial();
             let _ = b.legal_moves();
@@ -82,7 +82,7 @@ fn main() {
             });
         }
 
-        // Board clone (used in Lazy SMP and filter_legal_moves)
+        // Board clone (used to start Lazy SMP worker threads)
         bench_component("Board::clone()", 1000, || {
             let b = Board::initial();
             let _ = b.clone();
@@ -186,16 +186,15 @@ fn main() {
     println!("\n── Bottleneck Analysis Summary ──────────────────────────────");
     println!("  • Board size: 36×36 = 1,296 squares, up to 804 pieces");
     println!("  • Move generation iterates all ~402 pieces per side");
-    println!("  • is_in_check uses bitboard threat-zone filtering");
+    println!("  • No check rule: movegen never filters self-checks (king may move into danger)");
     println!("  • Search uses PVS + TT + killers + history + LMR + NMP");
-    println!("  • Lazy SMP with up to 3 helper threads at depth ≥ 4");
+    println!("  • Lazy SMP is opt-in (CLI --threads / setoption threads / search_threads); default = 1 thread");
     println!();
     println!("  Expected bottlenecks (by cost):");
     println!("    1. movegen (generate_pseudo_legal_moves): O(pieces × rays)");
-    println!("    2. is_in_check (called per move for legality): O(threat_zone)");
-    println!("    3. evaluate (material + zones + king_safety): O(pieces)");
-    println!("    4. Board clone (for Lazy SMP + filter_legal_moves)");
-    println!("    5. Vec allocations in move ordering (scored.sort_by)");
+    println!("    2. evaluate (material + zones + king_safety): O(pieces)");
+    println!("    3. Board clone (per Lazy SMP worker)");
+    println!("    4. Vec allocations in move ordering (scored.sort_by)");
     println!();
     println!("  Compare the component timings above to identify the actual");
     println!("  hot spot on this machine.");

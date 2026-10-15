@@ -1,7 +1,7 @@
 // Measures legal_moves() cost in a realistic midgame position (after some
-// selfplay), not just the initial position where few pieces are near the
-// king. This is where the is_in_check bitboard filter should show its
-// biggest win, since more opposing pieces are scattered around the board.
+// selfplay), not just the initial position where few pieces are near each
+// other. More opposing pieces scattered around the board means more ray
+// walks can reach a target, so this is the worst case for move generation.
 use taikyokushogi::Board;
 use std::time::Instant;
 

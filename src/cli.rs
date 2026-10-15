@@ -464,7 +464,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 .unwrap_or(opt.movetime);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth, time_ms: 0, nnue: false, threads: kw.threads_a },
+                a: EngineConfig { depth, time_ms: movetime, nnue: false, threads: kw.threads_a },
                 b: EngineConfig { depth, time_ms: movetime, nnue: false, threads: kw.threads_b },
                 max_plies,
                 on_game: Some(print_game_result),
@@ -488,7 +488,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                      games, da, kw.threads_a, db, kw.threads_b, movetime, max_plies);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth: da, time_ms: 0, nnue: false, threads: kw.threads_a },
+                a: EngineConfig { depth: da, time_ms: movetime, nnue: false, threads: kw.threads_a },
                 b: EngineConfig { depth: db, time_ms: movetime, nnue: false, threads: kw.threads_b },
                 max_plies,
                 on_game: Some(print_game_result),
@@ -512,7 +512,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                      elo0, elo1, games, da, kw.threads_a, db, kw.threads_b);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth: da, time_ms: 0, nnue: false, threads: kw.threads_a },
+                a: EngineConfig { depth: da, time_ms: movetime, nnue: false, threads: kw.threads_a },
                 b: EngineConfig { depth: db, time_ms: movetime, nnue: false, threads: kw.threads_b },
                 max_plies,
                 on_game: Some(print_game_result),
