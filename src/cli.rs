@@ -38,9 +38,12 @@
 //!   hint                       search and print the best move (= `go`)
 //!   save <file>                save the game (TSFEN + move list) as JSON
 //!   load <file>                load a saved game
-//!   selfplay [G D PLIES MS]    engine-vs-engine games
-//!   match <G> <dA> <dB> ...    match between two configs + Elo estimate
-//!   sprt <elo0> <elo1> ...     SPRT test between two configs
+//!   selfplay [G D PLIES MS] [threadsA N] [threadsB N]
+//!                        engine-vs-engine games (per-side Lazy SMP workers)
+//!   match <G> <dA> <dB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]
+//!                        match between two configs + Elo estimate
+//!   sprt <elo0> <elo1> [G] [dA] [dB] [MS] [threadsA N] [threadsB N]
+//!                        SPRT test between two configs
 //!   about                      engine version / build info
 //!   quit
 //!
@@ -302,6 +305,43 @@ fn load_game(path: &str, board: &mut Board, hist: &mut Vec<String>) -> Result<()
     Ok(())
 }
 
+/// Keywords shared by the `selfplay`, `match` and `sprt` commands (from the
+/// point where their positional arguments end):
+/// `movetime <MS>`, `maxplies <N>`, `threadsA <N>`, `threadsB <N>` — all
+/// case-insensitive, unknown keywords warn and are ignored.
+///
+/// `movetime` / `max_plies` stay `None` when absent so every command keeps
+/// its own fallback. `threads*` default to 1 (plain single-threaded search).
+struct MatchKeywords {
+    movetime: Option<u64>,
+    max_plies: Option<u32>,
+    threads_a: usize,
+    threads_b: usize,
+}
+
+fn parse_match_keywords(tokens: &[&str]) -> MatchKeywords {
+    let mut kw = MatchKeywords { movetime: None, max_plies: None, threads_a: 1, threads_b: 1 };
+    let mut it = tokens.iter();
+    while let Some(k) = it.next() {
+        match k.to_ascii_lowercase().as_str() {
+            "movetime" => kw.movetime = it.next().and_then(|v| v.parse().ok()),
+            "maxplies" => kw.max_plies = it.next().and_then(|v| v.parse().ok()),
+            "threadsa" => match it.next().and_then(|v| v.parse::<usize>().ok()) {
+                Some(n) if n >= 1 => kw.threads_a = n,
+                Some(_) => println!("error: threads must be >= 1 (keeping {})", kw.threads_a),
+                None => println!("error: usage `threadsA <N>`"),
+            },
+            "threadsb" => match it.next().and_then(|v| v.parse::<usize>().ok()) {
+                Some(n) if n >= 1 => kw.threads_b = n,
+                Some(_) => println!("error: threads must be >= 1 (keeping {})", kw.threads_b),
+                None => println!("error: usage `threadsB <N>`"),
+            },
+            other => println!("warning: ignored `{}`", other),
+        }
+    }
+    kw
+}
+
 fn status(board: &Board, opt: &Options) {
     let stm = board.side_to_move();
     println!("side to move: {}", stm);
@@ -412,15 +452,20 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             }
         }
         "selfplay" => {
-            // selfplay [games] [depth] [maxplies] [movetime]
+            // selfplay [games] [depth] [maxplies] [movetime] [threadsA N] [threadsB N]
             let games: usize = rest.first().and_then(|s| s.parse().ok()).unwrap_or(2);
             let depth: u32 = rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(opt.depth);
-            let max_plies: u32 = rest.get(2).and_then(|s| s.parse().ok()).unwrap_or(200);
-            let movetime: u64 = rest.get(3).and_then(|s| s.parse().ok()).unwrap_or(opt.movetime);
+            let kw = parse_match_keywords(&rest[4.min(rest.len())..]);
+            let max_plies: u32 = kw.max_plies
+                .or_else(|| rest.get(2).and_then(|s| s.parse().ok()))
+                .unwrap_or(200);
+            let movetime: u64 = kw.movetime
+                .or_else(|| rest.get(3).and_then(|s| s.parse().ok()))
+                .unwrap_or(opt.movetime);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth, time_ms: 0, nnue: false },
-                b: EngineConfig { depth, time_ms: movetime, nnue: false },
+                a: EngineConfig { depth, time_ms: 0, nnue: false, threads: kw.threads_a },
+                b: EngineConfig { depth, time_ms: movetime, nnue: false, threads: kw.threads_b },
                 max_plies,
                 on_game: Some(print_game_result),
             };
@@ -428,30 +473,23 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             r.print();
         }
         "match" => {
-            // match <games> <depthA> <depthB> [movetime MS] [maxplies N]
+            // match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]
             if rest.len() < 3 {
-                println!("error: usage `match <games> <depthA> <depthB> [movetime MS] [maxplies N]`");
+                println!("error: usage `match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]`");
                 return true;
             }
             let games: usize = rest[0].parse().unwrap_or(10);
             let da: u32 = rest[1].parse().unwrap_or(2);
             let db: u32 = rest[2].parse().unwrap_or(3);
-            let mut movetime = 0u64;
-            let mut max_plies = 400u32;
-            let mut it = rest[3..].iter();
-            while let Some(k) = it.next() {
-                match *k {
-                    "movetime" => movetime = it.next().and_then(|v| v.parse().ok()).unwrap_or(0),
-                    "maxplies" => max_plies = it.next().and_then(|v| v.parse().ok()).unwrap_or(400),
-                    other => println!("warning: ignored `{}`", other),
-                }
-            }
-            println!("match: {} games — A depth {} vs B depth {} (movetime {}ms, max plies {})",
-                     games, da, db, movetime, max_plies);
+            let kw = parse_match_keywords(&rest[3..]);
+            let movetime = kw.movetime.unwrap_or(0);
+            let max_plies = kw.max_plies.unwrap_or(400);
+            println!("match: {} games — A depth {} ({} threads) vs B depth {} ({} threads) (movetime {}ms, max plies {})",
+                     games, da, kw.threads_a, db, kw.threads_b, movetime, max_plies);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth: da, time_ms: 0, nnue: false },
-                b: EngineConfig { depth: db, time_ms: movetime, nnue: false },
+                a: EngineConfig { depth: da, time_ms: 0, nnue: false, threads: kw.threads_a },
+                b: EngineConfig { depth: db, time_ms: movetime, nnue: false, threads: kw.threads_b },
                 max_plies,
                 on_game: Some(print_game_result),
             };
@@ -459,20 +497,24 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             r.print();
         }
         "sprt" => {
-            // sprt <elo0> <elo1> [games] [depthA] [depthB] [movetime MS]
+            // sprt <elo0> <elo1> [games] [depthA] [depthB] [movetime MS] [threadsA N] [threadsB N]
             let elo0: f64 = rest.first().and_then(|s| s.parse().ok()).unwrap_or(0.0);
             let elo1: f64 = rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(10.0);
             let games: usize = rest.get(2).and_then(|s| s.parse().ok()).unwrap_or(50);
             let da: u32 = rest.get(3).and_then(|s| s.parse().ok()).unwrap_or(2);
             let db: u32 = rest.get(4).and_then(|s| s.parse().ok()).unwrap_or(3);
-            let movetime: u64 = rest.get(5).and_then(|s| s.parse().ok()).unwrap_or(0);
-            println!("SPRT: H0 ≤ {:+.0} vs H1 ≥ {:+.0}, max {} games (A depth {}, B depth {})",
-                     elo0, elo1, games, da, db);
+            let kw = parse_match_keywords(&rest[6.min(rest.len())..]);
+            let movetime: u64 = kw.movetime
+                .or_else(|| rest.get(5).and_then(|s| s.parse().ok()))
+                .unwrap_or(0);
+            let max_plies = kw.max_plies.unwrap_or(400);
+            println!("SPRT: H0 ≤ {:+.0} vs H1 ≥ {:+.0}, max {} games (A depth {} {} threads, B depth {} {} threads)",
+                     elo0, elo1, games, da, kw.threads_a, db, kw.threads_b);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth: da, time_ms: 0, nnue: false },
-                b: EngineConfig { depth: db, time_ms: movetime, nnue: false },
-                max_plies: 400,
+                a: EngineConfig { depth: da, time_ms: 0, nnue: false, threads: kw.threads_a },
+                b: EngineConfig { depth: db, time_ms: movetime, nnue: false, threads: kw.threads_b },
+                max_plies,
                 on_game: Some(print_game_result),
             };
             let sprt = Sprt { elo0, elo1, alpha: 0.05, beta: 0.05 };
@@ -612,10 +654,11 @@ fn print_help() {
   bench                       micro-benchmark (movegen/eval/apply+undo)
   save <archivo.json>         guardar la partida (TSFEN + jugadas, JSON)
   load <archivo.json>         cargar una partida guardada
-  selfplay [G D PLIES MS]     partidas motor contra motor
-  match <G> <dA> <dB> [movetime MS] [maxplies N]
+  selfplay [G D PLIES MS] [threadsA N] [threadsB N]
+                              partidas motor contra motor (hilos SMP por lado)
+  match <G> <dA> <dB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]
                               match entre 2 configs + estimación de ELO
-  sprt <elo0> <elo1> [G] [dA] [dB] [movetime MS]
+  sprt <elo0> <elo1> [G] [dA] [dB] [MS] [threadsA N] [threadsB N]
                               test SPRT entre 2 configs
   setoption depth <N>         profundidad del motor (por defecto 3)
   setoption movetime <MS>     presupuesto de tiempo por jugada (0 = sin límite)
@@ -1130,5 +1173,31 @@ mod tests {
         assert!(taikyokushogi::search::hash_mb() >= 1);
         // garbage rejected
         assert!(execute("setoption hash huge", &mut board, &mut opt, &mut hist));
+    }
+
+    #[test]
+    fn parse_match_keywords_handles_threads_and_fallbacks() {
+        let kw = parse_match_keywords(&[
+            "movetime", "250", "maxplies", "30", "threadsA", "4", "threadsB", "2",
+        ]);
+        assert_eq!(kw.movetime, Some(250));
+        assert_eq!(kw.max_plies, Some(30));
+        assert_eq!(kw.threads_a, 4);
+        assert_eq!(kw.threads_b, 2);
+
+        // nothing given: options stay None (each command keeps its default),
+        // workers default to plain single-threaded search
+        let kw = parse_match_keywords(&[]);
+        assert_eq!(kw.movetime, None);
+        assert_eq!(kw.max_plies, None);
+        assert_eq!((kw.threads_a, kw.threads_b), (1, 1));
+
+        // case-insensitive keys; bad values never override the previous one
+        let kw = parse_match_keywords(&[
+            "THREADSA", "3", "threadsA", "0", "threadsB", "x", "junk", "movetime", "soon",
+        ]);
+        assert_eq!(kw.threads_a, 3, "0 must not override the valid 3");
+        assert_eq!(kw.threads_b, 1, "unparsable must not override");
+        assert_eq!(kw.movetime, None, "unparsable movetime falls back");
     }
 }

@@ -110,17 +110,21 @@ pub struct EngineConfig {
     pub time_ms: u64,
     /// Use the NNUE evaluator instead of the hand-crafted one.
     pub nnue: bool,
+    /// Lazy SMP workers for this side (1 = plain single-threaded search).
+    /// Raise it on one side only to measure what multithreading is worth in
+    /// Elo — the A/B test for the SMP search itself.
+    pub threads: usize,
 }
 
 impl EngineConfig {
     pub fn depth(d: u32) -> Self {
-        EngineConfig { depth: d, time_ms: 0, nnue: false }
+        EngineConfig { depth: d, time_ms: 0, nnue: false, threads: search::DEFAULT_THREADS }
     }
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { depth: 2, time_ms: 0, nnue: false }
+        EngineConfig { depth: 2, time_ms: 0, nnue: false, threads: search::DEFAULT_THREADS }
     }
 }
 
@@ -135,7 +139,7 @@ pub struct GameOutcome {
 
 fn apply_best(board: &mut Board, cfg: &EngineConfig) -> Option<Move> {
     crate::set_use_nnue(cfg.nnue);
-    let r = search::search(board, cfg.depth, cfg.time_ms);
+    let r = search::search_threads(board, cfg.depth, cfg.time_ms, cfg.threads);
     r.best_move
 }
 
@@ -508,6 +512,21 @@ mod tests {
         // unlimited cap must terminate on its own (same deterministic game)
         let o2 = play_game(&a, &b, 0);
         assert!(o2.plies > 6, "uncapped game should play past the cap");
+    }
+
+    #[test]
+    fn play_game_with_smp_threads_respects_the_ply_cap() {
+        // The SMP A/B path: one side configured with Lazy SMP workers must
+        // produce normal moves and still terminate under the ply cap.
+        // Same global-state concerns as play_game_returns_valid_outcome.
+        let _serial = crate::test_lock::lock();
+        assert_eq!(EngineConfig::default().threads, search::DEFAULT_THREADS,
+                   "single-threaded is the default; SMP must be opt-in");
+        let smp = EngineConfig { threads: 2, ..EngineConfig::depth(1) };
+        let single = EngineConfig::depth(1);
+        let o = play_game(&smp, &single, 4); // 1 thread vs 2 threads
+        assert_eq!(o.result, GameResult::Draw, "the ply cap scores it as a draw");
+        assert_eq!(o.plies, 4, "every ply must produce a move");
     }
 
     #[test]
