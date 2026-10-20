@@ -45,15 +45,13 @@ fn should_stop_game(move_count: u32, max_moves: u32, terminal: Option<GameResult
 
 /// A single training sample: board position + move played + game outcome.
 ///
-/// IMPORTANT: `#[repr(C)]` is required here. This struct is serialized to
-/// disk as raw bytes (see `writer_loop` below, which does an `unsafe`
-/// byte-for-byte memory dump). Without `repr(C)`, Rust is free to reorder
-/// fields however it likes to minimize padding, and that order is not
-/// guaranteed to stay the same across compiler versions or even separate
-/// builds. That would make any external reader (e.g. the Python training
-/// script) unable to reliably parse the file format. `repr(C)` fixes the
-/// field order to exactly the declaration order below, matching a plain C
-/// struct, so this layout can be documented once and relied on forever.
+/// IMPORTANT: the on-disk byte layout must stay byte-for-byte identical to
+/// the old `#[repr(C)]` memory dump (2612 bytes/sample, little-endian — see
+/// `training/dataset.py::SAMPLE_FORMAT`). `TrainingSample::to_bytes` writes
+/// each field explicitly with zeroed padding so the file format is stable
+/// across compilers and platforms, without reading uninitialized padding
+/// bytes (which the old `unsafe` memory dump did — technically UB — and
+/// without depending on host endianness.
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct TrainingSample {
@@ -66,6 +64,46 @@ pub struct TrainingSample {
     pub policy_target: u16,
     pub value_target: f32,
     pub move_number: u16,
+}
+
+/// Byte size of one serialized sample. Must match
+/// `training/dataset.py::SAMPLE_SIZE` (2612).
+pub const TRAINING_SAMPLE_SIZE: usize = 2612;
+
+impl TrainingSample {
+    /// Serialize to the exact legacy `repr(C)` little-endian layout:
+    /// `board[1296]u16 | u8 side | pad | u16 from | u16 to | u8 promo |
+    /// i8 result | u16 policy | pad*2 | f32 value | u16 moveno | pad*2`.
+    pub fn to_bytes(&self) -> [u8; TRAINING_SAMPLE_SIZE] {
+        let mut out = [0u8; TRAINING_SAMPLE_SIZE];
+        let mut o = 0;
+        for v in &self.board {
+            out[o..o + 2].copy_from_slice(&v.to_le_bytes());
+            o += 2;
+        }
+        debug_assert_eq!(o, 2592);
+        out[o] = self.side_to_move;
+        o += 1;
+        o += 1; // padding at 2593
+        out[o..o + 2].copy_from_slice(&self.move_from.to_le_bytes());
+        o += 2;
+        out[o..o + 2].copy_from_slice(&self.move_to.to_le_bytes());
+        o += 2;
+        out[o] = self.move_promo;
+        o += 1;
+        out[o] = self.result as u8;
+        o += 1;
+        out[o..o + 2].copy_from_slice(&self.policy_target.to_le_bytes());
+        o += 2;
+        o += 2; // padding at 2602-2603
+        out[o..o + 4].copy_from_slice(&self.value_target.to_le_bytes());
+        o += 4;
+        out[o..o + 2].copy_from_slice(&self.move_number.to_le_bytes());
+        o += 2;
+        // trailing padding at 2610-2611 stays zeroed
+        debug_assert_eq!(o, 2610);
+        out
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -329,10 +367,9 @@ impl SelfPlayCoordinator {
             buffer.push(sample);
             if buffer.len() >= save_interval {
                 let filename = format!("{}/samples_{:06}.bin", output_dir, file_count);
-                let mut data = Vec::with_capacity(buffer.len() * std::mem::size_of::<TrainingSample>());
+                let mut data = Vec::with_capacity(buffer.len() * TRAINING_SAMPLE_SIZE);
                 for s in &buffer {
-                    let bytes = unsafe { std::slice::from_raw_parts(s as *const TrainingSample as *const u8, std::mem::size_of::<TrainingSample>()) };
-                    data.extend_from_slice(bytes);
+                    data.extend_from_slice(&s.to_bytes());
                 }
                 let _ = std::fs::write(&filename, &data);
                 total_saved += buffer.len() as u64;
@@ -347,10 +384,9 @@ impl SelfPlayCoordinator {
         }
         if !buffer.is_empty() {
             let filename = format!("{}/samples_{:06}.bin", output_dir, file_count);
-            let mut data = Vec::with_capacity(buffer.len() * std::mem::size_of::<TrainingSample>());
+            let mut data = Vec::with_capacity(buffer.len() * TRAINING_SAMPLE_SIZE);
             for s in &buffer {
-                let bytes = unsafe { std::slice::from_raw_parts(s as *const TrainingSample as *const u8, std::mem::size_of::<TrainingSample>()) };
-                data.extend_from_slice(bytes);
+                data.extend_from_slice(&s.to_bytes());
             }
             let _ = std::fs::write(&filename, &data);
             total_saved += buffer.len() as u64;

@@ -241,7 +241,10 @@ impl std::fmt::Display for Piece {
 }
 
 /// A move in the game.
-#[derive(Debug, Clone)]
+///
+/// `types::Move` is `Copy` (all fields are primitives), so this wrapper is
+/// `Copy` too — no spurious clones when moving `Move` values around.
+#[derive(Debug, Clone, Copy)]
 pub struct Move {
     inner: types::Move,
 }

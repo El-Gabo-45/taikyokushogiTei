@@ -376,7 +376,10 @@ impl<'a> Ctx<'a> {
         // is comparable to chess:
         //   lmp_n = (3 + d^2) / (improving ? 1 : 2) * (1 + quiets / 128)
         if alpha < beta {
-            crate::movegen::generate_pseudo_legal_moves_into(&mut pb.moves, self.board);
+            // Quiets only: captures were already searched in Stage 1
+            // (generate_captures_bb_into). Regenerating them here wastes ~50%
+            // of movegen work per node on a 36x36 board with ~700 legal moves.
+            crate::movegen::generate_pseudo_legal_quiets_into(&mut pb.moves, self.board);
             if pb.moves.is_empty() { return (-(MATE_SCORE - self.ply as i32), pb); }
             pb.scored.clear();
             for (i, m) in pb.moves.iter().enumerate() {

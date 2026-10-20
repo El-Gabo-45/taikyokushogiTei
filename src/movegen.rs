@@ -45,7 +45,7 @@ pub fn dedup_piece_range(moves: &mut Vec<Move>, start: usize) {
         if key != prev {
             prev = key;
             if write != read {
-                moves[write] = moves[read].clone();
+                moves[write] = moves[read];
             }
             write += 1;
         }
@@ -136,10 +136,14 @@ pub fn generate_pseudo_legal_moves_into(moves: &mut Vec<Move>, board: &Board) {
         let tmpl = &t[(pt as usize).min(511)][color as usize];
 
         // Fast path: pure jumps/steps/slides/area/igui.
+        //
+        // `fast_piece` can emit duplicate destinations when area steps overlap
+        // with regular jumps (both are flattened into `tmpl.jumps`), so the
+        // dedup pass is still required. With `Move: Copy` the compaction is a
+        // plain word copy — no `.clone()` per element.
         if tmpl.valid {
             crate::attack::fast_piece(board, sq, pt, color, tmpl, rt, moves);
             dedup_piece_range(moves, start);
-            continue;
         }
 
         // Fallback: special pieces need the original movement logic.
@@ -161,6 +165,69 @@ pub fn generate_pseudo_legal_moves_into(moves: &mut Vec<Move>, board: &Board) {
             gen_igui(board, sq, pt, color, moves);
         }
         dedup_piece_range(moves, start);
+    }
+}
+
+/// Generate pseudo-legal quiet (non-capture) moves only into `moves`.
+///
+/// Used by the search's quiet stage (Stage 2 in pvs.rs) so it does not
+/// regenerate captures already searched in Stage 1 (`generate_captures_bb_into`).
+///
+/// For `tmpl.valid` pieces (the ~90% that use the fast bitboard path),
+/// `fast_piece_quiets` emits each destination at most once, so no dedup pass
+/// is needed. For special pieces we generate all moves then compact to quiets
+/// only — special pieces are rare on the board so the cost is negligible.
+pub fn generate_pseudo_legal_quiets_into(moves: &mut Vec<Move>, board: &Board) {
+    moves.clear();
+    let color = board.side_to_move;
+    let c = color as usize;
+    let rt = ray_table();
+    let jt = jump_table();
+    let t = crate::attack::templates();
+
+    for i in 0..board.piece_list_len[c] {
+        let sq = board.piece_list[c][i] as usize;
+        if sq == INVALID_SQ as usize { continue; }
+        let cell = board.cells[sq];
+        if cell == EMPTY_CELL { continue; }
+        let pt = cell_piece(cell);
+        let start = moves.len();
+        let tmpl = &t[(pt as usize).min(511)][color as usize];
+
+        if tmpl.valid {
+            crate::attack::fast_piece_quiets(board, sq, pt, color, tmpl, rt, moves);
+            continue;
+        }
+
+        // Fallback: special pieces — generate all moves, then compact quiets.
+        let mv = pieces::movement(pt);
+        gen_slides(board, sq, pt, color, mv, rt, moves);
+        gen_jumps_fast(board, sq, pt, color, mv, jt, moves);
+        if mv.hook.is_some() {
+            gen_hooks(board, sq, pt, color, mv, rt, moves);
+        }
+        if mv.area > 0 {
+            gen_area(board, sq, pt, color, mv, moves);
+        }
+        if !mv.range_capture.is_empty() {
+            gen_range_capture(board, sq, pt, color, mv, rt, moves);
+        }
+        if mv.igui {
+            gen_igui(board, sq, pt, color, moves);
+        }
+        // Compact: keep only quiets (captured_piece == 0, mid_piece == 0,
+        // !range_cap). `Move` is Copy so this is a plain word copy, no clone.
+        let mut write = start;
+        for read in start..moves.len() {
+            let m = moves[read];
+            if m.captured_piece == 0 && m.mid_piece == 0 && !m.range_cap {
+                if write != read {
+                    moves[write] = m;
+                }
+                write += 1;
+            }
+        }
+        moves.truncate(write);
     }
 }
 

@@ -440,3 +440,57 @@ fn walk_ray(board: &Board, rt: &RayTable,
         }
     }
 }
+
+/// Like [`walk_ray`] but only emits non-capturing (quiet) moves: stops at the
+/// first occupied square of either color, never emits captures.
+#[inline]
+fn walk_ray_quiets(board: &Board, rt: &RayTable,
+                   sq: usize, pt: u16, color: u8, dir: usize, max_range: u8,
+                   moves: &mut Vec<crate::types::Move>) {
+    let ray = rt.ray_for_color(sq, dir, color);
+    let limit = if max_range == 0 { ray.len() } else { (max_range as usize).min(ray.len()) };
+    for j in 0..limit {
+        let rsq = ray[j] as usize;
+        let target = board.cells[rsq];
+        if target == EMPTY_CELL {
+            push_move(moves, sq as u16, rsq as u16, pt, color, EMPTY_CELL);
+        } else {
+            // Occupied square (friendly or enemy) blocks a quiet slide.
+            break;
+        }
+    }
+}
+
+/// Fast path for a single non-special piece: quiets only.
+///
+/// Like [`fast_piece`] but never emits captures — used by the search's quiet
+/// stage (Stage 2) so it does not regenerate captures already searched in
+/// Stage 1.
+pub fn fast_piece_quiets(
+    board: &Board, sq: usize, pt: u16, color: u8,
+    tmpl: &Template, rt: &RayTable, moves: &mut Vec<crate::types::Move>,
+) {
+    let sq_r = sq_row(sq) as i32;
+    let sq_c = sq_col(sq) as i32;
+
+    // Jumps/steps/area: only quiet when target is empty.
+    for j in 0..tmpl.n_jumps as usize {
+        let (dr, dc) = tmpl.jumps[j];
+        let nr = sq_r + dr as i32;
+        let nc = sq_c + dc as i32;
+        if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 { continue; }
+        let nsq = (nr as usize) * BOARD_SIZE + (nc as usize);
+        let target = board.cells[nsq];
+        if target == EMPTY_CELL {
+            push_move(moves, sq as u16, nsq as u16, pt, color, EMPTY_CELL);
+        }
+    }
+
+    // Sliders: walk rays, stop at first occupancy.
+    for j in 0..tmpl.n_slides as usize {
+        let (dir, max_range) = tmpl.slides[j];
+        walk_ray_quiets(board, rt, sq, pt, color, dir as usize, max_range, moves);
+    }
+
+    // Igui is capture-only: nothing to emit for quiets.
+}

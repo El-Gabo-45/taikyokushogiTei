@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderValue, Method, StatusCode, header},
+    http::{HeaderValue, Method, header},
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
@@ -13,6 +13,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::ServeDir;
 
 use taikyokushogi::{Board, Color, GameResult};
 
@@ -342,58 +343,71 @@ async fn post_ai_move(
     State(app): State<Arc<AppState>>,
     Json(body): Json<AiMoveBody>,
 ) -> Json<MoveResponse> {
-    let depth = body.depth.unwrap_or(0);
-    let time_limit = body.time_limit.unwrap_or(30000);
+    // Clamp client-controlled limits: unbounded depth/time on a 36x36 board
+    // with hundreds of legal moves is a trivial local DoS.
+    let depth = body.depth.unwrap_or(0).min(8);
+    let time_limit = body.time_limit.unwrap_or(30000).min(120_000);
 
-    let mut state = app.board.lock().unwrap();
-    if state.game_over {
-        return Json(MoveResponse {
-            ok: false,
-            error: Some("Game is over".into()),
-            board: None,
-            last_move: None,
-        });
-    }
-
-    let (fr, fc, tr, tc, promotion) = if depth == 0 {
-        // Random move
-        match state.board.random_move() {
-            Some(m) => {
-                let from = m.from();
-                let to = m.to();
-                (from.row, from.col, to.row, to.col, m.is_promotion())
-            }
-            None => {
-                state.game_over = true;
-                return Json(MoveResponse {
-                    ok: false,
-                    error: Some("No legal moves".into()),
-                    board: None,
-                    last_move: None,
-                });
-            }
+    // Take a snapshot under the lock, then release it before the search.
+    // The old code held `std::sync::Mutex` across `board.search(...)`,
+    // blocking the tokio worker thread for the whole search (up to the
+    // time limit) and freezing every other request.
+    let snapshot: Board = {
+        let state = app.board.lock().unwrap();
+        if state.game_over {
+            return Json(MoveResponse {
+                ok: false,
+                error: Some("Game is over".into()),
+                board: None,
+                last_move: None,
+            });
         }
-    } else {
-        // AI search
-        let result = state.board.search(depth, time_limit);
-        match result.best_move {
-            Some(m) => {
-                let from = m.from();
-                let to = m.to();
+        state.board.clone()
+    };
+
+    // CPU-bound search runs on the blocking pool so async handlers keep
+    // serving. `Board::search` uses a thread-local searcher, so running it
+    // here also keeps the per-thread transposition table warm across moves.
+    let searched = tokio::task::spawn_blocking(move || {
+        let mut board = snapshot;
+        if depth == 0 {
+            board.random_move().map(|m| {
+                let (from, to) = (m.from(), m.to());
                 (from.row, from.col, to.row, to.col, m.is_promotion())
-            }
-            None => {
-                state.game_over = true;
-                return Json(MoveResponse {
-                    ok: false,
-                    error: Some("No legal moves".into()),
-                    board: None,
-                    last_move: None,
-                });
-            }
+            })
+        } else {
+            let result = board.search(depth, time_limit);
+            result.best_move.map(|m| {
+                let (from, to) = (m.from(), m.to());
+                (from.row, from.col, to.row, to.col, m.is_promotion())
+            })
+        }
+    })
+    .await;
+
+    let (fr, fc, tr, tc, promotion) = match searched {
+        Ok(Some(mv)) => mv,
+        Ok(None) => {
+            let mut state = app.board.lock().unwrap();
+            state.game_over = true;
+            return Json(MoveResponse {
+                ok: false,
+                error: Some("No legal moves".into()),
+                board: None,
+                last_move: None,
+            });
+        }
+        Err(_) => {
+            return Json(MoveResponse {
+                ok: false,
+                error: Some("Search task failed".into()),
+                board: None,
+                last_move: None,
+            });
         }
     };
 
+    let mut state = app.board.lock().unwrap();
     let piece = match state.board.get(fr, fc) {
         Some(p) => p.abbrev().to_string(),
         None => "?".into(),
@@ -424,6 +438,11 @@ async fn post_undo(State(app): State<Arc<AppState>>) -> Json<serde_json::Value> 
     let ok = state.board.undo();
     if ok {
         state.move_log.pop();
+        // Keep score_history in sync with move_log: one entry per position
+        // (initial position + one per applied move).
+        if state.score_history.len() > 1 {
+            state.score_history.pop();
+        }
         if state.half_move > 0 {
             state.half_move -= 1;
         }
@@ -437,6 +456,9 @@ async fn post_undo(State(app): State<Arc<AppState>>) -> Json<serde_json::Value> 
 // ============================================================
 // Static file serving for the web frontend
 // ============================================================
+// NOTE: routes are registered with `nest_service` + `ServeDir` in `main`
+// below, so nested Vite assets (e.g. `/assets/index-xxxx.js`) resolve.
+// `serve_frontend` only handles the SPA fallback for unknown non-API paths.
 async fn serve_frontend() -> impl IntoResponse {
     // Serve the index.html from the web/dist directory
     let content = tokio::fs::read_to_string("web/dist/index.html").await
@@ -450,41 +472,11 @@ async fn serve_frontend() -> impl IntoResponse {
     )
 }
 
-async fn serve_assets(Path(path): Path<String>) -> impl IntoResponse {
-    let file_path = format!("web/dist/{}", path);
-    match tokio::fs::read(&file_path).await {
-        Ok(data) => {
-            let content_type = match path.rsplit('.').next().unwrap_or("") {
-                "js" => "application/javascript",
-                "css" => "text/css",
-                "html" => "text/html",
-                "png" => "image/png",
-                "svg" => "image/svg+xml",
-                "ico" => "image/x-icon",
-                "woff2" => "font/woff2",
-                _ => "application/octet-stream",
-            };
-            (
-                StatusCode::OK,
-                [(header::CONTENT_TYPE, HeaderValue::from_static(content_type))],
-                data,
-            )
-        }
-        Err(_) => (
-            StatusCode::NOT_FOUND,
-            [(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))],
-            b"404 Not Found".to_vec(),
-        ),
-    }
-}
-
 // ============================================================
 // Main
 // ============================================================
 #[tokio::main]
 async fn main() {
-    println!("Taikyoku Shogi Server starting on http://0.0.0.0:5173");
-
     let state = Arc::new(AppState {
         board: Mutex::new(GameState::new()),
     });
@@ -494,22 +486,35 @@ async fn main() {
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any);
 
+    // NOTE: axum 0.7 uses `:param` syntax (matchit 0.7). The `{param}`
+    // syntax is axum 0.8+ and would register as a literal path here.
+    //
+    // Static files go through `ServeDir` so nested Vite assets
+    // (e.g. `/assets/index-xxxx.js`) resolve — the old `/:path` route only
+    // matched a single path segment and 404'd on every nested asset.
     let app = Router::new()
         // API routes
         .route("/api/state", get(get_state))
         .route("/api/moves", get(get_moves))
-        .route("/api/piece-info/{abbrev}", get(get_piece_info))
+        .route("/api/piece-info/:abbrev", get(get_piece_info))
         .route("/api/new-game", post(post_new_game))
         .route("/api/move", post(post_move))
         .route("/api/ai-move", post(post_ai_move))
         .route("/api/undo", post(post_undo))
-        // Frontend
-        .route("/", get(serve_frontend))
-        .route("/:path", get(serve_assets))
+        // Frontend: static assets first, SPA fallback for the rest.
+        // `ServeDir` handles MIME types itself and confines serving to
+        // `web/dist` (the old hand-rolled handler did `format!("web/dist/{path}")`
+        // with no sanitization, so `..` segments could escape the directory).
+        .nest_service("/assets", ServeDir::new("web/dist/assets"))
+        .fallback(get(serve_frontend))
         .layer(cors)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    println!("Taikyoku Shogi Server starting on http://0.0.0.0:8000");
+    // Bind to loopback by default: this is a single-game local server with
+    // client-controlled search limits, not something to expose to a LAN.
+    // Set TAIKYOKU_BIND=0.0.0.0:8000 explicitly if you really want that.
+    let bind_addr = std::env::var("TAIKYOKU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".to_string());
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
+    println!("Taikyoku Shogi Server listening on http://{}", bind_addr);
     axum::serve(listener, app).await.unwrap();
 }
