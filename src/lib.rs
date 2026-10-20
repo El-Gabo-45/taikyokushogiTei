@@ -283,6 +283,11 @@ impl Move {
     pub fn raw(&self) -> &types::Move {
         &self.inner
     }
+
+    /// The mid-capture square for igui/range moves, if any.
+    pub fn mid_sq(&self) -> Option<usize> {
+        (self.inner.mid_sq != types::INVALID_SQ).then_some(self.inner.mid_sq as usize)
+    }
 }
 
 impl std::fmt::Display for Move {
@@ -493,15 +498,27 @@ impl Board {
     ///
     /// ```rust,no_run
     /// let mut board = taikyokushogi::Board::initial();
-    /// board.apply_by_coord(25, 0, 24, 0, false); // move pawn forward
+    /// board.apply_by_coord(25, 0, 24, 0, false, None); // move pawn forward
     /// ```
     pub fn apply_by_coord(&mut self, from_row: usize, from_col: usize,
-                          to_row: usize, to_col: usize, promotion: bool) -> bool {
+                          to_row: usize, to_col: usize, promotion: bool,
+                          mid_sq: Option<usize>) -> bool {
+        // Validate coordinates before any indexing — out-of-range coordinates
+        // would otherwise panic on array access.
+        if from_row >= types::BOARD_SIZE || from_col >= types::BOARD_SIZE
+            || to_row >= types::BOARD_SIZE || to_col >= types::BOARD_SIZE
+        {
+            return false;
+        }
+
         let from_sq = types::sq_index(from_row, from_col) as u16;
         let to_sq = types::sq_index(to_row, to_col) as u16;
         let moves = movegen::generate_legal_moves(&self.inner);
         for m in &moves {
-            if m.from_sq == from_sq && m.to_sq == to_sq && m.promotion == promotion {
+            let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
+            if m.from_sq == from_sq && m.to_sq == to_sq
+                && m.promotion == promotion && mid_match
+            {
                 self.inner.apply_move(m);
                 return true;
             }

@@ -97,6 +97,7 @@ struct MoveData {
     promotion: bool,
     is_igui: bool,
     captured: Option<String>,
+    mid_sq: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -104,6 +105,7 @@ struct MoveBody {
     from: [usize; 2],
     to: [usize; 2],
     promotion: Option<bool>,
+    mid_sq: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -211,6 +213,7 @@ fn get_moves_for_square(state: &GameState, r: usize, c: usize) -> Vec<MoveData> 
                     promotion: m.is_promotion(),
                     is_igui: m.is_igui(),
                     captured: m.captured().map(|s| s.to_string()),
+                    mid_sq: m.mid_sq(),
                 });
             }
         }
@@ -218,7 +221,23 @@ fn get_moves_for_square(state: &GameState, r: usize, c: usize) -> Vec<MoveData> 
     result
 }
 
-fn apply_move_to_board(state: &mut GameState, fr: usize, fc: usize, tr: usize, tc: usize, promotion: bool) -> bool {
+fn apply_move_to_board(
+    state: &mut GameState,
+    fr: usize,
+    fc: usize,
+    tr: usize,
+    tc: usize,
+    promotion: bool,
+    mid_sq: Option<usize>,
+) -> bool {
+    // Validate coordinates before any indexing — a coordinate outside the
+    // 36x36 board would otherwise panic on array access.
+    if fr >= taikyokushogi::BOARD_SIZE || fc >= taikyokushogi::BOARD_SIZE
+        || tr >= taikyokushogi::BOARD_SIZE || tc >= taikyokushogi::BOARD_SIZE
+    {
+        return false;
+    }
+
     let piece = match state.board.get(fr, fc) {
         Some(p) => p.abbrev().to_string(),
         None => return false,
@@ -234,7 +253,15 @@ fn apply_move_to_board(state: &mut GameState, fr: usize, fc: usize, tr: usize, t
         let mv = m;
         // Access raw move data
         let raw = mv.raw();
-        if raw.from_sq as usize == from_sq && raw.to_sq as usize == to_sq && mv.is_promotion() == promotion {
+        // For igui moves, `mid_sq` identifies which adjacent victim is captured
+        // when from == to. Without it, several igui moves collide on the same
+        // coordinates and the wrong one may be applied.
+        let mid_match = mid_sq.map_or(true, |ms| raw.mid_sq as usize == ms);
+        if raw.from_sq as usize == from_sq
+            && raw.to_sq as usize == to_sq
+            && mv.is_promotion() == promotion
+            && mid_match
+        {
             state.board.apply(mv);
             state.record_move(&side, &piece, fr, fc, tr, tc, promotion);
             if state.board.game_result().is_some() {
@@ -316,7 +343,15 @@ async fn post_move(
     }
 
     let promotion = body.promotion.unwrap_or(false);
-    let ok = apply_move_to_board(&mut state, body.from[0], body.from[1], body.to[0], body.to[1], promotion);
+    let ok = apply_move_to_board(
+        &mut state,
+        body.from[0],
+        body.from[1],
+        body.to[0],
+        body.to[1],
+        promotion,
+        body.mid_sq,
+    );
 
     if !ok {
         return Json(MoveResponse {
@@ -373,19 +408,19 @@ async fn post_ai_move(
         if depth == 0 {
             board.random_move().map(|m| {
                 let (from, to) = (m.from(), m.to());
-                (from.row, from.col, to.row, to.col, m.is_promotion())
+                (from.row, from.col, to.row, to.col, m.is_promotion(), m.mid_sq())
             })
         } else {
             let result = board.search(depth, time_limit);
             result.best_move.map(|m| {
                 let (from, to) = (m.from(), m.to());
-                (from.row, from.col, to.row, to.col, m.is_promotion())
+                (from.row, from.col, to.row, to.col, m.is_promotion(), m.mid_sq())
             })
         }
     })
     .await;
 
-    let (fr, fc, tr, tc, promotion) = match searched {
+    let (fr, fc, tr, tc, promotion, mid_sq) = match searched {
         Ok(Some(mv)) => mv,
         Ok(None) => {
             let mut state = app.board.lock().unwrap();
@@ -415,7 +450,7 @@ async fn post_ai_move(
     let side = if state.board.side_to_move() == Color::Black { "Black" } else { "White" };
 
     // Apply the move using apply_by_coord
-    state.board.apply_by_coord(fr, fc, tr, tc, promotion);
+    state.board.apply_by_coord(fr, fc, tr, tc, promotion, mid_sq);
     state.record_move(&side, &piece, fr, fc, tr, tc, promotion);
     if state.board.game_result().is_some() {
         state.game_over = true;

@@ -358,9 +358,13 @@ impl SelfPlayCoordinator {
     }
 
     fn writer_loop(rx: Receiver<TrainingSample>, output_dir: String, save_interval: usize) {
-        std::fs::create_dir_all(&output_dir).ok();
+        // Create output dir, propagating errors instead of silencing them.
+        std::fs::create_dir_all(&output_dir).expect("failed to create training output dir");
+
+        // Discover the next free file index so we never overwrite samples
+        // from a previous selfplay run in the same output_dir.
+        let mut file_count = Self::next_free_index(&output_dir);
         let mut buffer: Vec<TrainingSample> = Vec::new();
-        let mut file_count = 0;
         let mut last_print = std::time::Instant::now();
         let mut total_saved = 0u64;
         while let Ok(sample) = rx.recv() {
@@ -371,7 +375,7 @@ impl SelfPlayCoordinator {
                 for s in &buffer {
                     data.extend_from_slice(&s.to_bytes());
                 }
-                let _ = std::fs::write(&filename, &data);
+                std::fs::write(&filename, &data).expect("failed to write training samples");
                 total_saved += buffer.len() as u64;
                 println!("[writer] Saved {} samples (total {}) to {}", buffer.len(), total_saved, filename);
                 buffer.clear();
@@ -388,10 +392,20 @@ impl SelfPlayCoordinator {
             for s in &buffer {
                 data.extend_from_slice(&s.to_bytes());
             }
-            let _ = std::fs::write(&filename, &data);
+            std::fs::write(&filename, &data).expect("failed to write training samples");
             total_saved += buffer.len() as u64;
             println!("[writer] Flushed {} samples (total {}) to {}", buffer.len(), total_saved, filename);
         }
+    }
+
+    /// Returns the smallest `n >= 0` such that `output_dir/samples_{n:06}.bin`
+    /// does not yet exist. Used to avoid clobbering samples from earlier runs.
+    fn next_free_index(output_dir: &str) -> usize {
+        let mut n = 0usize;
+        while std::path::Path::new(&format!("{}/samples_{:06}.bin", output_dir, n)).exists() {
+            n += 1;
+        }
+        n
     }
 
     fn db_loop(rx: Receiver<GameRecord>, db_path: String, output_dir: String) {
