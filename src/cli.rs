@@ -61,6 +61,7 @@
 use std::io::{BufRead, Write};
 use taikyokushogi::elo::{self, EngineConfig, MatchConfig, Sprt};
 use taikyokushogi::{Board, Color, Move};
+use taikyokushogi::search::params::SearchConfig;
 
 // ── Engine configuration ────────────────────────────────────────
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -74,17 +75,34 @@ struct Options {
     /// Lazy SMP workers used by `go` / the engine's own turns (1 = plain
     /// single-threaded search).
     threads: usize,
+    /// Technique on/off switches — every search technique can be independently
+    /// enabled/disabled for testing, A/B experiments, or precise ablation
+    /// studies. Defaults to production (all on).
+    cfg: SearchConfig,
 }
 
-impl Default for Options {
-    fn default() -> Self {
+impl Options {
+    /// Build an `Options` with the given `SearchConfig`.
+    fn with_config(cfg: SearchConfig) -> Self {
         Options {
             depth: 3,
             movetime: 0,
             nnue: false,
             engine_side: EngineSide::None,
             threads: taikyokushogi::search::DEFAULT_THREADS,
+            cfg,
         }
+    }
+
+    /// Return a `Searcher` configured with this options' technique flags.
+    fn searcher(&self) -> taikyokushogi::search::Searcher {
+        taikyokushogi::search::Searcher::with_config(self.cfg)
+    }
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self::with_config(SearchConfig::production())
     }
 }
 
@@ -222,7 +240,8 @@ fn perft(board: &Board, depth: u32) -> u64 {
 }
 
 fn cmd_go(board: &mut Board, opt: &Options) {
-    let r = board.search_threads(opt.depth, opt.movetime, opt.threads);
+    let mut searcher = opt.searcher();
+    let r = board.search_with(&mut searcher, opt.depth, opt.movetime);
     match &r.best_move {
         Some(m) => println!(
             "bestmove {} score {} nodes {} time {}ms",
@@ -242,7 +261,8 @@ fn engine_turn(board: &mut Board, opt: &Options) -> Option<String> {
     };
     if !engine_moves { return None; }
     taikyokushogi::set_use_nnue(opt.nnue);
-    let r = board.search_threads(opt.depth, opt.movetime, opt.threads);
+    let mut searcher = opt.searcher();
+    let r = board.search_with(&mut searcher, opt.depth, opt.movetime);
     match r.best_move {
         Some(m) => {
             let name = move_name(&m);
@@ -685,7 +705,27 @@ fn main() {
     if args.help { println!("{}", usage()); return; }
 
     let mut board = Board::initial();
-    let mut opt = Options::default();
+
+    // Build SearchConfig from CLI toggles: production default, then disable
+    // any technique the user explicitly turned off.
+    let mut cfg = SearchConfig::production();
+    if args.no_razoring.unwrap_or(false) { cfg.razoring = false; }
+    if args.no_rfp.unwrap_or(false) { cfg.reverse_futility = false; }
+    if args.no_futility.unwrap_or(false) { cfg.futility = false; }
+    if args.no_null_move.unwrap_or(false) { cfg.null_move_pruning = false; }
+    if args.no_probcut.unwrap_or(false) { cfg.probcut = false; }
+    if args.no_tt.unwrap_or(false) { cfg.transposition_table = false; }
+    if args.no_killers.unwrap_or(false) { cfg.killer_moves = false; }
+    if args.no_history.unwrap_or(false) { cfg.history_heuristic = false; }
+    if args.no_counter.unwrap_or(false) { cfg.counter_moves = false; }
+    if args.no_iid.unwrap_or(false) { cfg.internal_iterative_deepening = false; }
+    if args.no_lmr.unwrap_or(false) { cfg.late_move_reductions = false; }
+    if args.no_lmp.unwrap_or(false) { cfg.late_move_pruning = false; }
+    if args.no_beam.unwrap_or(false) { cfg.capture_beam = false; }
+    if args.no_hash_ext.unwrap_or(false) { cfg.hash_move_extension = false; }
+    if args.no_quiescence.unwrap_or(false) { cfg.quiescence = false; }
+
+    let mut opt = Options::with_config(cfg);
     let mut hist: Vec<String> = Vec::new();
 
     if let Some(mb) = args.hash_mb {
@@ -759,6 +799,24 @@ struct CliArgs {
     go: bool,
     perft: Option<u32>,
     help: bool,
+    /// Technique toggles — `--no-<technique>` disables that technique.
+    /// All start as `None` meaning "use the default (production) config";
+    /// `Some(false)` means explicitly disabled.
+    no_razoring: Option<bool>,
+    no_rfp: Option<bool>,
+    no_futility: Option<bool>,
+    no_null_move: Option<bool>,
+    no_probcut: Option<bool>,
+    no_tt: Option<bool>,
+    no_killers: Option<bool>,
+    no_history: Option<bool>,
+    no_counter: Option<bool>,
+    no_iid: Option<bool>,
+    no_lmr: Option<bool>,
+    no_lmp: Option<bool>,
+    no_beam: Option<bool>,
+    no_hash_ext: Option<bool>,
+    no_quiescence: Option<bool>,
     /// Remaining tokens: interactive commands, joined with spaces and
     /// `&&`-chained exactly like the pre-flags argv handling.
     commands: Vec<String>,
@@ -781,6 +839,26 @@ OPTIONS:
         --go               run one search, print `bestmove ...`, exit
         --perft <N>        print perft(N) for the position, exit
     -h, --help             show this help
+
+TECHNIQUE TOGGLES (ablation / testing — disable one or more):
+        --no-razoring      disable razoring pruning
+        --no-rfp           disable reverse futility pruning
+        --no-futility      disable futility pruning
+        --no-null-move     disable null-move pruning
+        --no-probcut       disable ProbCut pruning
+        --no-tt            disable transposition table
+        --no-killers       disable killer moves
+        --no-history       disable butterfly history
+        --no-counter       disable counter moves
+        --no-iid           disable internal iterative deepening
+        --no-lmr           disable late move reductions
+        --no-lmp           disable late move pruning
+        --no-beam          disable capture beam
+        --no-hash-ext      disable hash-move extension
+        --no-quiescence    disable quiescence search
+
+    Example: taikyokushogi-cli --no-tt --no-lmr --depth 3 --go
+             (plain alpha-beta with move ordering only, depth 3)
 
 COMMANDS:
     Remaining arguments are interactive commands; `&&` chains them:
@@ -827,6 +905,23 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 if mb == 0 { return Err("`--hash` must be at least 1 MiB".to_string()); }
                 out.hash_mb = Some(mb);
             }
+            // ── Technique toggles ──
+            // `--no-<tech>` disables a search technique for testing/ablation.
+            "--no-razoring" => out.no_razoring = Some(true),
+            "--no-rfp" => out.no_rfp = Some(true),
+            "--no-futility" => out.no_futility = Some(true),
+            "--no-null-move" => out.no_null_move = Some(true),
+            "--no-probcut" => out.no_probcut = Some(true),
+            "--no-tt" => out.no_tt = Some(true),
+            "--no-killers" => out.no_killers = Some(true),
+            "--no-history" => out.no_history = Some(true),
+            "--no-counter" => out.no_counter = Some(true),
+            "--no-iid" => out.no_iid = Some(true),
+            "--no-lmr" => out.no_lmr = Some(true),
+            "--no-lmp" => out.no_lmp = Some(true),
+            "--no-beam" => out.no_beam = Some(true),
+            "--no-hash-ext" => out.no_hash_ext = Some(true),
+            "--no-quiescence" => out.no_quiescence = Some(true),
             "--position" | "-p" => {
                 let v = take_value(&mut i, &tok)?;
                 if v == "startpos" {

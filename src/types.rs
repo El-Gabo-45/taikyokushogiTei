@@ -174,7 +174,7 @@ impl Movement {
 /// All fields are `Copy` primitives, so `Move` is `Copy` as well. This
 /// eliminates needless `.clone()` calls in the hot movegen path
 /// (`dedup_piece_range`, move list compaction, etc.).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Move {
     pub from_sq: u16,
     pub to_sq: u16,

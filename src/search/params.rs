@@ -157,3 +157,110 @@ pub const HIST_MAX: i32 = 32_767;
 pub const KILLER_MAX_PLY: u32 = 127;
 /// Quiets recorded per node for history-malus on beta cutoff.
 pub const QUIETS_TRACKED_MAX: usize = 64;
+
+// ==================================================================
+// SearchConfig — technique on/off switches for testing & A/B experiments
+// ==================================================================
+//
+// Every pruning/reduction/ordering technique can be toggled independently so
+// that the search can be run with arbitrary subsets enabled. The default
+// config has everything on (production behavior). A "minimal" config with
+// everything off gives a plain alpha-beta for cross-validation tests.
+//
+// Example:
+//     let mut cfg = SearchConfig::minimal();
+//     cfg.tt = true;          // only TT on, everything else off
+//     let s = Searcher::with_config(cfg);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SearchConfig {
+    // ── Shallow-eval pruning (no move gen needed) ──
+    pub razoring: bool,
+    pub reverse_futility: bool,
+    pub futility: bool,
+
+    // ── Pruning that needs a search ──
+    pub null_move_pruning: bool,
+    pub probcut: bool,
+
+    // ── Move ordering helpers ──
+    pub transposition_table: bool,
+    pub killer_moves: bool,
+    pub history_heuristic: bool,
+    pub counter_moves: bool,
+
+    // ── Depth management ──
+    pub internal_iterative_deepening: bool,
+    pub late_move_reductions: bool,
+    pub late_move_pruning: bool,
+    pub capture_beam: bool,
+    pub hash_move_extension: bool,
+
+    // ── Quiescence ──
+    pub quiescence: bool,
+}
+
+impl SearchConfig {
+    /// Everything on: the production default.
+    pub fn production() -> Self {
+        SearchConfig {
+            razoring: true,
+            reverse_futility: true,
+            futility: true,
+            null_move_pruning: true,
+            probcut: true,
+            transposition_table: true,
+            killer_moves: true,
+            history_heuristic: true,
+            counter_moves: true,
+            internal_iterative_deepening: true,
+            late_move_reductions: true,
+            late_move_pruning: true,
+            capture_beam: true,
+            hash_move_extension: true,
+            quiescence: true,
+        }
+    }
+
+    /// Everything off: plain alpha-beta with move ordering still active
+    //   (ordering itself is not a "technique" that changes correctness).
+    pub fn minimal() -> Self {
+        SearchConfig {
+            razoring: false,
+            reverse_futility: false,
+            futility: false,
+            null_move_pruning: false,
+            probcut: false,
+            transposition_table: true, // TT is read-only for move selection; keep on
+            killer_moves: false,
+            history_heuristic: false,
+            counter_moves: false,
+            internal_iterative_deepening: false,
+            late_move_reductions: false,
+            late_move_pruning: false,
+            capture_beam: false,
+            hash_move_extension: false,
+            quiescence: false,
+        }
+    }
+
+    /// Only TT + killers + history (classic "engine" config without pruning).
+    pub fn classic() -> Self {
+        let mut s = SearchConfig::minimal();
+        s.killer_moves = true;
+        s.history_heuristic = true;
+        s.counter_moves = true;
+        s.internal_iterative_deepening = true;
+        s.late_move_reductions = true;
+        s.late_move_pruning = true;
+        s.capture_beam = true;
+        s.hash_move_extension = true;
+        s.quiescence = true;
+        s
+    }
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        SearchConfig::production()
+    }
+}

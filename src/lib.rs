@@ -244,7 +244,7 @@ impl std::fmt::Display for Piece {
 ///
 /// `types::Move` is `Copy` (all fields are primitives), so this wrapper is
 /// `Copy` too — no spurious clones when moving `Move` values around.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Move {
     inner: types::Move,
 }

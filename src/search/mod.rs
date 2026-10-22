@@ -26,7 +26,7 @@
 mod buffers;
 mod heuristics;
 mod ordering;
-mod params;
+pub mod params;
 mod pvs;
 mod qsearch;
 mod root;
@@ -35,6 +35,7 @@ mod tt;
 
 use self::buffers::SearchPool;
 use self::heuristics::Heuristics;
+use self::params::SearchConfig;
 use self::root::RootState;
 use self::smp::SharedBest;
 use self::tt::Tt;
@@ -65,6 +66,8 @@ pub struct SearchResult {
 /// keeps the tables warm. It replaces the process-global statics the search
 /// used to hide behind.
 pub struct Searcher {
+    /// Technique on/off switches (see [`SearchConfig`]).
+    cfg: SearchConfig,
     /// Shared with Lazy SMP workers through an `Arc` clone (see
     /// [`Searcher::share_tt`]): the table is the one piece of state workers are
     /// *supposed* to pool.
@@ -79,8 +82,22 @@ pub struct Searcher {
 }
 
 impl Searcher {
+    /// Creates a searcher with the production config (all techniques enabled).
     pub fn new() -> Self {
+        Self::with_config(SearchConfig::production())
+    }
+
+    /// Creates a searcher with an explicit [`SearchConfig`]. Use this to
+    /// enable/disable individual techniques for testing and A/B experiments:
+    ///
+    /// ```
+    /// use taikyokushogi::search::{Searcher, SearchConfig};
+    /// let cfg = SearchConfig::minimal();
+    /// let s = Searcher::with_config(cfg);
+    /// ```
+    pub fn with_config(cfg: SearchConfig) -> Self {
         Searcher {
+            cfg,
             tt: Arc::new(Tt::new()),
             heur: Heuristics::new(),
             pool: SearchPool::new(),
@@ -89,14 +106,20 @@ impl Searcher {
         }
     }
 
+    /// Returns a reference to this searcher's technique config.
+    pub fn config(&self) -> SearchConfig {
+        self.cfg
+    }
+
     /// A second searcher that shares this one's transposition table but owns
-    /// its heuristics, scratch pool and root cache.
+    /// its heuristics, scratch pool and root cache, inheriting the same config.
     ///
     /// This is the shape Lazy SMP wants (workers pool what they learn into the
     /// shared table), and it is also how a self-play pool avoids allocating one
     /// table per worker.
     pub fn share_tt(&self) -> Self {
         Searcher {
+            cfg: self.cfg,
             tt: Arc::clone(&self.tt),
             heur: Heuristics::new(),
             pool: SearchPool::new(),
@@ -192,6 +215,7 @@ impl Searcher {
         // node counter, scratch pool and cached root move list all outlive the
         // iteration, so nothing is reallocated or regenerated between depths.
         let mut rc = root::RootCtx {
+            cfg: self.cfg,
             nodes: &mut nodes,
             deadline,
             stop,
@@ -356,6 +380,7 @@ pub use self::params::MAX_THREADS;
 mod tests {
     use super::*;
     use crate::Board;
+    use crate::types;
 
     #[test]
     fn search_initial_reaches_depth_and_finds_a_move() {
@@ -401,5 +426,278 @@ mod tests {
         h.killer_store(10, 0xABCD);
         assert_eq!(h.killer_score(10, 0xABCD), params::KILLER1_SCORE);
         assert_eq!(h.killer_score(10, 0x1234), 0);
+    }
+
+    // ── Reproduction tests for the audit-fix items ──────────────────
+
+    /// A move applied through `apply_by_coord` with out-of-range coordinates
+    /// must return `false` without panicking (the audit fix validates
+    /// coordinates before any indexing).
+    #[test]
+    fn apply_by_coord_out_of_bounds_returns_false_no_panic() {
+        let mut board = Board::initial();
+        for &(fr, fc, tr, tc) in &[
+            (36, 0, 35, 0), (0, 36, 35, 0), (35, 0, 36, 0), (35, 0, 35, 36),
+            (100, 100, 101, 101),
+        ] {
+            // If this panics, the test fails — which is exactly what we want
+            // to catch: out-of-range coordinates must be rejected before any
+            // indexing occurs.
+            assert!(!board.apply_by_coord(fr, fc, tr, tc, false, None),
+                    "apply_by_coord({fr},{fc}->{tr},{tc}) must return false");
+        }
+        assert_eq!(board.side_to_move(), crate::Color::Black);
+    }
+
+    /// A valid move from the initial position is accepted.
+    #[test]
+    fn apply_by_coord_edge_coordinates_accepted() {
+        let mut board = Board::initial();
+        let moves = board.legal_moves();
+        assert!(!moves.is_empty(), "initial position must have legal moves");
+        let m = &moves[0];
+        let fr = m.inner.from_sq as usize / types::BOARD_SIZE;
+        let fc = m.inner.from_sq as usize % types::BOARD_SIZE;
+        let tr = m.inner.to_sq as usize / types::BOARD_SIZE;
+        let tc = m.inner.to_sq as usize % types::BOARD_SIZE;
+        assert!(board.apply_by_coord(fr, fc, tr, tc, false, None),
+                "first legal move from initial position must be accepted");
+        assert_eq!(board.side_to_move(), crate::Color::White);
+    }
+
+    /// `apply_by_coord` with `mid_sq` matches only moves whose `mid_sq` equals
+    /// the given value, and rejects moves whose `mid_sq` differs.
+    #[test]
+    fn apply_by_coord_mid_sq_matches_and_rejects() {
+        let mut board = Board::initial();
+        let moves = board.legal_moves();
+        assert!(!moves.is_empty(), "initial position must have legal moves");
+        let m = &moves[0];
+        let fr = m.inner.from_sq as usize / types::BOARD_SIZE;
+        let fc = m.inner.from_sq as usize % types::BOARD_SIZE;
+        let tr = m.inner.to_sq as usize / types::BOARD_SIZE;
+        let tc = m.inner.to_sq as usize % types::BOARD_SIZE;
+        assert!(board.apply_by_coord(fr, fc, tr, tc, false, None),
+                "mid_sq=None must match a normal move");
+        board.undo();
+        assert!(!board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
+                "mid_sq=Some(500) must not match a normal move (mid_sq=NONE)");
+        assert_eq!(board.side_to_move(), crate::Color::Black);
+    }
+
+    /// `Move::mid_sq()` maps `INVALID_SQ` to `None` and a real square to
+    /// `Some(sq)`. All initial moves are quiet/pawn pushes: mid_sq=None.
+    #[test]
+    fn move_mid_sq_maps_invalid_to_none() {
+        let board = Board::initial();
+        let moves = board.legal_moves();
+        assert!(!moves.is_empty(), "initial position must have legal moves");
+        for m in &moves {
+            assert_eq!(m.mid_sq(), None,
+                       "initial move {:?} must have mid_sq=None", m);
+        }
+    }
+
+    // ── SearchConfig on/off switching tests ─────────────────────────
+
+    /// Every technique flag can be toggled independently; a search with all
+    /// techniques off (minimal config) still returns a best move.
+    #[test]
+    fn search_minimal_config_returns_a_move() {
+        let mut board = Board::initial();
+        let mut searcher = Searcher::with_config(SearchConfig::minimal());
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some(),
+                "minimal-config search must return a best move");
+        assert!(r.nodes > 0);
+    }
+
+    /// A search with all techniques on (production config) returns a best move.
+    #[test]
+    fn search_production_config_returns_a_move() {
+        let mut board = Board::initial();
+        let mut searcher = Searcher::with_config(SearchConfig::production());
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+        assert!(r.nodes > 0);
+        assert!(r.score.abs() < crate::eval::MATE_SCORE);
+    }
+
+    /// Disabling TT must not crash and must still produce a move.
+    #[test]
+    fn search_without_tt_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.transposition_table = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling null-move pruning must not crash and must still produce a move.
+    #[test]
+    fn search_without_null_move_pruning_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.null_move_pruning = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling LMR must not crash and must still produce a move.
+    #[test]
+    fn search_without_lmr_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.late_move_reductions = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+
+    /// Disabling all shallow-eval pruning (razoring, RFP, futility) must not crash.
+    #[test]
+    fn search_without_shallow_pruning_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.razoring = false;
+        cfg.reverse_futility = false;
+        cfg.futility = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling quiescence must not crash at depth 0 (leaf eval used instead).
+    #[test]
+    fn search_without_quiescence_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.quiescence = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 1, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling capture beam searches all captures (more nodes, no crash).
+    #[test]
+    fn search_without_capture_beam_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.capture_beam = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 2, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling hash-move extension must not crash.
+    #[test]
+    fn search_without_hash_move_extension_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.hash_move_extension = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling IID must not crash.
+    #[test]
+    fn search_without_iid_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.internal_iterative_deepening = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling ProbCut must not crash.
+    #[test]
+    fn search_without_probcut_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.probcut = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// Disabling LMP must not crash.
+    #[test]
+    fn search_without_lmp_still_works() {
+        let mut board = Board::initial();
+        let mut cfg = SearchConfig::production();
+        cfg.late_move_pruning = false;
+        let mut searcher = Searcher::with_config(cfg);
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+    }
+
+    /// `SearchConfig::classic()` (TT + ordering + reductions, no pruning) works.
+    #[test]
+    fn search_classic_config_returns_a_move() {
+        let mut board = Board::initial();
+        let mut searcher = Searcher::with_config(SearchConfig::classic());
+        let r = board.search_with(&mut searcher, 3, 0);
+        assert!(r.best_move.is_some());
+        assert!(r.nodes > 0);
+    }
+}
+
+
+    /// `Searcher::with_config` reports the same config via `config()`, and
+    /// `share_tt()` inherits it.
+    #[test]
+    fn searcher_config_is_round_trip_and_shared() {
+        let cfg = SearchConfig::minimal();
+        let master = Searcher::with_config(cfg);
+        assert_eq!(master.config(), cfg);
+        let worker = master.share_tt();
+        assert_eq!(worker.config(), cfg,
+                   "share_tt must inherit the master's config");
+    }
+
+    /// `Searcher::new()` uses the production config by default.
+    #[test]
+    fn searcher_new_uses_production_config() {
+        let s = Searcher::new();
+        assert_eq!(s.config(), SearchConfig::production());
+    }
+
+    // ── Determinism / stability tests ───────────────────────────────
+
+    /// Two fixed-depth searches with the same minimal config produce the same
+    /// best move (deterministic, no TT / SMP randomness).
+    #[test]
+    fn minimal_config_search_is_deterministic() {
+        let mut board1 = Board::initial();
+        let mut board2 = Board::initial();
+        let mut s1 = Searcher::with_config(SearchConfig::minimal());
+        let mut s2 = Searcher::with_config(SearchConfig::minimal());
+        let r1 = board1.search_with(&mut s1, 3, 0);
+        let r2 = board2.search_with(&mut s2, 3, 0);
+        assert_eq!(r1.best_move, r2.best_move,
+                   "two identical minimal-config searches must agree");
+    }
+
+    /// The board is not corrupted by a search: side to move is unchanged.
+    #[test]
+    fn board_state_unchanged_after_search() {
+        let mut board = Board::initial();
+        let before = board.side_to_move();
+        let mut searcher = Searcher::with_config(SearchConfig::production());
+        let _ = board.search_with(&mut searcher, 3, 0);
+        assert_eq!(board.side_to_move(), before);
+    }
+
+    /// Depth-0 search returns no move but the static eval score.
+    #[test]
+    fn depth_zero_search_returns_eval_only() {
+        let mut board = Board::initial();
+        let mut searcher = Searcher::with_config(SearchConfig::production());
+        let r = board.search_with(&mut searcher, 0, 0);
+        assert!(r.best_move.is_none());
+        assert_eq!(r.score, crate::eval::evaluate(&board.inner));
     }
 }

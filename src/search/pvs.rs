@@ -21,7 +21,7 @@
 use super::buffers::{PlyBuffers, SearchPool};
 use super::heuristics::Heuristics;
 use super::ordering::{self, piece_vals};
-use super::params;
+use super::params::{self, SearchConfig};
 use super::qsearch;
 use super::tt::{self, Tt};
 use crate::board::Board;
@@ -39,6 +39,8 @@ use std::time::Instant;
 /// process-global, so two searches running at the same time are independent by
 /// construction (see [`super::Searcher`]).
 pub(crate) struct Ctx<'a> {
+    /// Technique on/off switches (see [`super::params::SearchConfig`]).
+    pub cfg: SearchConfig,
     pub board: &'a mut Board,
     pub nodes: &'a mut u64,
     pub deadline: Option<Instant>,
@@ -86,27 +88,30 @@ impl<'a> Ctx<'a> {
     /// Shallow-eval pruning that needs no move generation, in the original
     /// evaluation order: razoring → RFP (both directions) → futility.
     /// Returns Some(score) if the node can be pruned outright.
-    fn shallow_eval_prune(d: u32, static_eval: i32, alpha: i32, beta: i32, in_check: bool) -> Option<i32> {
+    fn shallow_eval_prune(&mut self, d: u32, static_eval: i32, alpha: i32, beta: i32, in_check: bool) -> Option<i32> {
         // ── RAZORING (depth ≤ 2) ─────────────────────────────────
-        // If static_eval + huge_margin ≤ alpha, prune the node entirely.
-        if let Some(margin) = params::razoring_margin(d) {
-            if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
-                return Some(alpha);
+        if self.cfg.razoring {
+            if let Some(margin) = params::razoring_margin(d) {
+                if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
+                    return Some(alpha);
+                }
             }
         }
         // ── REVERSE FUTILITY PRUNING (depth ≤ 3) ─────────────────
-        // If static_eval - margin ≥ beta, prune (position is too good).
-        if let Some(margin) = params::rfp_margin(d) {
-            if !in_check && params::mate_gate_ok(alpha) {
-                if static_eval - margin >= beta { return Some(beta); }
-                if static_eval + margin <= alpha { return Some(alpha); }
+        if self.cfg.reverse_futility {
+            if let Some(margin) = params::rfp_margin(d) {
+                if !in_check && params::mate_gate_ok(alpha) {
+                    if static_eval - margin >= beta { return Some(beta); }
+                    if static_eval + margin <= alpha { return Some(alpha); }
+                }
             }
         }
         // ── FUTILITY PRUNING (depth ≤ 2) ─────────────────────────
-        // Skip shallow quiet nodes when even optimistic gains cannot reach alpha.
-        if let Some(margin) = params::futility_margin(d) {
-            if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
-                return Some(alpha);
+        if self.cfg.futility {
+            if let Some(margin) = params::futility_margin(d) {
+                if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
+                    return Some(alpha);
+                }
             }
         }
         None
@@ -115,7 +120,7 @@ impl<'a> Ctx<'a> {
     /// Null Move Pruning (depth ≥ 3): give the opponent a free move; if even
     /// then we're still ≥ beta, prune.
     fn null_move_prune(&mut self, d: u32, beta: i32, in_check: bool) -> Option<i32> {
-        if d < params::NMP_MIN_DEPTH || in_check { return None; }
+        if !self.cfg.null_move_pruning || d < params::NMP_MIN_DEPTH || in_check { return None; }
         let side = self.board.side_to_move as usize;
         if self.board.no_progress_plies >= params::NMP_NO_PROGRESS_LIMIT
             || self.board.piece_count[side] < params::NMP_MIN_SIDE_PIECES
@@ -132,7 +137,8 @@ impl<'a> Ctx<'a> {
     /// ProbCut (depth ≥ 4): statistical pruning — if the static eval is far
     /// enough below alpha, the probability that any move can raise it above
     /// beta is negligible. Reference: "ProbCut" — Kotani, Computer Shogi.
-    fn probcut(d: u32, static_eval: i32, alpha: i32, in_check: bool) -> Option<i32> {
+    fn probcut(&mut self, d: u32, static_eval: i32, alpha: i32, in_check: bool) -> Option<i32> {
+        if !self.cfg.probcut { return None; }
         if let Some(margin) = params::probcut_margin(d) {
             if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
                 return Some(alpha);
@@ -144,7 +150,7 @@ impl<'a> Ctx<'a> {
     /// Internal Iterative Deepening: with no TT move at a non-trivial depth,
     /// run a shallow scout to obtain one from the TT.
     fn iid_move(&mut self, d: u32, hash: u64, tt_move: u32, alpha: i32, beta: i32) -> u32 {
-        if tt_move != 0 || d < params::IID_MIN_DEPTH {
+        if !self.cfg.internal_iterative_deepening || tt_move != 0 || d < params::IID_MIN_DEPTH {
             return tt_move;
         }
         let iid_d = d / 2 - 1;
@@ -173,7 +179,11 @@ impl<'a> Ctx<'a> {
 
         // ── TT PROBE ──────────────────────────────────────────────
         let hash = self.board.hash;
-        let tt_move = self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0);
+        let tt_move = if self.cfg.transposition_table {
+            self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0)
+        } else {
+            0
+        };
 
         // Taikyoku has NO check (SPEC §7.3) — see module docs.
         let in_check = false;
@@ -186,7 +196,7 @@ impl<'a> Ctx<'a> {
         // beams keep each node cheap enough to reach depth 6+.
         if d == 0 {
             let total = self.board.piece_count[0] + self.board.piece_count[1];
-            if total < params::QS_LEAF_PIECE_LIMIT {
+            if self.cfg.quiescence && total < params::QS_LEAF_PIECE_LIMIT {
                 return qsearch::run(self, alpha, beta);
             }
             return evaluate(self.board);
@@ -199,7 +209,7 @@ impl<'a> Ctx<'a> {
         let static_eval = evaluate(self.board);
 
         // ── SHALLOW-EVAL PRUNING (razoring / RFP / futility) ──────
-        if let Some(score) = Self::shallow_eval_prune(d, static_eval, alpha, beta, in_check) {
+        if let Some(score) = self.shallow_eval_prune(d, static_eval, alpha, beta, in_check) {
             return score;
         }
 
@@ -209,7 +219,7 @@ impl<'a> Ctx<'a> {
         }
 
         // ── PROBCUT ───────────────────────────────────────────────
-        if let Some(score) = Self::probcut(d, static_eval, alpha, in_check) {
+        if let Some(score) = self.probcut(d, static_eval, alpha, in_check) {
             return score;
         }
 
@@ -279,9 +289,15 @@ impl<'a> Ctx<'a> {
         // than intended. Scale the threshold with the actual list length so
         // the pruned fraction stays comparable to chess:
         //   beam = base * (1 + tactical_moves / 128)
-        let beam_base = params::capture_beam_base(d);
-        let rps_beam = (beam_base as usize * (1 + cap_moves.len() / params::BEAM_BRANCH_SCALE))
-            .min(params::CAPTURE_BEAM_MAX);
+        // Capture beam: prune captures after the first N searched. Disabled when
+        // cfg.capture_beam is off (all captures are searched).
+        let rps_beam = if self.cfg.capture_beam {
+            let beam_base = params::capture_beam_base(d);
+            (beam_base as usize * (1 + cap_moves.len() / params::BEAM_BRANCH_SCALE))
+                .min(params::CAPTURE_BEAM_MAX)
+        } else {
+            cap_moves.len()
+        };
         // ── Incremental move selection (pick-next) ────────────────────
         // Score once into a flat i32 buffer, then repeatedly select the best
         // remaining move: O(k·n) with k ≈ rps_beam (6-24) instead of a full
@@ -318,12 +334,7 @@ impl<'a> Ctx<'a> {
             if cur_move > 0 && self.past_deadline() { break; }
             let m = &pb.caps[idx];
             // ── CAPTURE FUTILITY PRUNING (depth ≤ 2) ──────────────
-            // If even capturing the most valuable pieces on the board plus a
-            // safety margin cannot lift the static eval to alpha, this capture
-            // cannot possibly raise the score. With ~700 legal moves per node on
-            // a 36×36 board, dropping hopeless captures cheaply (O(1) estimate)
-            // is a large win — we avoid the full apply + subtree search.
-            if d <= 2 && !in_check && cur_move > 0
+            if self.cfg.futility && d <= 2 && !in_check && cur_move > 0
                 && order_score < params::TACTICAL_BASE_SCORE && params::mate_gate_ok(alpha)
             {
                 let values = piece_vals();
@@ -391,9 +402,13 @@ impl<'a> Ctx<'a> {
             }
             let n_quiets = pb.scored.len();
             let improving = static_eval > alpha;
-            let lmp_base = params::lmp_base(d, improving);
-            let lmp_n = (lmp_base * (1 + n_quiets / params::LMP_BRANCH_SCALE))
-                .min(n_quiets).min(params::LMP_MAX);
+            let lmp_n = if self.cfg.late_move_pruning {
+                let lmp_base = params::lmp_base(d, improving);
+                (lmp_base * (1 + n_quiets / params::LMP_BRANCH_SCALE))
+                    .min(n_quiets).min(params::LMP_MAX)
+            } else {
+                n_quiets
+            };
             let select_n = lmp_n;
             if select_n > 1 && pb.scored.len() > select_n {
                 pb.scored.select_nth_unstable_by(select_n - 1, |a, b| b.0.cmp(&a.0));
@@ -412,11 +427,7 @@ impl<'a> Ctx<'a> {
                 }
                 if cur_move > 0 && self.past_deadline() { break; }
                 // ── QUIET FUTILITY PRUNING (depth ≤ 2) ────────────
-                // A quiet move at low depth cannot change the eval by more than a
-                // small margin; if even that margin cannot reach alpha, skip the
-                // move entirely (avoids apply + subtree on the
-                // hundreds of remaining quiets at each node).
-                if d <= params::QUIET_FUTILITY_MAX_DEPTH && !in_check && cur_move > 0
+                if self.cfg.futility && d <= params::QUIET_FUTILITY_MAX_DEPTH && !in_check && cur_move > 0
                     && order_score < params::TACTICAL_BASE_SCORE && params::mate_gate_ok(alpha)
                     && static_eval + params::quiet_futility_margin(d) <= alpha
                 {
@@ -437,10 +448,12 @@ impl<'a> Ctx<'a> {
                 // NOTE: not a true singular extension (which would re-search at
                 // reduced depth with the TT move EXCLUDED to verify it is the
                 // only good move) — just a depth bump for the hash move.
-                let tt_move_ext = d >= params::TT_MOVE_EXT_MIN_DEPTH && !in_check
+                let tt_move_ext = self.cfg.hash_move_extension
+                    && d >= params::TT_MOVE_EXT_MIN_DEPTH && !in_check
                     && iid_move != 0 && packed == iid_move
                     && order_score < params::TACTICAL_BASE_SCORE;
-                let reduction = if cur_move >= params::LMR_MIN_MOVE_INDEX && d >= params::LMR_MIN_DEPTH
+                let reduction = if self.cfg.late_move_reductions
+                    && cur_move >= params::LMR_MIN_MOVE_INDEX && d >= params::LMR_MIN_DEPTH
                     && order_score < params::TACTICAL_BASE_SCORE && !in_check
                 {
                     let base = params::lmr_base(cur_move);
@@ -515,7 +528,8 @@ impl<'a> Ctx<'a> {
 pub(crate) fn pvs_with_pool(board: &mut Board, depth: u32, alpha: i32, beta: i32,
                             nodes: &mut u64, deadline: Option<Instant>, ply: u32,
                             prev_move: u32, stop: &AtomicBool,
-                            pool: &mut SearchPool, tt: &Tt, heur: &mut Heuristics) -> i32 {
-    let mut ctx = Ctx { board, nodes, deadline, ply, prev_move, stop, pool, tt, heur };
+                            pool: &mut SearchPool, tt: &Tt, heur: &mut Heuristics,
+                            cfg: SearchConfig) -> i32 {
+    let mut ctx = Ctx { cfg, board, nodes, deadline, ply, prev_move, stop, pool, tt, heur };
     ctx.run(depth, alpha, beta)
 }

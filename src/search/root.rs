@@ -22,7 +22,7 @@
 use super::buffers::SearchPool;
 use super::heuristics::Heuristics;
 use super::ordering::{self, piece_vals};
-use super::params;
+use super::params::{self, SearchConfig};
 use super::pvs;
 use super::tt::Tt;
 use crate::board::Board;
@@ -99,6 +99,8 @@ impl RootState {
 
 /// Root-search bookkeeping shared by every root move of one iteration.
 pub(crate) struct RootCtx<'a> {
+    /// Technique on/off switches (see [`super::params::SearchConfig`]).
+    pub cfg: SearchConfig,
     pub nodes: &'a mut u64,
     pub deadline: Option<Instant>,
     pub stop: &'a AtomicBool,
@@ -131,6 +133,7 @@ pub(crate) fn search_root_window(
     let tt = rc.tt;
     let heur = &mut *rc.heur;
     let order_offset = rc.order_offset;
+    let cfg = rc.cfg;
 
     if depth == 0 {
         return super::SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
@@ -150,7 +153,7 @@ pub(crate) fn search_root_window(
     // cheap head start before the real iteration.
     if depth > 2 {
         let _ = pvs::pvs_with_pool(board, depth - 2, -MATE_SCORE - 1, MATE_SCORE + 1,
-                                   nodes, deadline, 0, 0, stop, pool, tt, heur);
+                                   nodes, deadline, 0, 0, stop, pool, tt, heur, cfg);
     }
 
     // ── ROOT MOVE LIST (cached across iterations) ──────────────
@@ -189,19 +192,19 @@ pub(crate) fn search_root_window(
             (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
         };
         let score = if rank == 0 {
-            -pvs::pvs_with_pool(board, depth - 1, sa, sb, nodes, deadline, 0, packed, stop, pool, tt, heur)
+            -pvs::pvs_with_pool(board, depth - 1, sa, sb, nodes, deadline, 0, packed, stop, pool, tt, heur, cfg)
         } else {
             let nw = -pvs::pvs_with_pool(board, depth - 1, -sa - 1, -sa, nodes, deadline, 0,
-                                         packed, stop, pool, tt, heur);
+                                         packed, stop, pool, tt, heur, cfg);
             if nw > sa && nw < sb {
                 -pvs::pvs_with_pool(board, depth - 1, -sb, -sa, nodes, deadline, 0,
-                                    packed, stop, pool, tt, heur)
+                                    packed, stop, pool, tt, heur, cfg)
             } else { nw }
         };
         let score = if score <= sa || score >= sb {
             let full = -pvs::pvs_with_pool(board, depth - 1, -MATE_SCORE - 1,
                                            -best_score.max(-MATE_SCORE - 1),
-                                           nodes, deadline, 0, packed, stop, pool, tt, heur);
+                                           nodes, deadline, 0, packed, stop, pool, tt, heur, cfg);
             if full > best_score { best_score = full; best_move = Some(m.clone()); }
             full
         } else {
