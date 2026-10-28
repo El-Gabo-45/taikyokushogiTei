@@ -91,7 +91,8 @@ impl Searcher {
     /// enable/disable individual techniques for testing and A/B experiments:
     ///
     /// ```
-    /// use taikyokushogi::search::{Searcher, SearchConfig};
+    /// use taikyokushogi::search::Searcher;
+    /// use taikyokushogi::search::params::SearchConfig;
     /// let cfg = SearchConfig::minimal();
     /// let s = Searcher::with_config(cfg);
     /// ```
