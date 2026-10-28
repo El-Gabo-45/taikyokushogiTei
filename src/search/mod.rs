@@ -645,8 +645,6 @@ mod tests {
         assert!(r.best_move.is_some());
         assert!(r.nodes > 0);
     }
-}
-
 
     /// `Searcher::with_config` reports the same config via `config()`, and
     /// `share_tt()` inherits it.
