@@ -555,6 +555,7 @@ mod tests {
         let mut searcher = Searcher::with_config(cfg);
         let r = board.search_with(&mut searcher, 3, 0);
         assert!(r.best_move.is_some());
+    }
 
     /// Disabling all shallow-eval pruning (razoring, RFP, futility) must not crash.
     #[test]
