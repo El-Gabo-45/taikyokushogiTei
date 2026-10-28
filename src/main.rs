@@ -25,6 +25,10 @@ struct AppState {
 }
 
 struct GameState {
+    /// Incrementa en cada cambio de estado (new, reset, movimiento aplicado).
+    /// Permite detectar estados obsoletos cuando una búsqueda de IA tarda
+    /// mientras otra petición modifica el tablero.
+    version: u64,
     board: Board,
     move_log: Vec<String>,
     score_history: Vec<i32>,
@@ -37,6 +41,7 @@ impl GameState {
         let board = Board::initial();
         let score = board.material_score();
         GameState {
+            version: 0,
             board,
             move_log: Vec::new(),
             score_history: vec![score],
@@ -56,6 +61,7 @@ impl GameState {
         self.move_log.push(entry);
         let score = self.board.material_score();
         self.score_history.push(score);
+        self.version += 1;
     }
 }
 
@@ -387,7 +393,7 @@ async fn post_ai_move(
     // The old code held `std::sync::Mutex` across `board.search(...)`,
     // blocking the tokio worker thread for the whole search (up to the
     // time limit) and freezing every other request.
-    let snapshot: Board = {
+    let (snapshot, snapshot_version): (Board, u64) = {
         let state = app.board.lock().unwrap();
         if state.game_over {
             return Json(MoveResponse {
@@ -397,7 +403,7 @@ async fn post_ai_move(
                 last_move: None,
             });
         }
-        state.board.clone()
+        (state.board.clone(), state.version)
     };
 
     // CPU-bound search runs on the blocking pool so async handlers keep
@@ -443,14 +449,57 @@ async fn post_ai_move(
     };
 
     let mut state = app.board.lock().unwrap();
-    let piece = match state.board.get(fr, fc) {
-        Some(p) => p.abbrev().to_string(),
-        None => "?".into(),
-    };
-    let side = if state.board.side_to_move() == Color::Black { "Black" } else { "White" };
 
-    // Apply the move using apply_by_coord
-    state.board.apply_by_coord(fr, fc, tr, tc, promotion, mid_sq);
+    // ── CONCURRENCY GUARD ──
+    // Si otra petición cambió el tablero mientras la IA pensaba (new game,
+    // undo, o otra jugada de IA), el snapshot está obsoleto: descartamos la
+    // jugada y reportamos conflicto en lugar de aplicar una jugada inválida.
+    if state.version != snapshot_version {
+        return Json(MoveResponse {
+            ok: false,
+            error: Some("Board changed while computing AI move".into()),
+            board: Some(board_to_response(&state)),
+            last_move: None,
+        });
+    }
+    // También rechazamos si la partida terminó mientras buscábamos.
+    if state.game_over {
+        return Json(MoveResponse {
+            ok: false,
+            error: Some("Game is over".into()),
+            board: Some(board_to_response(&state)),
+            last_move: None,
+        });
+    }
+    // Sanity check: la jugada de la IA debe ser para el lado que le toca mover.
+    let stm = state.board.side_to_move();
+    let piece_at_from = state.board.get(fr, fc);
+    let piece_color_ok = piece_at_from.map_or(false, |p| {
+        (stm == Color::Black && p.color == Color::Black)
+            || (stm == Color::White && p.color == Color::White)
+    });
+    if !piece_color_ok {
+        return Json(MoveResponse {
+            ok: false,
+            error: Some("AI move is not for the side to move".into()),
+            board: Some(board_to_response(&state)),
+            last_move: None,
+        });
+    }
+
+    let piece = piece_at_from.map_or("?".into(), |p| p.abbrev().to_string());
+    let side = if stm == Color::Black { "Black" } else { "White" };
+
+    // Apply the move using apply_by_coord; chequeamos el resultado para no
+    // registrar una jugada que ya no es legal en el estado actual.
+    if !state.board.apply_by_coord(fr, fc, tr, tc, promotion, mid_sq) {
+        return Json(MoveResponse {
+            ok: false,
+            error: Some("AI move no longer legal".into()),
+            board: Some(board_to_response(&state)),
+            last_move: None,
+        });
+    }
     state.record_move(&side, &piece, fr, fc, tr, tc, promotion);
     if state.board.game_result().is_some() {
         state.game_over = true;

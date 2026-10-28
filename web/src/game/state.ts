@@ -87,11 +87,18 @@ export class GameState {
   }
 
   /** Execute a human move. */
-  async play(fr: number, fc: number, tr: number, tc: number, promotion: boolean): Promise<void> {
+  async play(
+    fr: number,
+    fc: number,
+    tr: number,
+    tc: number,
+    promotion: boolean,
+    mid_sq?: number | null,
+  ): Promise<void> {
     if (!this.board || this.board.game_over) return;
     this.selectedSq = null;
     this.legalMoves = [];
-    const resp = await api.sendMove([fr, fc], [tr, tc], promotion);
+    const resp = await api.sendMove([fr, fc], [tr, tc], promotion, mid_sq);
     if (resp.ok && resp.board) {
       this.board = resp.board;
       this.lastMoveFrom = resp.last_move?.from ?? null;
@@ -113,10 +120,12 @@ export class GameState {
         this.lastMoveFrom = resp.last_move?.from ?? null;
         this.lastMoveTo = resp.last_move?.to ?? null;
         this.notify();
-        await this.tryAutoPlay();
       }
     } finally {
       this.aiPending = false;
+      // tryAutoPlay se llama DESPUÉS de liberar aiPending para que
+      // shouldAutoPlay() no devuelva false por una petición aún en curso.
+      await this.tryAutoPlay();
     }
   }
 

@@ -96,12 +96,31 @@ export class Controller {
 
     // If a piece is selected and we click a legal target → play
     if (this.state.selectedSq) {
-      const target = this.state.legalMoves.find(m => m.to[0] === r && m.to[1] === c);
-      if (target && !board.game_over) {
-        const [fr, fc] = this.state.selectedSq;
-        this.state.play(fr, fc, r, c, target.promotion);
+      const matches = this.state.legalMoves.filter(
+        m => m.to[0] === r && m.to[1] === c,
+      );
+      if (matches.length === 0) {
+        // Clicked an empty/illegal square: clear selection
+        this.state.clearSelection();
         return;
       }
+      if (matches.length === 1) {
+        const target = matches[0];
+        if (!board.game_over) {
+          const [fr, fc] = this.state.selectedSq;
+          this.state.play(fr, fc, r, c, target.promotion, target.mid_sq ?? null);
+        }
+        return;
+      }
+      // Multiple legal moves land on the same square (different promotion or
+      // igui mid_sq). Ask the user to disambiguate before playing.
+      const target = this.disambiguateMove(matches);
+      if (!target) return; // user cancelled
+      if (!board.game_over) {
+        const [fr, fc] = this.state.selectedSq;
+        this.state.play(fr, fc, r, c, target.promotion, target.mid_sq ?? null);
+      }
+      return;
     }
 
     // Otherwise try selecting a piece
@@ -123,6 +142,32 @@ export class Controller {
       this.rafId = 0;
       this.draw();
     });
+  }
+
+  /** When several legal moves share the same destination (different promotion
+   *  or igui mid_sq), ask the user to pick one. Returns null on cancel. */
+  private disambiguateMove(matches: import('../types/board').MoveData[]):
+    | import('../types/board').MoveData
+    | null {
+    // Build a short description for each option.
+    const options = matches.map((m, i) => {
+      const promo = m.promotion ? ' (promoción)' : '';
+      const igui = m.is_igui ? ' [igui]' : '';
+      const mid = m.mid_sq != null ? ` mid_sq=${m.mid_sq}` : '';
+      return `${i + 1}. Mover a (${m.to[0]},${m.to[1]})${promo}${igui}${mid}`;
+    });
+    const prompt =
+      'Varios movimientos llegan a esa casilla. Elige uno:\n' +
+      options.join('\n') +
+      '\n\nEscribe el número o pulsa Cancelar para abortar.';
+    const answer = window.prompt(prompt);
+    if (answer === null) return null;
+    const idx = parseInt(answer.trim(), 10) - 1;
+    if (Number.isNaN(idx) || idx < 0 || idx >= matches.length) {
+      window.alert('Opción inválida. Movimiento cancelado.');
+      return null;
+    }
+    return matches[idx];
   }
 
   private draw(): void {

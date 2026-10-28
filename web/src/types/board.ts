@@ -27,6 +27,9 @@ export interface MoveData {
   promotion: boolean;
   is_igui: boolean;
   captured: string | null;
+  /** Intermediate square for igui captures (INVALID_SQ → omitted/null). Distinguishes
+   *  multiple captures from the same from/to squares. */
+  mid_sq?: number | null;
 }
 
 export interface MoveResponse {

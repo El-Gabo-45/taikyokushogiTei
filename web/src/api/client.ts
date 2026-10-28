@@ -43,8 +43,9 @@ export function sendMove(
   from: [number, number],
   to: [number, number],
   promotion = false,
+  mid_sq?: number | null,
 ): Promise<MoveResponse> {
-  return post<MoveResponse>('/api/move', { from, to, promotion });
+  return post<MoveResponse>('/api/move', { from, to, promotion, mid_sq });
 }
 
 /** Ask the AI to generate and apply a move */
