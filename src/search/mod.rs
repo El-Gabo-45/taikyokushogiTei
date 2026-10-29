@@ -158,7 +158,8 @@ impl Searcher {
         // A searcher used on its own owns its stop flag; the workers of a Lazy
         // SMP group share the master's instead (see `search_threads`).
         let stop = AtomicBool::new(false);
-        self.search_impl(board, depth, time_limit_ms, deadline, &stop, None).0
+        self.search_impl(board, depth, time_limit_ms, deadline, &stop, None)
+            .0
     }
 
     /// The iterative-deepening loop behind [`Searcher::search`] and
@@ -168,17 +169,27 @@ impl Searcher {
     /// and `publish` receives every completed iteration so the SMP master can
     /// adopt a worker's deeper result. Returns the result plus the depth of the
     /// last completed iteration (0 when none finished).
-    fn search_impl(&mut self, board: &mut Board, depth: u32, time_limit_ms: u64,
-                   deadline: Option<Instant>, stop: &AtomicBool,
-                   publish: Option<&SharedBest>) -> (SearchResult, u32) {
+    fn search_impl(
+        &mut self,
+        board: &mut Board,
+        depth: u32,
+        time_limit_ms: u64,
+        deadline: Option<Instant>,
+        stop: &AtomicBool,
+        publish: Option<&SharedBest>,
+    ) -> (SearchResult, u32) {
         let start = Instant::now();
         // env::var takes a global lock — cache it once per search, not per iteration.
         let debug_log = std::env::var_os("RPS_DEBUG").is_some();
 
         self.tt.new_generation();
         ordering::piece_vals();
-        let mut best_result =
-            SearchResult { best_move: None, score: evaluate(board), nodes: 0, time_ms: 0 };
+        let mut best_result = SearchResult {
+            best_move: None,
+            score: evaluate(board),
+            nodes: 0,
+            time_ms: 0,
+        };
         // `nodes` is cumulative for the whole search; the scratch pool, the
         // cached root move list and the worker's own heuristics tables live on
         // `self`, so they survive between iterations — and between searches
@@ -190,114 +201,142 @@ impl Searcher {
         let mut last_depth: u32 = 0;
 
         if depth == 0 {
-            let r = SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
+            let r = SearchResult {
+                best_move: None,
+                score: evaluate(board),
+                nodes: 1,
+                time_ms: 0,
+            };
             return (r, 0);
         }
 
-    for current_depth in 1..=depth {
-        if let Some(dl) = deadline {
-            if Instant::now() >= dl { break; }
-        }
-
-        // ── PREDICTIVE TIME MANAGEMENT ────────────────────────
-        // The next iteration typically costs ~4x the previous one (branching
-        // factor). If the last completed iteration's duration times 4 no
-        // longer fits in the remaining budget, stop — starting it would burn
-        // the rest of the time on an unusable partial result. (Standard
-        // technique: predict the next iteration's cost from the previous
-        // one, as in Stockfish.)
-        if current_depth >= 2 && deadline.is_some() && prev_iter_ms > 0 {
-            let elapsed_ms = start.elapsed().as_millis() as u64;
-            let remaining = time_limit_ms.saturating_sub(elapsed_ms);
-            if prev_iter_ms.saturating_mul(params::NEXT_ITER_COST_FACTOR) > remaining { break; }
-        }
-
-        // Search context shared by every root move of this iteration. The
-        // node counter, scratch pool and cached root move list all outlive the
-        // iteration, so nothing is reallocated or regenerated between depths.
-        let mut rc = root::RootCtx {
-            cfg: self.cfg,
-            nodes: &mut nodes,
-            deadline,
-            stop,
-            pool: &mut self.pool,
-            root: &mut self.root,
-            tt: &self.tt,
-            heur: &mut self.heur,
-            order_offset: self.order_offset,
-        };
-        let result = if current_depth <= 1 {
-            root::search_root_window(board, current_depth, &mut rc, root_hint, -MATE_SCORE - 1, MATE_SCORE + 1)
-        } else {
-            // Aspiration windows at ALL depths >= 2. The previous version
-            // disabled them for d >= 5 because a *narrow* (±64) window failed
-            // constantly on this game's volatile scores (the eval can jump
-            // thousands of centipawns between iterations when a large capture
-            // is found), causing long cascades of re-searches. Policy:
-            // initial window ±64 (±200 at d >= 5); on the FIRST fail grow ×8;
-            // on the SECOND fail fall back to the FULL window. At most two
-            // re-searches per iteration, and each failed re-search is much
-            // cheaper than a full-window search thanks to TT hits.
-            let mut window = params::aspiration_window(current_depth);
-            let mut fails = 0u8;
-            let mut alpha = score_guess.saturating_sub(window);
-            let mut beta = score_guess.saturating_add(window);
-            let mut local_result;
-            loop {
-                local_result = root::search_root_window(board, current_depth, &mut rc, root_hint, alpha, beta);
-                if let Some(dl) = deadline {
-                    if Instant::now() >= dl { break; }
+        for current_depth in 1..=depth {
+            if let Some(dl) = deadline {
+                if Instant::now() >= dl {
+                    break;
                 }
-                if local_result.score <= alpha || local_result.score >= beta {
-                    fails += 1;
-                    if fails >= params::ASPIRATION_MAX_FAILS as u8 {
-                        break; // keep the (bounded) result — full re-search not worth it
+            }
+
+            // ── PREDICTIVE TIME MANAGEMENT ────────────────────────
+            // The next iteration typically costs ~4x the previous one (branching
+            // factor). If the last completed iteration's duration times 4 no
+            // longer fits in the remaining budget, stop — starting it would burn
+            // the rest of the time on an unusable partial result. (Standard
+            // technique: predict the next iteration's cost from the previous
+            // one, as in Stockfish.)
+            if current_depth >= 2 && deadline.is_some() && prev_iter_ms > 0 {
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                let remaining = time_limit_ms.saturating_sub(elapsed_ms);
+                if prev_iter_ms.saturating_mul(params::NEXT_ITER_COST_FACTOR) > remaining {
+                    break;
+                }
+            }
+
+            // Search context shared by every root move of this iteration. The
+            // node counter, scratch pool and cached root move list all outlive the
+            // iteration, so nothing is reallocated or regenerated between depths.
+            let mut rc = root::RootCtx {
+                cfg: self.cfg,
+                nodes: &mut nodes,
+                deadline,
+                stop,
+                pool: &mut self.pool,
+                root: &mut self.root,
+                tt: &self.tt,
+                heur: &mut self.heur,
+                order_offset: self.order_offset,
+            };
+            let result = if current_depth <= 1 {
+                root::search_root_window(
+                    board,
+                    current_depth,
+                    &mut rc,
+                    root_hint,
+                    -MATE_SCORE - 1,
+                    MATE_SCORE + 1,
+                )
+            } else {
+                // Aspiration windows at ALL depths >= 2. The previous version
+                // disabled them for d >= 5 because a *narrow* (±64) window failed
+                // constantly on this game's volatile scores (the eval can jump
+                // thousands of centipawns between iterations when a large capture
+                // is found), causing long cascades of re-searches. Policy:
+                // initial window ±64 (±200 at d >= 5); on the FIRST fail grow ×8;
+                // on the SECOND fail fall back to the FULL window. At most two
+                // re-searches per iteration, and each failed re-search is much
+                // cheaper than a full-window search thanks to TT hits.
+                let mut window = params::aspiration_window(current_depth);
+                let mut fails = 0u8;
+                let mut alpha = score_guess.saturating_sub(window);
+                let mut beta = score_guess.saturating_add(window);
+                let mut local_result;
+                loop {
+                    local_result = root::search_root_window(
+                        board,
+                        current_depth,
+                        &mut rc,
+                        root_hint,
+                        alpha,
+                        beta,
+                    );
+                    if let Some(dl) = deadline {
+                        if Instant::now() >= dl {
+                            break;
+                        }
                     }
-                    window = (window * params::ASPIRATION_WINDOW_GROW).min(MATE_SCORE);
-                    if local_result.score <= alpha {
-                        // Fail low: the true score is LOWER than guessed —
-                        // recenter the window on the failed score so the next
-                        // search is bounded around the right region.
-                        score_guess = local_result.score;
+                    if local_result.score <= alpha || local_result.score >= beta {
+                        fails += 1;
+                        if fails >= params::ASPIRATION_MAX_FAILS as u8 {
+                            break; // keep the (bounded) result — full re-search not worth it
+                        }
+                        window = (window * params::ASPIRATION_WINDOW_GROW).min(MATE_SCORE);
+                        if local_result.score <= alpha {
+                            // Fail low: the true score is LOWER than guessed —
+                            // recenter the window on the failed score so the next
+                            // search is bounded around the right region.
+                            score_guess = local_result.score;
+                        }
+                        alpha = score_guess.saturating_sub(window);
+                        beta = score_guess.saturating_add(window);
+                        continue;
                     }
-                    alpha = score_guess.saturating_sub(window);
-                    beta = score_guess.saturating_add(window);
-                    continue;
+                    break;
+                }
+                local_result
+            };
+
+            // A time limit (or a stop) can cut an iteration short. Its partial
+            // result is only adopted when there is nothing better to return: the
+            // FIRST iteration running out of budget mid-way still ranks the root
+            // moves it reached, while for later iterations the last COMPLETED
+            // iteration is the more reliable answer.
+            if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) {
+                if best_result.best_move.is_none() && result.best_move.is_some() {
+                    best_result = result;
                 }
                 break;
             }
-            local_result
-        };
-
-        // A time limit (or a stop) can cut an iteration short. Its partial
-        // result is only adopted when there is nothing better to return: the
-        // FIRST iteration running out of budget mid-way still ranks the root
-        // moves it reached, while for later iterations the last COMPLETED
-        // iteration is the more reliable answer.
-        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) {
-            if best_result.best_move.is_none() && result.best_move.is_some() {
-                best_result = result;
+            // `nodes` is cumulative across the whole search (the root shares one
+            // counter with every iteration), so there is nothing to add up here.
+            if debug_log {
+                eprintln!(
+                    "iter d={} nodes={} score={} t={}ms",
+                    current_depth, nodes, result.score, result.time_ms
+                );
             }
-            break;
-        }
-        // `nodes` is cumulative across the whole search (the root shares one
-        // counter with every iteration), so there is nothing to add up here.
-        if debug_log {
-            eprintln!("iter d={} nodes={} score={} t={}ms", current_depth, nodes, result.score, result.time_ms);
-        }
-        root_hint = result.best_move.as_ref().map(ordering::m_pack);
-        score_guess = result.score;
-        prev_iter_ms = result.time_ms;
-        best_result = result;
-        last_depth = current_depth;
-        // Tell the Lazy SMP master that this iteration is done, so it can adopt
-        // our result if it is deeper than what the master has reached itself.
-        if let Some(shared) = publish {
-            if let Some(m) = best_result.best_move.as_ref() {
-                shared.publish(current_depth, best_result.score, ordering::m_pack(m));
+            root_hint = result.best_move.as_ref().map(ordering::m_pack);
+            score_guess = result.score;
+            prev_iter_ms = result.time_ms;
+            best_result = result;
+            last_depth = current_depth;
+            // Tell the Lazy SMP master that this iteration is done, so it can adopt
+            // our result if it is deeper than what the master has reached itself.
+            if let Some(shared) = publish {
+                if let Some(m) = best_result.best_move.as_ref() {
+                    shared.publish(current_depth, best_result.score, ordering::m_pack(m));
+                }
             }
         }
-    }
 
         let elapsed = start.elapsed().as_millis() as u64;
         if let Some(shared) = publish {
@@ -365,9 +404,16 @@ pub fn hash_mb() -> usize {
 /// Like [`search`], the tables persist across calls on this thread. Results
 /// with `threads > 1` are not bit-reproducible (see
 /// [`Searcher::search_threads`]).
-pub fn search_threads(board: &mut Board, depth: u32, time_limit_ms: u64,
-                      threads: usize) -> SearchResult {
-    DEFAULT_SEARCHER.with(|s| s.borrow_mut().search_threads(board, depth, time_limit_ms, threads))
+pub fn search_threads(
+    board: &mut Board,
+    depth: u32,
+    time_limit_ms: u64,
+    threads: usize,
+) -> SearchResult {
+    DEFAULT_SEARCHER.with(|s| {
+        s.borrow_mut()
+            .search_threads(board, depth, time_limit_ms, threads)
+    })
 }
 
 // ── Lazy SMP tuning surface (the numbers callers may rely on) ────
@@ -380,8 +426,8 @@ pub use self::params::MAX_THREADS;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Board;
     use crate::types;
+    use crate::Board;
 
     #[test]
     fn search_initial_reaches_depth_and_finds_a_move() {
@@ -397,10 +443,18 @@ mod tests {
         let s = Searcher::new();
         let before = s.hash_mb();
         let actual = s.set_hash_mb(8);
-        assert_eq!(actual, s.hash_mb(), "the reported size must be the allocated one");
+        assert_eq!(
+            actual,
+            s.hash_mb(),
+            "the reported size must be the allocated one"
+        );
         assert!(actual >= params::TT_MIN_MB);
         assert_eq!(s.set_hash_mb(before), s.hash_mb());
-        assert_eq!(s.hash_mb(), before, "restoring the previous size must round-trip");
+        assert_eq!(
+            s.hash_mb(),
+            before,
+            "restoring the previous size must round-trip"
+        );
     }
 
     #[test]
@@ -438,14 +492,19 @@ mod tests {
     fn apply_by_coord_out_of_bounds_returns_false_no_panic() {
         let mut board = Board::initial();
         for &(fr, fc, tr, tc) in &[
-            (36, 0, 35, 0), (0, 36, 35, 0), (35, 0, 36, 0), (35, 0, 35, 36),
+            (36, 0, 35, 0),
+            (0, 36, 35, 0),
+            (35, 0, 36, 0),
+            (35, 0, 35, 36),
             (100, 100, 101, 101),
         ] {
             // If this panics, the test fails — which is exactly what we want
             // to catch: out-of-range coordinates must be rejected before any
             // indexing occurs.
-            assert!(!board.apply_by_coord(fr, fc, tr, tc, false, None),
-                    "apply_by_coord({fr},{fc}->{tr},{tc}) must return false");
+            assert!(
+                !board.apply_by_coord(fr, fc, tr, tc, false, None),
+                "apply_by_coord({fr},{fc}->{tr},{tc}) must return false"
+            );
         }
         assert_eq!(board.side_to_move(), crate::Color::Black);
     }
@@ -461,8 +520,10 @@ mod tests {
         let fc = m.inner.from_sq as usize % types::BOARD_SIZE;
         let tr = m.inner.to_sq as usize / types::BOARD_SIZE;
         let tc = m.inner.to_sq as usize % types::BOARD_SIZE;
-        assert!(board.apply_by_coord(fr, fc, tr, tc, false, None),
-                "first legal move from initial position must be accepted");
+        assert!(
+            board.apply_by_coord(fr, fc, tr, tc, false, None),
+            "first legal move from initial position must be accepted"
+        );
         assert_eq!(board.side_to_move(), crate::Color::White);
     }
 
@@ -478,11 +539,15 @@ mod tests {
         let fc = m.inner.from_sq as usize % types::BOARD_SIZE;
         let tr = m.inner.to_sq as usize / types::BOARD_SIZE;
         let tc = m.inner.to_sq as usize % types::BOARD_SIZE;
-        assert!(board.apply_by_coord(fr, fc, tr, tc, false, None),
-                "mid_sq=None must match a normal move");
+        assert!(
+            board.apply_by_coord(fr, fc, tr, tc, false, None),
+            "mid_sq=None must match a normal move"
+        );
         board.undo();
-        assert!(!board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
-                "mid_sq=Some(500) must not match a normal move (mid_sq=NONE)");
+        assert!(
+            !board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
+            "mid_sq=Some(500) must not match a normal move (mid_sq=NONE)"
+        );
         assert_eq!(board.side_to_move(), crate::Color::Black);
     }
 
@@ -494,8 +559,12 @@ mod tests {
         let moves = board.legal_moves();
         assert!(!moves.is_empty(), "initial position must have legal moves");
         for m in &moves {
-            assert_eq!(m.mid_sq(), None,
-                       "initial move {:?} must have mid_sq=None", m);
+            assert_eq!(
+                m.mid_sq(),
+                None,
+                "initial move {:?} must have mid_sq=None",
+                m
+            );
         }
     }
 
@@ -508,8 +577,10 @@ mod tests {
         let mut board = Board::initial();
         let mut searcher = Searcher::with_config(SearchConfig::minimal());
         let r = board.search_with(&mut searcher, 3, 0);
-        assert!(r.best_move.is_some(),
-                "minimal-config search must return a best move");
+        assert!(
+            r.best_move.is_some(),
+            "minimal-config search must return a best move"
+        );
         assert!(r.nodes > 0);
     }
 
@@ -654,8 +725,11 @@ mod tests {
         let master = Searcher::with_config(cfg);
         assert_eq!(master.config(), cfg);
         let worker = master.share_tt();
-        assert_eq!(worker.config(), cfg,
-                   "share_tt must inherit the master's config");
+        assert_eq!(
+            worker.config(),
+            cfg,
+            "share_tt must inherit the master's config"
+        );
     }
 
     /// `Searcher::new()` uses the production config by default.
@@ -677,8 +751,10 @@ mod tests {
         let mut s2 = Searcher::with_config(SearchConfig::minimal());
         let r1 = board1.search_with(&mut s1, 3, 0);
         let r2 = board2.search_with(&mut s2, 3, 0);
-        assert_eq!(r1.best_move, r2.best_move,
-                   "two identical minimal-config searches must agree");
+        assert_eq!(
+            r1.best_move, r2.best_move,
+            "two identical minimal-config searches must agree"
+        );
     }
 
     /// The board is not corrupted by a search: side to move is unchanged.

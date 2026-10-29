@@ -76,7 +76,9 @@ impl Heuristics {
     pub fn history_store(&mut self, from: usize, to: usize, depth: u32, side: u8) {
         let idx = Self::history_idx(from, to, side);
         let bonus = (depth * depth).min(params::HIST_BONUS_CAP as u32) as i32;
-        self.history[idx] = self.history[idx].saturating_add(bonus).min(params::HIST_MAX);
+        self.history[idx] = self.history[idx]
+            .saturating_add(bonus)
+            .min(params::HIST_MAX);
     }
 
     /// History gravity: penalize quiets that failed to cause a cutoff, so next

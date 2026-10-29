@@ -1,8 +1,8 @@
 // Stress-tests the engine at higher depths and longer thinking times,
 // closer to how it would actually be used in a real game.
 // Run with: cargo run --release --example bench_deep
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn run(depth: u32, limit_ms: u64, n_moves: usize) {
     let mut board = Board::initial();
@@ -15,7 +15,9 @@ fn run(depth: u32, limit_ms: u64, n_moves: usize) {
         let mt = Instant::now();
         let result = board.search(depth, limit_ms);
         let ms = mt.elapsed().as_secs_f64() * 1000.0;
-        if ms > max_move_ms { max_move_ms = ms; }
+        if ms > max_move_ms {
+            max_move_ms = ms;
+        }
         total_nodes += result.nodes;
         if let Some(mv) = result.best_move {
             board.apply(&mv);

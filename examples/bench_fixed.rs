@@ -1,12 +1,19 @@
 //! Deterministic fixed-depth benchmark: search from the initial position
 //! with no time limit. Node counts are directly comparable between engine
 //! versions because the search tree is identical at the root.
-use taikyokushogi::Board;
 use std::io::Write;
+use taikyokushogi::Board;
 
 fn main() {
-    let depths: Vec<u32> = std::env::args().skip(1).map(|a| a.parse().unwrap()).collect();
-    let depths = if depths.is_empty() { vec![4, 5, 6] } else { depths };
+    let depths: Vec<u32> = std::env::args()
+        .skip(1)
+        .map(|a| a.parse().unwrap())
+        .collect();
+    let depths = if depths.is_empty() {
+        vec![4, 5, 6]
+    } else {
+        depths
+    };
     for depth in depths {
         let mut board = Board::initial();
         let t = std::time::Instant::now();
@@ -17,7 +24,10 @@ fn main() {
             depth,
             r.nodes,
             r.score,
-            r.best_move.as_ref().map(|m| format!("{}->{}", m.from(), m.to())).unwrap_or_default(),
+            r.best_move
+                .as_ref()
+                .map(|m| format!("{}->{}", m.from(), m.to()))
+                .unwrap_or_default(),
             ms,
             r.nodes as f64 / (ms / 1000.0)
         );

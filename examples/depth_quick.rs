@@ -1,15 +1,24 @@
 //! Quick component benchmark: measures movegen, eval, apply/undo in
 //! isolation with tight iteration counts so it finishes in seconds.
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn bench(name: &str, iters: u32, mut f: impl FnMut()) {
     // warmup
-    for _ in 0..5 { f(); }
+    for _ in 0..5 {
+        f();
+    }
     let t = Instant::now();
-    for _ in 0..iters { f(); }
+    for _ in 0..iters {
+        f();
+    }
     let us = t.elapsed().as_micros() as f64;
-    println!("  {:22} {:>8.1} us/iter  ({} iters)", name, us / iters as f64, iters);
+    println!(
+        "  {:22} {:>8.1} us/iter  ({} iters)",
+        name,
+        us / iters as f64,
+        iters
+    );
 }
 
 fn main() {
@@ -31,12 +40,23 @@ fn main() {
     {
         let mut b = Board::initial();
         // warmup + preallocate history capacity like a real search would
-        for _ in 0..5 { b.apply(&mv); b.undo(); }
+        for _ in 0..5 {
+            b.apply(&mv);
+            b.undo();
+        }
         let t = Instant::now();
         let iters = 2000u32;
-        for _ in 0..iters { b.apply(&mv); b.undo(); }
+        for _ in 0..iters {
+            b.apply(&mv);
+            b.undo();
+        }
         let us = t.elapsed().as_micros() as f64;
-        println!("  {:22} {:>8.1} us/iter  ({} iters)", "apply()+undo()", us / iters as f64, iters);
+        println!(
+            "  {:22} {:>8.1} us/iter  ({} iters)",
+            "apply()+undo()",
+            us / iters as f64,
+            iters
+        );
     }
     bench("Board::clone()", 500, || {
         let _ = board.clone();
@@ -50,14 +70,23 @@ fn main() {
         let t = Instant::now();
         let n = perft(&mut b, 2);
         let s = t.elapsed().as_secs_f64();
-        println!("  perft(2): {} nodes in {:.2}s = {:.0} nps", n, s, n as f64 / s);
+        println!(
+            "  perft(2): {} nodes in {:.2}s = {:.0} nps",
+            n,
+            s,
+            n as f64 / s
+        );
     }
 }
 
 fn perft(board: &mut Board, depth: u32) -> u64 {
-    if depth == 0 { return 1; }
+    if depth == 0 {
+        return 1;
+    }
     let moves = board.legal_moves();
-    if depth == 1 { return moves.len() as u64; }
+    if depth == 1 {
+        return moves.len() as u64;
+    }
     let mut n = 0;
     for m in moves {
         board.apply(&m);
@@ -66,4 +95,3 @@ fn perft(board: &mut Board, depth: u32) -> u64 {
     }
     n
 }
-

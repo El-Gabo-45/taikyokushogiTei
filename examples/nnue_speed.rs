@@ -2,7 +2,7 @@
 //! maintained accumulator, on the same midgame position.
 //!
 //! Run with: cargo run --release --example nnue_speed
-use taikyokushogi::{Board, set_use_nnue};
+use taikyokushogi::{set_use_nnue, Board};
 
 fn main() {
     set_use_nnue(true);
@@ -10,7 +10,10 @@ fn main() {
     // Build a midgame position (12 plies of depth-2 search, like stress_undo).
     for _ in 0..12 {
         let r = board.search(2, 0);
-        match r.best_move { Some(m) => board.apply(&m), None => break }
+        match r.best_move {
+            Some(m) => board.apply(&m),
+            None => break,
+        }
     }
     let tsfen = board.to_tsfen(); // same position, but fresh boards have no accumulator
 
@@ -20,7 +23,9 @@ fn main() {
     // Incremental path: accumulator is already maintained by the applies.
     let iters = 50;
     let t0 = std::time::Instant::now();
-    for _ in 0..iters { let _ = board.evaluate(); }
+    for _ in 0..iters {
+        let _ = board.evaluate();
+    }
     let inc = t0.elapsed() / iters as u32;
 
     // From-scratch path: a board parsed from TSFen has nnue_acc = None, so
@@ -36,12 +41,17 @@ fn main() {
             n_ok += 1;
         }
     }
-    if n_ok > 0 { scr /= n_ok as u32; }
+    if n_ok > 0 {
+        scr /= n_ok as u32;
+    }
 
     println!("NNUE evaluate()  incremental : {:>10.3?}", inc);
     println!("NNUE evaluate()  from-scratch: {:>10.3?}", scr);
     if inc.as_micros() > 0 {
-        println!("speedup: {:>8.1}x", scr.as_nanos() as f64 / inc.as_nanos() as f64);
+        println!(
+            "speedup: {:>8.1}x",
+            scr.as_nanos() as f64 / inc.as_nanos() as f64
+        );
     }
     set_use_nnue(false);
 }

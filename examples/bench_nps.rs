@@ -7,15 +7,19 @@
 //   3. Component-level timing: legal_moves, evaluate, apply+undo
 //   4. Board-clone cost (Lazy SMP workers each get their own board copy)
 //   5. Scaling analysis: how NPS changes with depth
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 /// Perft: count leaf nodes at given depth using only legal move generation.
 /// This measures the raw speed of movegen + apply/undo without search overhead.
 fn perft(board: &mut Board, depth: u32) -> u64 {
-    if depth == 0 { return 1; }
+    if depth == 0 {
+        return 1;
+    }
     let moves = board.legal_moves();
-    if depth == 1 { return moves.len() as u64; }
+    if depth == 1 {
+        return moves.len() as u64;
+    }
     let mut nodes = 0u64;
     for m in &moves {
         board.apply(m);
@@ -28,10 +32,14 @@ fn perft(board: &mut Board, depth: u32) -> u64 {
 /// Measure a component by running it N times and returning avg microseconds.
 fn bench_component<F: FnMut()>(label: &str, iters: usize, mut f: F) -> f64 {
     // Warmup
-    for _ in 0..(iters / 10).max(1) { f(); }
+    for _ in 0..(iters / 10).max(1) {
+        f();
+    }
 
     let t = Instant::now();
-    for _ in 0..iters { f(); }
+    for _ in 0..iters {
+        f();
+    }
     let us = t.elapsed().as_micros() as f64 / iters as f64;
     println!("  {:<30} {:>8.1} us/call  ({} iters)", label, us, iters);
     us
@@ -45,8 +53,12 @@ fn main() {
     let board = Board::initial();
     let n_black = board.piece_count(taikyokushogi::Color::Black);
     let n_white = board.piece_count(taikyokushogi::Color::White);
-    println!("Initial position: {} pieces (B:{} W:{})\n",
-             n_black + n_white, n_black, n_white);
+    println!(
+        "Initial position: {} pieces (B:{} W:{})\n",
+        n_black + n_white,
+        n_black,
+        n_white
+    );
 
     // ── 1. Component-level timing ────────────────────────────────
     println!("── Component Timing (initial position) ──────────────────────");
@@ -98,25 +110,42 @@ fn main() {
         let nodes = perft(&mut board, depth);
         let secs = t.elapsed().as_secs_f64();
         let nps = nodes as f64 / secs;
-        println!("  perft({}): {:>12} nodes  {:>8.3}s  {:>12.0} nps",
-                 depth, nodes, secs, nps);
+        println!(
+            "  perft({}): {:>12} nodes  {:>8.3}s  {:>12.0} nps",
+            depth, nodes, secs, nps
+        );
     }
 
     // ── 3. Search NPS at fixed depths ────────────────────────────
     println!("\n── Search NPS (fixed time budget) ───────────────────────────");
-    println!("  {:<6} {:<8} {:>12} {:>10} {:>12}",
-             "depth", "limit", "nodes", "time_ms", "nps");
+    println!(
+        "  {:<6} {:<8} {:>12} {:>10} {:>12}",
+        "depth", "limit", "nodes", "time_ms", "nps"
+    );
 
     for depth in [1u32, 2, 3, 4, 5, 6].iter() {
         let mut board = Board::initial();
-        let limit_ms = if *depth <= 2 { 500 } else if *depth <= 4 { 10000 } else { 30000 };
+        let limit_ms = if *depth <= 2 {
+            500
+        } else if *depth <= 4 {
+            10000
+        } else {
+            30000
+        };
         let result = board.search(*depth, limit_ms);
         let nps = if result.time_ms > 0 {
             result.nodes as f64 / (result.time_ms as f64 / 1000.0)
-        } else { 0.0 };
-        println!("  {:<6} {:<8} {:>12} {:>10} {:>12.0}",
-                 depth, format!("{}ms", limit_ms), result.nodes,
-                 result.time_ms, nps);
+        } else {
+            0.0
+        };
+        println!(
+            "  {:<6} {:<8} {:>12} {:>10} {:>12.0}",
+            depth,
+            format!("{}ms", limit_ms),
+            result.nodes,
+            result.time_ms,
+            nps
+        );
     }
 
     // ── 4. Selfplay NPS (realistic game scenario) ────────────────
@@ -138,8 +167,10 @@ fn main() {
         }
         let secs = t.elapsed().as_secs_f64();
         let nps = total_nodes as f64 / secs;
-        println!("  depth={}  moves={}  nodes={:>10}  time={:.2}s  nps={:.0}",
-                 depth, moves_played, total_nodes, secs, nps);
+        println!(
+            "  depth={}  moves={}  nodes={:>10}  time={:.2}s  nps={:.0}",
+            depth, moves_played, total_nodes, secs, nps
+        );
     }
 
     // ── 5. Midgame NPS (after 12 plies) ──────────────────────────
@@ -157,7 +188,12 @@ fn main() {
 
         let n_b = board.piece_count(taikyokushogi::Color::Black);
         let n_w = board.piece_count(taikyokushogi::Color::White);
-        println!("  Midgame position: {} pieces (B:{} W:{})", n_b + n_w, n_b, n_w);
+        println!(
+            "  Midgame position: {} pieces (B:{} W:{})",
+            n_b + n_w,
+            n_b,
+            n_w
+        );
 
         // legal_moves in midgame
         let t = Instant::now();
@@ -168,7 +204,11 @@ fn main() {
             total_moves += moves.len();
         }
         let us = t.elapsed().as_micros() as f64 / iters as f64;
-        println!("  legal_moves(): {} moves  {:.1}us each", total_moves / iters, us);
+        println!(
+            "  legal_moves(): {} moves  {:.1}us each",
+            total_moves / iters,
+            us
+        );
 
         // Search NPS in midgame
         for depth in [2u32, 3, 4].iter() {
@@ -177,8 +217,10 @@ fn main() {
             let result = b.search(*depth, 1000);
             let secs = t.elapsed().as_secs_f64();
             let nps = result.nodes as f64 / secs;
-            println!("  search(depth={}): {} nodes  {:.3}s  {:.0} nps",
-                     depth, result.nodes, secs, nps);
+            println!(
+                "  search(depth={}): {} nodes  {:.3}s  {:.0} nps",
+                depth, result.nodes, secs, nps
+            );
         }
     }
 

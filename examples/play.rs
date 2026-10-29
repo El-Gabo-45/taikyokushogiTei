@@ -6,18 +6,20 @@
 //! cargo run --release --example play
 //! ```
 
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn main() {
     println!("=== Taikyoku Shogi Self-Play ===");
-    println!("Board: 36x36 = {} squares", 36*36);
+    println!("Board: 36x36 = {} squares", 36 * 36);
     println!();
 
     let mut board = Board::initial();
-    println!("Initial: Black={} White={}",
-             board.piece_count(taikyokushogi::Color::Black),
-             board.piece_count(taikyokushogi::Color::White));
+    println!(
+        "Initial: Black={} White={}",
+        board.piece_count(taikyokushogi::Color::Black),
+        board.piece_count(taikyokushogi::Color::White)
+    );
 
     let start = Instant::now();
     let mut total_nodes: u64 = 0;
@@ -36,8 +38,15 @@ fn main() {
 
         if let Some(mv) = result.best_move {
             if move_no < 5 || move_no % 20 == 19 || move_no >= max_moves - 5 {
-                println!("Move {:3}: {}->{} score={:6} nodes={:7} time={}ms",
-                         move_no + 1, mv.from(), mv.to(), result.score, result.nodes, result.time_ms);
+                println!(
+                    "Move {:3}: {}->{} score={:6} nodes={:7} time={}ms",
+                    move_no + 1,
+                    mv.from(),
+                    mv.to(),
+                    result.score,
+                    result.nodes,
+                    result.time_ms
+                );
             }
             board.apply(&mv);
             total_moves += 1;
@@ -55,10 +64,15 @@ fn main() {
     println!("Total nodes: {}", total_nodes);
     println!("Total time: {}ms", ms);
     if ms > 0 {
-        println!("Search speed: {:.0} nps", total_nodes as f64 / (ms as f64 / 1000.0));
+        println!(
+            "Search speed: {:.0} nps",
+            total_nodes as f64 / (ms as f64 / 1000.0)
+        );
     }
-    println!("Final: Black={} White={}",
-             board.piece_count(taikyokushogi::Color::Black),
-             board.piece_count(taikyokushogi::Color::White));
+    println!(
+        "Final: Black={} White={}",
+        board.piece_count(taikyokushogi::Color::Black),
+        board.piece_count(taikyokushogi::Color::White)
+    );
     println!("Material score (Black): {}", board.material_score());
 }

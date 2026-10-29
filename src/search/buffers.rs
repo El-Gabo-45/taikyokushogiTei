@@ -94,9 +94,15 @@ impl SearchPool {
     /// is constant after warmup, which is the whole point of the pool.
     #[allow(dead_code)] // used by tests / diagnostics
     pub fn capacity_items(&self) -> usize {
-        self.plies.iter()
-            .map(|p| p.moves.capacity() + p.caps.capacity() + p.scored.capacity()
-                     + p.cap_scores.capacity() + p.cap_order.capacity())
+        self.plies
+            .iter()
+            .map(|p| {
+                p.moves.capacity()
+                    + p.caps.capacity()
+                    + p.scored.capacity()
+                    + p.cap_scores.capacity()
+                    + p.cap_order.capacity()
+            })
             .sum()
     }
 
@@ -118,7 +124,6 @@ impl Default for SearchPool {
         Self::new()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -175,7 +180,11 @@ mod tests {
             pb.scored.extend([(0i32, 0u32, 0u32); 700]);
             pool.put(ply, pb);
         }
-        assert_eq!(first, pool.capacity_items(), "refilling must not reallocate");
+        assert_eq!(
+            first,
+            pool.capacity_items(),
+            "refilling must not reallocate"
+        );
     }
 
     #[test]

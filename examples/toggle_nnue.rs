@@ -9,8 +9,8 @@
 // Usage: cargo run --release --example toggle_nnue
 //    or: TAIKYOKU_NNUE_PATH=/path/to/trained.nnue cargo run --release --example toggle_nnue
 
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn main() {
     taikyokushogi::set_use_nnue(false);
@@ -18,13 +18,21 @@ fn main() {
     let board = Board::initial();
     let t = Instant::now();
     let score_handcrafted = board.evaluate();
-    println!("hand-crafted eval: score = {}, took {:?}", score_handcrafted, t.elapsed());
+    println!(
+        "hand-crafted eval: score = {}, took {:?}",
+        score_handcrafted,
+        t.elapsed()
+    );
 
     taikyokushogi::set_use_nnue(true);
     println!("\nusing_nnue() = {}", taikyokushogi::using_nnue());
     let t = Instant::now();
     let score_nnue = board.evaluate();
-    println!("NNUE eval:          score = {}, took {:?}", score_nnue, t.elapsed());
+    println!(
+        "NNUE eval:          score = {}, took {:?}",
+        score_nnue,
+        t.elapsed()
+    );
 
     if score_handcrafted != score_nnue {
         println!("\nOK: the two backends produced different scores, confirming the toggle switches evaluation logic.");

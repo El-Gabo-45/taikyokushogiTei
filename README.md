@@ -217,7 +217,8 @@ Elo math follows the standard logistic model (`expected_score`,
 
 ### Requirements
 
-- A recent stable **Rust toolchain** (the crate targets Rust edition 2021).
+- A recent stable **Rust toolchain** (edition 2021). **Cargo 1.78+** is
+  required because `Cargo.lock` is written in version 4 format.
 - **Node.js + npm** only if you want to rebuild the `web/` frontend
   (TypeScript + Vite; a prebuilt `dist/` is committed).
 - **Python 3.9+** only for the NNUE training pipeline in `training/` (see

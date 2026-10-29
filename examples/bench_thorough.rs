@@ -9,8 +9,8 @@
 //      ~500+ moves per position, an unbounded depth-2 search takes many minutes.
 //
 // Run with: cargo run --release --example bench_thorough
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 const RUNS_PER_DEPTH: usize = 2;
 const BUDGET_FAST_MS: u64 = 2_000;
@@ -47,14 +47,17 @@ fn run_search(board: &mut Board, depth: u32, time_limit_ms: u64) -> RunStats {
         nps,
         score: result.score,
         overshoot_ms: overshoot,
-        best_move: result.best_move
+        best_move: result
+            .best_move
             .map(|m| format!("{}", m))
             .unwrap_or_else(|| "none".to_string()),
     }
 }
 
 fn median(vals: &mut [f64]) -> f64 {
-    if vals.is_empty() { return 0.0; }
+    if vals.is_empty() {
+        return 0.0;
+    }
     vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = vals.len() / 2;
     if vals.len() % 2 == 0 {
@@ -64,12 +67,7 @@ fn median(vals: &mut [f64]) -> f64 {
     }
 }
 
-fn benchmark_depth(
-    label: &str,
-    board_factory: &dyn Fn() -> Board,
-    depth: u32,
-    time_limit_ms: u64,
-) {
+fn benchmark_depth(label: &str, board_factory: &dyn Fn() -> Board, depth: u32, time_limit_ms: u64) {
     let mut nodes: Vec<f64> = Vec::with_capacity(RUNS_PER_DEPTH);
     let mut times: Vec<f64> = Vec::with_capacity(RUNS_PER_DEPTH);
     let mut nps_all: Vec<f64> = Vec::with_capacity(RUNS_PER_DEPTH);
@@ -106,7 +104,11 @@ fn benchmark_depth(
     let score_str = if scores.iter().all(|&s| s == scores[0]) {
         format!("{}", scores[0])
     } else {
-        format!("{}..{}", scores.iter().min().unwrap(), scores.iter().max().unwrap())
+        format!(
+            "{}..{}",
+            scores.iter().min().unwrap(),
+            scores.iter().max().unwrap()
+        )
     };
 
     println!(
@@ -172,7 +174,12 @@ fn main() {
     let midgame = reach_position(12);
     let n_b = midgame.piece_count(taikyokushogi::Color::Black);
     let n_w = midgame.piece_count(taikyokushogi::Color::White);
-    println!("  {} pieces (B:{} W:{}) — real depth scaling can be measured here.\n", n_b + n_w, n_b, n_w);
+    println!(
+        "  {} pieces (B:{} W:{}) — real depth scaling can be measured here.\n",
+        n_b + n_w,
+        n_b,
+        n_w
+    );
 
     let midgame_factory = {
         let mg = midgame.clone();
@@ -207,7 +214,12 @@ fn main() {
     let endgame = reach_position(40);
     let e_b = endgame.piece_count(taikyokushogi::Color::Black);
     let e_w = endgame.piece_count(taikyokushogi::Color::White);
-    println!("  {} pieces (B:{} W:{}) — quiescence search matters here.\n", e_b + e_w, e_b, e_w);
+    println!(
+        "  {} pieces (B:{} W:{}) — quiescence search matters here.\n",
+        e_b + e_w,
+        e_b,
+        e_w
+    );
 
     let endgame_factory = {
         let eg = endgame.clone();

@@ -142,11 +142,11 @@ pub enum GameResult {
 /// Movement rules for a piece type.
 #[derive(Clone, Debug)]
 pub struct Movement {
-    pub slides: Vec<(u8, u8)>,       // (direction, max_range) 0=unlimited
-    pub jumps: Vec<(i8, i8)>,        // (delta_row, delta_col)
+    pub slides: Vec<(u8, u8)>, // (direction, max_range) 0=unlimited
+    pub jumps: Vec<(i8, i8)>,  // (delta_row, delta_col)
     pub hook: Option<HookType>,
-    pub area: u8,                     // 0=none, 2=lion, 3=lion_dog
-    pub range_capture: Vec<u8>,       // directions for range capture
+    pub area: u8,               // 0=none, 2=lion, 3=lion_dog
+    pub range_capture: Vec<u8>, // directions for range capture
     pub igui: bool,
 }
 
@@ -179,11 +179,11 @@ pub struct Move {
     pub from_sq: u16,
     pub to_sq: u16,
     pub promotion: bool,
-    pub captured_piece: u16,   // 0 if no capture
+    pub captured_piece: u16, // 0 if no capture
     pub captured_color: u8,
     pub is_igui: bool,
     // For lion mid-capture
-    pub mid_sq: u16,           // INVALID_SQ if none
+    pub mid_sq: u16, // INVALID_SQ if none
     pub mid_piece: u16,
     pub mid_color: u8,
     /// True for moves emitted by the range-capture generator. `apply_move`
@@ -201,10 +201,17 @@ pub struct Move {
 impl Move {
     pub fn simple(from: u16, to: u16) -> Self {
         Move {
-            from_sq: from, to_sq: to, promotion: false,
-            captured_piece: 0, captured_color: 0, is_igui: false,
-            mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-            range_cap: false, caps_value: 0,
+            from_sq: from,
+            to_sq: to,
+            promotion: false,
+            captured_piece: 0,
+            captured_color: 0,
+            is_igui: false,
+            mid_sq: INVALID_SQ,
+            mid_piece: 0,
+            mid_color: 0,
+            range_cap: false,
+            caps_value: 0,
         }
     }
 }
@@ -286,7 +293,11 @@ impl RayTable {
                 lens[idx] = count;
             }
         }
-        RayTable { offsets, lens, data }
+        RayTable {
+            offsets,
+            lens,
+            data,
+        }
     }
 
     /// Get the ray from `sq` in direction `dir`.
@@ -327,7 +338,9 @@ fn zobrist_table() -> &'static ZobristTable {
     ZOBRIST_TABLE.get_or_init(|| {
         let mut s: u64 = 0xDEAD_BEEF_CAFE_1234;
         let mut rng = || -> u64 {
-            s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
             s.wrapping_mul(0x9E37_79B9_7F4A_7C15)
         };
         // 512 slots: pt*2 + color, covers all piece types + promotions for both sides
@@ -337,7 +350,10 @@ fn zobrist_table() -> &'static ZobristTable {
                 piece_keys[pt][sq] = rng();
             }
         }
-        ZobristTable { piece_keys, side_key: rng() }
+        ZobristTable {
+            piece_keys,
+            side_key: rng(),
+        }
     })
 }
 

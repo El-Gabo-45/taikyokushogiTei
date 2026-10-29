@@ -56,14 +56,18 @@ impl Wdl {
     /// Average score in points (win = 1, draw = 0.5, loss = 0).
     pub fn score(&self) -> f64 {
         let n = self.total();
-        if n == 0 { return 0.5; }
+        if n == 0 {
+            return 0.5;
+        }
         (self.wins as f64 + 0.5 * self.draws as f64) / n as f64
     }
 
     /// Variance of the per-game score (trinomial).
     pub fn variance(&self) -> f64 {
         let n = self.total();
-        if n == 0 { return 0.0; }
+        if n == 0 {
+            return 0.0;
+        }
         let s = self.score();
         (self.wins as f64 + 0.25 * self.draws as f64) / n as f64 - s * s
     }
@@ -79,13 +83,16 @@ impl Wdl {
     /// estimate so the interval stays finite.
     pub fn elo_margin95(&self) -> f64 {
         let n = self.total();
-        if n == 0 { return 0.0; }
+        if n == 0 {
+            return 0.0;
+        }
         let s = self.score();
         let var = self.variance();
         if var <= 0.0 {
             // Deterministic outcome: pretend the score had a small spread.
             let fake = 0.25 / (n as f64 + 1.0);
-            return (1.96 * fake.sqrt() * 400.0 / (std::f64::consts::LN_10 * s * (1.0 - s))).min(2000.0);
+            return (1.96 * fake.sqrt() * 400.0 / (std::f64::consts::LN_10 * s * (1.0 - s)))
+                .min(2000.0);
         }
         1.96 * (var / n as f64).sqrt() * (400.0 / (std::f64::consts::LN_10 * s * (1.0 - s)))
     }
@@ -118,13 +125,23 @@ pub struct EngineConfig {
 
 impl EngineConfig {
     pub fn depth(d: u32) -> Self {
-        EngineConfig { depth: d, time_ms: 0, nnue: false, threads: search::DEFAULT_THREADS }
+        EngineConfig {
+            depth: d,
+            time_ms: 0,
+            nnue: false,
+            threads: search::DEFAULT_THREADS,
+        }
     }
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig { depth: 2, time_ms: 0, nnue: false, threads: search::DEFAULT_THREADS }
+        EngineConfig {
+            depth: 2,
+            time_ms: 0,
+            nnue: false,
+            threads: search::DEFAULT_THREADS,
+        }
     }
 }
 
@@ -154,12 +171,22 @@ pub fn play_game(white: &EngineConfig, black: &EngineConfig, max_plies: u32) -> 
     let mut plies: u32 = 0;
     loop {
         if let Some(r) = board.game_result() {
-            return GameOutcome { result: to_public(r), plies };
+            return GameOutcome {
+                result: to_public(r),
+                plies,
+            };
         }
         if max_plies > 0 && plies >= max_plies {
-            return GameOutcome { result: GameResult::Draw, plies };
+            return GameOutcome {
+                result: GameResult::Draw,
+                plies,
+            };
         }
-        let cfg = if board.side_to_move == 0 { white } else { black };
+        let cfg = if board.side_to_move == 0 {
+            white
+        } else {
+            black
+        };
         match apply_best(&mut board, cfg) {
             Some(m) => board.apply_move(&m),
             None => {
@@ -246,12 +273,19 @@ impl MatchReport {
     pub fn print(&self) {
         let w = self.wdl;
         println!("=== Match Report ===");
-        println!("Games: {}   A: {} - {} - {} B", self.games, w.wins, w.draws, w.losses);
+        println!(
+            "Games: {}   A: {} - {} - {} B",
+            self.games, w.wins, w.draws, w.losses
+        );
         println!("Score: {:.3} / {:.1}", w.score(), 0.5 * self.games as f64);
         let (lo, hi) = w.elo_interval95();
-        println!("Elo:   {:+.1} ± {:.1} (95%)  [{:+.1}, {:+.1}]", self.elo, self.margin95, lo, hi);
+        println!(
+            "Elo:   {:+.1} ± {:.1} (95%)  [{:+.1}, {:+.1}]",
+            self.elo, self.margin95, lo, hi
+        );
         if !self.plies.is_empty() {
-            let avg: f64 = self.plies.iter().map(|&p| p as f64).sum::<f64>() / self.plies.len() as f64;
+            let avg: f64 =
+                self.plies.iter().map(|&p| p as f64).sum::<f64>() / self.plies.len() as f64;
             println!("Avg plies/game: {:.1}", avg);
         }
     }
@@ -263,7 +297,11 @@ pub fn run_match(cfg: &MatchConfig) -> MatchReport {
     let mut plies = Vec::with_capacity(cfg.games);
     for g in 0..cfg.games {
         let a_was_white = g % 2 == 0;
-        let (white, black) = if a_was_white { (cfg.a, cfg.b) } else { (cfg.b, cfg.a) };
+        let (white, black) = if a_was_white {
+            (cfg.a, cfg.b)
+        } else {
+            (cfg.b, cfg.a)
+        };
         let outcome = play_game(&white, &black, cfg.max_plies);
         let (w, d, l) = points_from_a(outcome.result, a_was_white);
         wdl.wins += w;
@@ -300,21 +338,30 @@ pub struct Sprt {
 
 impl Default for Sprt {
     fn default() -> Self {
-        Sprt { elo0: 0.0, elo1: 10.0, alpha: 0.05, beta: 0.05 }
+        Sprt {
+            elo0: 0.0,
+            elo1: 10.0,
+            alpha: 0.05,
+            beta: 0.05,
+        }
     }
 }
 
 impl Sprt {
     fn bounds(&self) -> (f64, f64) {
-        (self.beta.ln() - (1.0 - self.alpha).ln(),
-         (1.0 - self.beta).ln() - self.alpha.ln())
+        (
+            self.beta.ln() - (1.0 - self.alpha).ln(),
+            (1.0 - self.beta).ln() - self.alpha.ln(),
+        )
     }
 
     /// Log-likelihood ratio after the given WDL, under the Gaussian
     /// approximation used by fishtest / bayeselo.
     pub fn llr(&self, wdl: &Wdl) -> f64 {
         let n = wdl.total();
-        if n == 0 { return 0.0; }
+        if n == 0 {
+            return 0.0;
+        }
         let e0 = expected_score(self.elo0);
         let e1 = expected_score(self.elo1);
         let s = wdl.score();
@@ -326,9 +373,13 @@ impl Sprt {
     pub fn decision(&self, wdl: &Wdl) -> SprtDecision {
         let (lb, ub) = self.bounds();
         let llr = self.llr(wdl);
-        if llr >= ub { SprtDecision::AcceptH1 }
-        else if llr <= lb { SprtDecision::AcceptH0 }
-        else { SprtDecision::Continue }
+        if llr >= ub {
+            SprtDecision::AcceptH1
+        } else if llr <= lb {
+            SprtDecision::AcceptH0
+        } else {
+            SprtDecision::Continue
+        }
     }
 }
 
@@ -365,7 +416,10 @@ pub struct SprtReport {
 impl SprtReport {
     pub fn print(&self) {
         println!("=== SPRT Report ===");
-        println!("Games: {}   WDL: {} - {} - {}", self.games, self.wdl.wins, self.wdl.draws, self.wdl.losses);
+        println!(
+            "Games: {}   WDL: {} - {} - {}",
+            self.games, self.wdl.wins, self.wdl.draws, self.wdl.losses
+        );
         println!("Score: {:.3}   Elo: {:+.1}", self.wdl.score(), self.elo);
         println!("LLR:   {:+.2}  ->  {}", self.llr, self.decision);
     }
@@ -377,15 +431,23 @@ pub fn run_sprt(cfg: &MatchConfig, sprt: &Sprt) -> SprtReport {
     let mut games = 0usize;
     for g in 0..cfg.games {
         let a_was_white = g % 2 == 0;
-        let (white, black) = if a_was_white { (cfg.a, cfg.b) } else { (cfg.b, cfg.a) };
+        let (white, black) = if a_was_white {
+            (cfg.a, cfg.b)
+        } else {
+            (cfg.b, cfg.a)
+        };
         let outcome = play_game(&white, &black, cfg.max_plies);
         let (w, d, l) = points_from_a(outcome.result, a_was_white);
         wdl.wins += w;
         wdl.draws += d;
         wdl.losses += l;
         games += 1;
-        if let Some(cb) = cfg.on_game { cb(g, outcome.result, a_was_white); }
-        if sprt.decision(&wdl) != SprtDecision::Continue { break; }
+        if let Some(cb) = cfg.on_game {
+            cb(g, outcome.result, a_was_white);
+        }
+        if sprt.decision(&wdl) != SprtDecision::Continue {
+            break;
+        }
     }
     SprtReport {
         games,
@@ -435,12 +497,24 @@ mod tests {
 
     #[test]
     fn wdl_score_and_elo() {
-        let w = Wdl { wins: 10, draws: 5, losses: 5 };
+        let w = Wdl {
+            wins: 10,
+            draws: 5,
+            losses: 5,
+        };
         assert_eq!(w.total(), 20);
         assert!(close(w.score(), 0.625, 1e-12));
         assert!(w.elo() > 0.0);
-        assert!(close(w.variance(), 10.0 / 20.0 + 0.25 * 5.0 / 20.0 - 0.625 * 0.625, 1e-12));
-        let balanced = Wdl { wins: 5, draws: 10, losses: 5 };
+        assert!(close(
+            w.variance(),
+            10.0 / 20.0 + 0.25 * 5.0 / 20.0 - 0.625 * 0.625,
+            1e-12
+        ));
+        let balanced = Wdl {
+            wins: 5,
+            draws: 10,
+            losses: 5,
+        };
         assert!(close(balanced.elo(), 0.0, 1e-9));
         // empty tally is well-defined
         let empty = Wdl::default();
@@ -450,13 +524,25 @@ mod tests {
 
     #[test]
     fn confidence_interval_shrinks_and_centers() {
-        let few = Wdl { wins: 6, draws: 2, losses: 2 };
-        let many = Wdl { wins: 600, draws: 200, losses: 200 };
+        let few = Wdl {
+            wins: 6,
+            draws: 2,
+            losses: 2,
+        };
+        let many = Wdl {
+            wins: 600,
+            draws: 200,
+            losses: 200,
+        };
         assert!(many.elo_margin95() < few.elo_margin95());
         let (lo, hi) = many.elo_interval95();
         assert!(lo < many.elo() && many.elo() < hi);
         // degenerate outcomes don't produce NaN / infinity
-        let all_wins = Wdl { wins: 100, draws: 0, losses: 0 };
+        let all_wins = Wdl {
+            wins: 100,
+            draws: 0,
+            losses: 0,
+        };
         assert!(all_wins.elo_margin95().is_finite());
         let (lo, hi) = all_wins.elo_interval95();
         assert!(lo.is_finite() && hi.is_finite());
@@ -467,15 +553,35 @@ mod tests {
     fn sprt_decisions() {
         let s = Sprt::default();
         // crushing loss → H0; crushing win → H1; too little data → continue.
-        let lost_all = Wdl { wins: 0, draws: 0, losses: 30 };
+        let lost_all = Wdl {
+            wins: 0,
+            draws: 0,
+            losses: 30,
+        };
         assert_eq!(s.decision(&lost_all), SprtDecision::AcceptH0);
-        let won_all = Wdl { wins: 30, draws: 0, losses: 0 };
+        let won_all = Wdl {
+            wins: 30,
+            draws: 0,
+            losses: 0,
+        };
         assert_eq!(s.decision(&won_all), SprtDecision::AcceptH1);
-        let even = Wdl { wins: 1, draws: 0, losses: 1 };
+        let even = Wdl {
+            wins: 1,
+            draws: 0,
+            losses: 1,
+        };
         assert_eq!(s.decision(&even), SprtDecision::Continue);
         // LLR is monotone in the score
-        let weak = Wdl { wins: 4, draws: 2, losses: 4 };
-        let strong = Wdl { wins: 6, draws: 2, losses: 2 };
+        let weak = Wdl {
+            wins: 4,
+            draws: 2,
+            losses: 4,
+        };
+        let strong = Wdl {
+            wins: 6,
+            draws: 2,
+            losses: 2,
+        };
         assert!(s.llr(&strong) > s.llr(&weak));
         // alpha = beta = 0.05 → symmetric bounds ±ln(19)
         let (lb, ub) = s.bounds();
@@ -520,12 +626,22 @@ mod tests {
         // produce normal moves and still terminate under the ply cap.
         // Same global-state concerns as play_game_returns_valid_outcome.
         let _serial = crate::test_lock::lock();
-        assert_eq!(EngineConfig::default().threads, search::DEFAULT_THREADS,
-                   "single-threaded is the default; SMP must be opt-in");
-        let smp = EngineConfig { threads: 2, ..EngineConfig::depth(1) };
+        assert_eq!(
+            EngineConfig::default().threads,
+            search::DEFAULT_THREADS,
+            "single-threaded is the default; SMP must be opt-in"
+        );
+        let smp = EngineConfig {
+            threads: 2,
+            ..EngineConfig::depth(1)
+        };
         let single = EngineConfig::depth(1);
         let o = play_game(&smp, &single, 4); // 1 thread vs 2 threads
-        assert_eq!(o.result, GameResult::Draw, "the ply cap scores it as a draw");
+        assert_eq!(
+            o.result,
+            GameResult::Draw,
+            "the ply cap scores it as a draw"
+        );
         assert_eq!(o.plies, 4, "every ply must produce a move");
     }
 
@@ -584,7 +700,11 @@ mod tests {
             on_game: None,
         };
         let r = run_sprt(&cfg, &Sprt::default());
-        assert!(r.games < 200, "SPRT should stop early on all-draws, took {} games", r.games);
+        assert!(
+            r.games < 200,
+            "SPRT should stop early on all-draws, took {} games",
+            r.games
+        );
         assert_eq!(r.decision, SprtDecision::AcceptH0);
         assert_eq!(r.wdl.total(), r.games as u64);
     }

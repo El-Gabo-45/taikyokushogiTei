@@ -10,7 +10,7 @@ use crate::eval::MATE_SCORE;
 // ── Move-ordering score ladder ──────────────────────────────────
 // Priority: TT move > root hint > tactical (MVV-LVA) > killers > history+counter.
 pub const ROOT_HINT_SCORE: i32 = 3_000_000; // previous-iteration best-move bonus
-pub const TT_MOVE_SCORE: i32 = 2_000_000;   // hash move always first
+pub const TT_MOVE_SCORE: i32 = 2_000_000; // hash move always first
 pub const TACTICAL_BASE_SCORE: i32 = 1_000_000;
 pub const KILLER1_SCORE: i32 = 90_000;
 pub const KILLER2_SCORE: i32 = 80_000;
@@ -37,23 +37,41 @@ pub fn mate_gate_ok(window_edge: i32) -> bool {
 
 /// Razoring: `static_eval + margin <= alpha` → prune low.
 pub fn razoring_margin(d: u32) -> Option<i32> {
-    match d { 0 => Some(400), 1 => Some(600), 2 => Some(900), _ => None }
+    match d {
+        0 => Some(400),
+        1 => Some(600),
+        2 => Some(900),
+        _ => None,
+    }
 }
 
 /// Reverse futility (both directions at this node):
 /// `static_eval - margin >= beta` → prune high; `static_eval + margin <= alpha` → prune low.
 pub fn rfp_margin(d: u32) -> Option<i32> {
-    if d <= 3 { Some(150 + 250 * d as i32) } else { None }
+    if d <= 3 {
+        Some(150 + 250 * d as i32)
+    } else {
+        None
+    }
 }
 
 /// Futility: `static_eval + margin <= alpha` → skip shallow quiet nodes.
 pub fn futility_margin(d: u32) -> Option<i32> {
-    match d { 0 => Some(80), 1 => Some(160), 2 => Some(240), _ => None }
+    match d {
+        0 => Some(80),
+        1 => Some(160),
+        2 => Some(240),
+        _ => None,
+    }
 }
 
 /// ProbCut: `static_eval + margin <= alpha` → statistical prune.
 pub fn probcut_margin(d: u32) -> Option<i32> {
-    if d >= 4 { Some(500 + 300 * d as i32) } else { None }
+    if d >= 4 {
+        Some(500 + 300 * d as i32)
+    } else {
+        None
+    }
 }
 
 // ── Null-move pruning ───────────────────────────────────────────
@@ -62,12 +80,22 @@ pub const NMP_NO_PROGRESS_LIMIT: u32 = 100;
 pub const NMP_MIN_SIDE_PIECES: usize = 4; // piece_count > 3
 #[inline]
 pub fn nmp_reduction(d: u32) -> u32 {
-    if d >= 6 { 3 } else { 2 }
+    if d >= 6 {
+        3
+    } else {
+        2
+    }
 }
 
 // ── Capture beam (scaled by real branching) ─────────────────────
 pub fn capture_beam_base(d: u32) -> u32 {
-    if d <= 2 { 24 } else if d <= 4 { 12 } else { 6 }
+    if d <= 2 {
+        24
+    } else if d <= 4 {
+        12
+    } else {
+        6
+    }
 }
 pub const CAPTURE_BEAM_MAX: usize = 96;
 pub const BEAM_BRANCH_SCALE: usize = 128;
@@ -118,7 +146,11 @@ pub const IID_MIN_DEPTH: u32 = 4;
 // ── Root aspiration windows ─────────────────────────────────────
 #[inline]
 pub fn aspiration_window(depth: u32) -> i32 {
-    if depth <= 4 { 64 } else { 200 }
+    if depth <= 4 {
+        64
+    } else {
+        200
+    }
 }
 /// Window growth factor after the first aspiration failure (×8).
 pub const ASPIRATION_WINDOW_GROW: i32 = 8;
@@ -151,7 +183,7 @@ pub const DEFAULT_THREADS: usize = 1;
 pub const MAX_THREADS: usize = 64;
 
 // ── History heuristics ──────────────────────────────────────────
-pub const HIST_BONUS_CAP: i32 = 400;   // (depth*depth).min(400)
+pub const HIST_BONUS_CAP: i32 = 400; // (depth*depth).min(400)
 pub const HIST_MAX: i32 = 32_767;
 /// Killer slots are stored per ply; depth is clamped below this.
 pub const KILLER_MAX_PLY: u32 = 127;

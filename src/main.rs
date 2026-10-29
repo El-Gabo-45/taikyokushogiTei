@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderValue, Method, header},
+    http::{header, HeaderValue, Method},
     response::{IntoResponse, Json},
     routing::{get, post},
     Router,
@@ -54,10 +54,22 @@ impl GameState {
         *self = GameState::new();
     }
 
-    fn record_move(&mut self, side: &str, piece: &str, fr: usize, fc: usize, tr: usize, tc: usize, promotion: bool) {
+    fn record_move(
+        &mut self,
+        side: &str,
+        piece: &str,
+        fr: usize,
+        fc: usize,
+        tr: usize,
+        tc: usize,
+        promotion: bool,
+    ) {
         self.half_move += 1;
         let promo_s = if promotion { "+" } else { "" };
-        let entry = format!("{}. {}: {} ({},{})-({},{}){}", self.half_move, side, piece, fr, fc, tr, tc, promo_s);
+        let entry = format!(
+            "{}. {}: {} ({},{})-({},{}){}",
+            self.half_move, side, piece, fr, fc, tr, tc, promo_s
+        );
         self.move_log.push(entry);
         let score = self.board.material_score();
         self.score_history.push(score);
@@ -185,7 +197,11 @@ fn board_to_response(state: &GameState) -> BoardResponse {
 
     BoardResponse {
         board: board_data,
-        side_to_move: if state.board.side_to_move() == Color::Black { 0 } else { 1 },
+        side_to_move: if state.board.side_to_move() == Color::Black {
+            0
+        } else {
+            1
+        },
         move_number: state.board.move_number(),
         black_pieces: state.board.piece_count(Color::Black),
         white_pieces: state.board.piece_count(Color::White),
@@ -201,7 +217,7 @@ fn get_moves_for_square(state: &GameState, r: usize, c: usize) -> Vec<MoveData> 
     // Check if there's a piece of the side to move at this square
     let cell = state.board.get(r, c);
     match cell {
-        Some(piece) if piece.color == state.board.side_to_move() => {},
+        Some(piece) if piece.color == state.board.side_to_move() => {}
         _ => return vec![],
     }
 
@@ -238,8 +254,10 @@ fn apply_move_to_board(
 ) -> bool {
     // Validate coordinates before any indexing — a coordinate outside the
     // 36x36 board would otherwise panic on array access.
-    if fr >= taikyokushogi::BOARD_SIZE || fc >= taikyokushogi::BOARD_SIZE
-        || tr >= taikyokushogi::BOARD_SIZE || tc >= taikyokushogi::BOARD_SIZE
+    if fr >= taikyokushogi::BOARD_SIZE
+        || fc >= taikyokushogi::BOARD_SIZE
+        || tr >= taikyokushogi::BOARD_SIZE
+        || tc >= taikyokushogi::BOARD_SIZE
     {
         return false;
     }
@@ -249,7 +267,11 @@ fn apply_move_to_board(
         None => return false,
     };
 
-    let side = if state.board.side_to_move() == Color::Black { "Black" } else { "White" };
+    let side = if state.board.side_to_move() == Color::Black {
+        "Black"
+    } else {
+        "White"
+    };
 
     let from_sq = taikyokushogi::BOARD_SIZE * fr + fc;
     let to_sq = taikyokushogi::BOARD_SIZE * tr + tc;
@@ -295,7 +317,10 @@ async fn get_moves(
     let c = params.get("c").copied().unwrap_or(0).min(35);
     let state = app.board.lock().unwrap();
     let moves = get_moves_for_square(&state, r, c);
-    Json(MoveListResponse { moves, from: [r, c] })
+    Json(MoveListResponse {
+        moves,
+        from: [r, c],
+    })
 }
 
 async fn get_piece_info(Path(abbrev): Path<String>) -> Json<PieceInfoResponse> {
@@ -414,13 +439,27 @@ async fn post_ai_move(
         if depth == 0 {
             board.random_move().map(|m| {
                 let (from, to) = (m.from(), m.to());
-                (from.row, from.col, to.row, to.col, m.is_promotion(), m.mid_sq())
+                (
+                    from.row,
+                    from.col,
+                    to.row,
+                    to.col,
+                    m.is_promotion(),
+                    m.mid_sq(),
+                )
             })
         } else {
             let result = board.search(depth, time_limit);
             result.best_move.map(|m| {
                 let (from, to) = (m.from(), m.to());
-                (from.row, from.col, to.row, to.col, m.is_promotion(), m.mid_sq())
+                (
+                    from.row,
+                    from.col,
+                    to.row,
+                    to.col,
+                    m.is_promotion(),
+                    m.mid_sq(),
+                )
             })
         }
     })
@@ -488,11 +527,18 @@ async fn post_ai_move(
     }
 
     let piece = piece_at_from.map_or("?".into(), |p| p.abbrev().to_string());
-    let side = if stm == Color::Black { "Black" } else { "White" };
+    let side = if stm == Color::Black {
+        "Black"
+    } else {
+        "White"
+    };
 
     // Apply the move using apply_by_coord; chequeamos el resultado para no
     // registrar una jugada que ya no es legal en el estado actual.
-    if !state.board.apply_by_coord(fr, fc, tr, tc, promotion, mid_sq) {
+    if !state
+        .board
+        .apply_by_coord(fr, fc, tr, tc, promotion, mid_sq)
+    {
         return Json(MoveResponse {
             ok: false,
             error: Some("AI move no longer legal".into()),

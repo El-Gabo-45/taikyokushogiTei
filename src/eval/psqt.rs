@@ -9,11 +9,11 @@
 //! maintains incremental PSQT scores this way.
 
 #![allow(dead_code)] // utility/debug API kept intentionally
-use crate::types::*;
-use crate::pieces;
 use crate::eval::families::family_value_fast;
 use crate::eval::families::Family;
 use crate::eval::zones::Zone;
+use crate::pieces;
+use crate::types::*;
 use std::sync::OnceLock;
 
 /// PSQT value for a piece of type `pt` at square `sq` for color `color`.
@@ -29,19 +29,19 @@ pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
     let fam_enum = crate::eval::families::classify_fast(pt);
     let base = zone.bonus();
     let zone_bonus = match fam_enum {
-        Family::Royal     => 0,
-        Family::RangeCap  => base * 2,
-        Family::Lion      => base * 2,
-        Family::Eagle     => base * 2,
-        Family::Dragon    => base * 2,
-        Family::Demon     => base * 2,
-        Family::Standard  => base,
-        Family::Slider    => base,
-        Family::Stepper   => base / 2,
-        Family::Pawn      => base / 2,
-        Family::Hook      => base,
-        Family::Special   => base * 2,
-        Family::Other     => base / 2,
+        Family::Royal => 0,
+        Family::RangeCap => base * 2,
+        Family::Lion => base * 2,
+        Family::Eagle => base * 2,
+        Family::Dragon => base * 2,
+        Family::Demon => base * 2,
+        Family::Standard => base,
+        Family::Slider => base,
+        Family::Stepper => base / 2,
+        Family::Pawn => base / 2,
+        Family::Hook => base,
+        Family::Special => base * 2,
+        Family::Other => base / 2,
     };
     score += zone_bonus;
 
@@ -88,9 +88,13 @@ pub fn psqt_score(board: &crate::board::Board) -> i32 {
         let sign: i32 = if c == 0 { 1 } else { -1 };
         for i in 0..board.piece_list_len[c] {
             let sq = board.piece_list[c][i] as usize;
-            if sq >= NUM_SQUARES { continue; }
+            if sq >= NUM_SQUARES {
+                continue;
+            }
             let cell = board.cells[sq];
-            if cell == EMPTY_CELL { continue; }
+            if cell == EMPTY_CELL {
+                continue;
+            }
             let pt = cell_piece(cell);
             score += sign * psqt(pt, sq, c as u8);
         }
@@ -102,8 +106,10 @@ pub fn psqt_score(board: &crate::board::Board) -> i32 {
 /// captures and promotions. Used for incremental updates.
 #[inline]
 pub fn psqt_delta(
-    from: usize, to: usize,
-    pt: u16, color: u8,
+    from: usize,
+    to: usize,
+    pt: u16,
+    color: u8,
     promoted_pt: Option<u16>,
     captured_pt: u16,
     captured_sq: usize,

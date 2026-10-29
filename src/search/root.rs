@@ -49,7 +49,12 @@ pub(crate) struct RootState {
 
 impl RootState {
     pub fn new() -> Self {
-        RootState { hash: 0, moves: Vec::new(), scores: Vec::new(), order: Vec::new() }
+        RootState {
+            hash: 0,
+            moves: Vec::new(),
+            scores: Vec::new(),
+            order: Vec::new(),
+        }
     }
 
     /// Number of cached root moves (diagnostics / tests).
@@ -60,8 +65,15 @@ impl RootState {
 
     /// Rebuild the list if the root position changed; otherwise keep the list
     /// and the ordering produced by the previous iteration.
-    fn prepare(&mut self, board: &Board, tt_move: u32, depth: u32, root_hint: Option<u32>,
-               heur: &Heuristics, order_offset: usize) {
+    fn prepare(
+        &mut self,
+        board: &Board,
+        tt_move: u32,
+        depth: u32,
+        root_hint: Option<u32>,
+        heur: &Heuristics,
+        order_offset: usize,
+    ) {
         if self.hash != board.hash || self.moves.is_empty() {
             self.hash = board.hash;
             generate_pseudo_legal_moves_into(&mut self.moves, board);
@@ -72,7 +84,9 @@ impl RootState {
                 let packed = ordering::m_pack(m);
                 let hist = heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
                 let mut s = ordering::score_move(heur, m, tt_move, hist, 0, depth);
-                if root_hint == Some(packed) { s += params::ROOT_HINT_SCORE; }
+                if root_hint == Some(packed) {
+                    s += params::ROOT_HINT_SCORE;
+                }
                 self.scores[i] = s;
             }
         }
@@ -93,7 +107,8 @@ impl RootState {
     /// window as tight as it can be from move one.
     fn sort_best_first(&mut self) {
         let scores = &self.scores;
-        self.order.sort_by(|&a, &b| scores[b as usize].cmp(&scores[a as usize]));
+        self.order
+            .sort_by(|&a, &b| scores[b as usize].cmp(&scores[a as usize]));
     }
 }
 
@@ -136,7 +151,12 @@ pub(crate) fn search_root_window(
     let cfg = rc.cfg;
 
     if depth == 0 {
-        return super::SearchResult { best_move: None, score: evaluate(board), nodes: 1, time_ms: 0 };
+        return super::SearchResult {
+            best_move: None,
+            score: evaluate(board),
+            nodes: 1,
+            time_ms: 0,
+        };
     }
 
     // Historical note: depths 1-3 used to take a "material-delta fast path"
@@ -152,8 +172,21 @@ pub(crate) fn search_root_window(
     // A depth-2 preliminary search warms the TT and gives the ordering a
     // cheap head start before the real iteration.
     if depth > 2 {
-        let _ = pvs::pvs_with_pool(board, depth - 2, -MATE_SCORE - 1, MATE_SCORE + 1,
-                                   nodes, deadline, 0, 0, stop, pool, tt, heur, cfg);
+        let _ = pvs::pvs_with_pool(
+            board,
+            depth - 2,
+            -MATE_SCORE - 1,
+            MATE_SCORE + 1,
+            nodes,
+            deadline,
+            0,
+            0,
+            stop,
+            pool,
+            tt,
+            heur,
+            cfg,
+        );
     }
 
     // ── ROOT MOVE LIST (cached across iterations) ──────────────
@@ -165,7 +198,10 @@ pub(crate) fn search_root_window(
         // No legal move at all: the side to move loses (SPEC §7.3).
         let score = -(MATE_SCORE - depth as i32);
         return super::SearchResult {
-            best_move: None, score, nodes: *nodes, time_ms: start.elapsed().as_millis() as u64,
+            best_move: None,
+            score,
+            nodes: *nodes,
+            time_ms: start.elapsed().as_millis() as u64,
         };
     }
 
@@ -179,33 +215,97 @@ pub(crate) fn search_root_window(
     // depth from 1 upwards runs this loop — no per-depth branch is needed.)
     let n_moves = root.moves.len();
     for rank in 0..n_moves {
-        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) { break; }
-        if stop.load(std::sync::atomic::Ordering::Relaxed) { break; }
+        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) {
+            break;
+        }
+        if stop.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
         let idx = root.order[rank] as usize;
         let m = &root.moves[idx];
         let packed = ordering::m_pack(m);
         board.apply_move(m);
         *nodes += 1;
         let (sa, sb) = if rank == 0 && best_score > root_alpha + params::ROOT_WINDOW_REFINE_GATE {
-            (best_score - params::ROOT_WINDOW_REFINE, best_score + params::ROOT_WINDOW_REFINE)
+            (
+                best_score - params::ROOT_WINDOW_REFINE,
+                best_score + params::ROOT_WINDOW_REFINE,
+            )
         } else {
             (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
         };
         let score = if rank == 0 {
-            -pvs::pvs_with_pool(board, depth - 1, sa, sb, nodes, deadline, 0, packed, stop, pool, tt, heur, cfg)
+            -pvs::pvs_with_pool(
+                board,
+                depth - 1,
+                sa,
+                sb,
+                nodes,
+                deadline,
+                0,
+                packed,
+                stop,
+                pool,
+                tt,
+                heur,
+                cfg,
+            )
         } else {
-            let nw = -pvs::pvs_with_pool(board, depth - 1, -sa - 1, -sa, nodes, deadline, 0,
-                                         packed, stop, pool, tt, heur, cfg);
+            let nw = -pvs::pvs_with_pool(
+                board,
+                depth - 1,
+                -sa - 1,
+                -sa,
+                nodes,
+                deadline,
+                0,
+                packed,
+                stop,
+                pool,
+                tt,
+                heur,
+                cfg,
+            );
             if nw > sa && nw < sb {
-                -pvs::pvs_with_pool(board, depth - 1, -sb, -sa, nodes, deadline, 0,
-                                    packed, stop, pool, tt, heur, cfg)
-            } else { nw }
+                -pvs::pvs_with_pool(
+                    board,
+                    depth - 1,
+                    -sb,
+                    -sa,
+                    nodes,
+                    deadline,
+                    0,
+                    packed,
+                    stop,
+                    pool,
+                    tt,
+                    heur,
+                    cfg,
+                )
+            } else {
+                nw
+            }
         };
         let score = if score <= sa || score >= sb {
-            let full = -pvs::pvs_with_pool(board, depth - 1, -MATE_SCORE - 1,
-                                           -best_score.max(-MATE_SCORE - 1),
-                                           nodes, deadline, 0, packed, stop, pool, tt, heur, cfg);
-            if full > best_score { best_score = full; best_move = Some(m.clone()); }
+            let full = -pvs::pvs_with_pool(
+                board,
+                depth - 1,
+                -MATE_SCORE - 1,
+                -best_score.max(-MATE_SCORE - 1),
+                nodes,
+                deadline,
+                0,
+                packed,
+                stop,
+                pool,
+                tt,
+                heur,
+                cfg,
+            );
+            if full > best_score {
+                best_score = full;
+                best_move = Some(m.clone());
+            }
             full
         } else {
             if score > best_score {
@@ -218,7 +318,9 @@ pub(crate) fn search_root_window(
         // the moves in decreasing order of THIS iteration's score.
         root.scores[idx] = score;
         board.undo_move();
-        if best_score >= root_beta { break; }
+        if best_score >= root_beta {
+            break;
+        }
     }
     root.sort_best_first();
 
@@ -240,4 +342,3 @@ pub(crate) fn search_root_window(
         time_ms: start.elapsed().as_millis() as u64,
     }
 }
-

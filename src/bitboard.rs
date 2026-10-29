@@ -23,7 +23,9 @@ impl Bitboard1296 {
     /// Create an empty bitboard.
     #[inline(always)]
     pub const fn new() -> Self {
-        Bitboard1296 { words: [0u64; U64_COUNT] }
+        Bitboard1296 {
+            words: [0u64; U64_COUNT],
+        }
     }
 
     /// Create a bitboard with all bits set.
@@ -251,7 +253,9 @@ impl Bitboard1296 {
     /// This is useful for generating pawn attacks, etc.
     #[inline(always)]
     pub fn shift(&self, delta: i32) -> Bitboard1296 {
-        if delta == 0 { return *self; }
+        if delta == 0 {
+            return *self;
+        }
         let mut result = Bitboard1296::new();
         self.iter_usize(|sq| {
             let new_sq = sq as i32 + delta;
@@ -265,7 +269,9 @@ impl Bitboard1296 {
     /// Shift by row delta and column delta.
     #[inline(always)]
     pub fn shift_rc(&self, dr: i32, dc: i32) -> Bitboard1296 {
-        if dr == 0 && dc == 0 { return *self; }
+        if dr == 0 && dc == 0 {
+            return *self;
+        }
         let mut result = Bitboard1296::new();
         self.iter_usize(|sq| {
             let r = (sq / BOARD_SIZE) as i32 + dr;
@@ -315,7 +321,13 @@ impl Bitboard1296 {
 
     /// Fill a rectangle on the board.
     #[inline(always)]
-    pub fn fill_rect(&mut self, row_start: usize, row_end: usize, col_start: usize, col_end: usize) {
+    pub fn fill_rect(
+        &mut self,
+        row_start: usize,
+        row_end: usize,
+        col_start: usize,
+        col_end: usize,
+    ) {
         for r in row_start..=row_end {
             for c in col_start..=col_end {
                 self.set_usize(r * BOARD_SIZE + c);
@@ -401,7 +413,10 @@ impl AttackTable {
             }
         }
 
-        AttackTable { rays, first_blocker }
+        AttackTable {
+            rays,
+            first_blocker,
+        }
     }
 
     /// Get the ray from `sq` in direction `dir` as a bitboard.
@@ -449,7 +464,9 @@ impl KingAreaTable {
             let mut bb = Bitboard1296::new();
             for dr in -1i32..=1 {
                 for dc in -1i32..=1 {
-                    if dr == 0 && dc == 0 { continue; }
+                    if dr == 0 && dc == 0 {
+                        continue;
+                    }
                     let nr = r + dr;
                     let nc = c + dc;
                     if nr >= 0 && nr < BOARD_SIZE as i32 && nc >= 0 && nc < BOARD_SIZE as i32 {
@@ -558,7 +575,9 @@ impl ThreatZoneTable {
             let c = sq_col(sq) as i32;
             for dr in -3i32..=3 {
                 for dc in -3i32..=3 {
-                    if dr == 0 && dc == 0 { continue; }
+                    if dr == 0 && dc == 0 {
+                        continue;
+                    }
                     let nr = r + dr;
                     let nc = c + dc;
                     if nr >= 0 && nr < BOARD_SIZE as i32 && nc >= 0 && nc < BOARD_SIZE as i32 {

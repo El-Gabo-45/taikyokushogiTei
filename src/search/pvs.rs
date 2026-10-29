@@ -66,7 +66,9 @@ pub(crate) struct Ctx<'a> {
 impl<'a> Ctx<'a> {
     #[inline]
     pub(crate) fn past_deadline(&self) -> bool {
-        if self.stop.load(Ordering::Relaxed) { return true; }
+        if self.stop.load(Ordering::Relaxed) {
+            return true;
+        }
         self.deadline.is_some_and(|dl| Instant::now() >= dl)
     }
 
@@ -76,10 +78,18 @@ impl<'a> Ctx<'a> {
         let stm = self.board.side_to_move;
         Some(match result {
             GameResult::BlackWins => {
-                if stm == BLACK { MATE_SCORE - ply as i32 } else { -(MATE_SCORE - ply as i32) }
+                if stm == BLACK {
+                    MATE_SCORE - ply as i32
+                } else {
+                    -(MATE_SCORE - ply as i32)
+                }
             }
             GameResult::WhiteWins => {
-                if stm == WHITE { MATE_SCORE - ply as i32 } else { -(MATE_SCORE - ply as i32) }
+                if stm == WHITE {
+                    MATE_SCORE - ply as i32
+                } else {
+                    -(MATE_SCORE - ply as i32)
+                }
             }
             GameResult::Draw => 0,
         })
@@ -88,7 +98,14 @@ impl<'a> Ctx<'a> {
     /// Shallow-eval pruning that needs no move generation, in the original
     /// evaluation order: razoring → RFP (both directions) → futility.
     /// Returns Some(score) if the node can be pruned outright.
-    fn shallow_eval_prune(&mut self, d: u32, static_eval: i32, alpha: i32, beta: i32, in_check: bool) -> Option<i32> {
+    fn shallow_eval_prune(
+        &mut self,
+        d: u32,
+        static_eval: i32,
+        alpha: i32,
+        beta: i32,
+        in_check: bool,
+    ) -> Option<i32> {
         // ── RAZORING (depth ≤ 2) ─────────────────────────────────
         if self.cfg.razoring {
             if let Some(margin) = params::razoring_margin(d) {
@@ -101,8 +118,12 @@ impl<'a> Ctx<'a> {
         if self.cfg.reverse_futility {
             if let Some(margin) = params::rfp_margin(d) {
                 if !in_check && params::mate_gate_ok(alpha) {
-                    if static_eval - margin >= beta { return Some(beta); }
-                    if static_eval + margin <= alpha { return Some(alpha); }
+                    if static_eval - margin >= beta {
+                        return Some(beta);
+                    }
+                    if static_eval + margin <= alpha {
+                        return Some(alpha);
+                    }
                 }
             }
         }
@@ -120,7 +141,9 @@ impl<'a> Ctx<'a> {
     /// Null Move Pruning (depth ≥ 3): give the opponent a free move; if even
     /// then we're still ≥ beta, prune.
     fn null_move_prune(&mut self, d: u32, beta: i32, in_check: bool) -> Option<i32> {
-        if !self.cfg.null_move_pruning || d < params::NMP_MIN_DEPTH || in_check { return None; }
+        if !self.cfg.null_move_pruning || d < params::NMP_MIN_DEPTH || in_check {
+            return None;
+        }
         let side = self.board.side_to_move as usize;
         if self.board.no_progress_plies >= params::NMP_NO_PROGRESS_LIMIT
             || self.board.piece_count[side] < params::NMP_MIN_SIDE_PIECES
@@ -131,14 +154,20 @@ impl<'a> Ctx<'a> {
         self.board.null_move();
         let null_score = -self.pvs(d.saturating_sub(r), -beta, -(beta - 1));
         self.board.undo_null_move();
-        if null_score >= beta { Some(beta) } else { None }
+        if null_score >= beta {
+            Some(beta)
+        } else {
+            None
+        }
     }
 
     /// ProbCut (depth ≥ 4): statistical pruning — if the static eval is far
     /// enough below alpha, the probability that any move can raise it above
     /// beta is negligible. Reference: "ProbCut" — Kotani, Computer Shogi.
     fn probcut(&mut self, d: u32, static_eval: i32, alpha: i32, in_check: bool) -> Option<i32> {
-        if !self.cfg.probcut { return None; }
+        if !self.cfg.probcut {
+            return None;
+        }
         if let Some(margin) = params::probcut_margin(d) {
             if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
                 return Some(alpha);
@@ -250,8 +279,16 @@ impl<'a> Ctx<'a> {
     /// `pb` is this node's scratch buffer; it is returned to the caller so it
     /// can be put back into the pool even on the early-return paths.
     #[allow(clippy::too_many_arguments)] // node state, bundled on purpose
-    fn search_node(&mut self, mut pb: PlyBuffers, d: u32, mut alpha: i32, beta: i32,
-                   static_eval: i32, in_check: bool, iid_move: u32) -> (i32, PlyBuffers) {
+    fn search_node(
+        &mut self,
+        mut pb: PlyBuffers,
+        d: u32,
+        mut alpha: i32,
+        beta: i32,
+        static_eval: i32,
+        in_check: bool,
+        iid_move: u32,
+    ) -> (i32, PlyBuffers) {
         // Side to move at THIS node, captured before any apply_move flips it:
         // history tables are per-side, and the beta-cutoff blocks below run
         // after board.undo_move() has already restored the parent's side.
@@ -271,7 +308,8 @@ impl<'a> Ctx<'a> {
         // Fixed stack array: at most the beam + 1 quiets are ever tried before
         // the beam break, so 64 slots always suffice — no heap allocation per
         // node.
-        let mut quiet_tried: [(u16, u16); params::QUIETS_TRACKED_MAX] = [(0, 0); params::QUIETS_TRACKED_MAX];
+        let mut quiet_tried: [(u16, u16); params::QUIETS_TRACKED_MAX] =
+            [(0, 0); params::QUIETS_TRACKED_MAX];
         let mut quiet_tried_n = 0usize;
 
         // ── STAGED MOVE GENERATION ────────────────────────────────
@@ -305,9 +343,12 @@ impl<'a> Ctx<'a> {
         pb.cap_scores.clear();
         for m in cap_moves.iter() {
             let packed = ordering::m_pack(m);
-            let hist = self.heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
+            let hist = self
+                .heur
+                .history_score(m.from_sq as usize, m.to_sq as usize, stm);
             let cntr = self.heur.counter_score(self.prev_move, packed);
-            pb.cap_scores.push(ordering::score_move(self.heur, m, iid_move, hist, cntr, d));
+            pb.cap_scores
+                .push(ordering::score_move(self.heur, m, iid_move, hist, cntr, d));
         }
 
         let mut move_idx = 0usize;
@@ -317,9 +358,14 @@ impl<'a> Ctx<'a> {
             let mut idx = usize::MAX;
             let mut order_score = i32::MIN;
             for (i, &s) in pb.cap_scores.iter().enumerate() {
-                if s > order_score { order_score = s; idx = i; }
+                if s > order_score {
+                    order_score = s;
+                    idx = i;
+                }
             }
-            if idx == usize::MAX { break; }
+            if idx == usize::MAX {
+                break;
+            }
             pb.cap_scores[idx] = i32::MIN;
             let packed = ordering::m_pack(&pb.caps[idx]);
             // 0-based index counting LEGAL captures searched so far. Illegal
@@ -331,16 +377,25 @@ impl<'a> Ctx<'a> {
             if cur_move >= rps_beam && !in_check && searched {
                 break;
             }
-            if cur_move > 0 && self.past_deadline() { break; }
+            if cur_move > 0 && self.past_deadline() {
+                break;
+            }
             let m = &pb.caps[idx];
             // ── CAPTURE FUTILITY PRUNING (depth ≤ 2) ──────────────
-            if self.cfg.futility && d <= 2 && !in_check && cur_move > 0
-                && order_score < params::TACTICAL_BASE_SCORE && params::mate_gate_ok(alpha)
+            if self.cfg.futility
+                && d <= 2
+                && !in_check
+                && cur_move > 0
+                && order_score < params::TACTICAL_BASE_SCORE
+                && params::mate_gate_ok(alpha)
             {
                 let values = piece_vals();
                 let from_pt = cell_piece(self.board.cells[m.from_sq as usize]);
-                let gain = ordering::capture_qs_score(self.board, m, values) + values[from_pt as usize];
-                if static_eval + gain + params::CAPTURE_FUTILITY_MARGIN <= alpha { continue; }
+                let gain =
+                    ordering::capture_qs_score(self.board, m, values) + values[from_pt as usize];
+                if static_eval + gain + params::CAPTURE_FUTILITY_MARGIN <= alpha {
+                    continue;
+                }
             }
             self.board.apply_move(m);
             // Every pseudo-legal move is legal in Taikyoku (no check): consume a
@@ -354,7 +409,9 @@ impl<'a> Ctx<'a> {
                 let nw = -self.pvs(new_d, -alpha - 1, -alpha);
                 if nw > alpha && nw < beta {
                     -self.pvs(new_d, -beta, -alpha)
-                } else { nw }
+                } else {
+                    nw
+                }
             };
             self.board.undo_move();
             if score > alpha {
@@ -366,9 +423,12 @@ impl<'a> Ctx<'a> {
                 tt_flag = 1;
                 if order_score < params::TACTICAL_BASE_SCORE {
                     self.heur.killer_store(d, packed);
-                    self.heur.history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
+                    self.heur
+                        .history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
                 }
-                if self.prev_move != 0 { self.heur.counter_store(self.prev_move, packed); }
+                if self.prev_move != 0 {
+                    self.heur.counter_store(self.prev_move, packed);
+                }
                 // History gravity: penalize the quiets that failed to cause a
                 // cutoff, so next time the cutting move (and similar ones) are
                 // tried first. (Standard technique: Stockfish's history malus.)
@@ -391,11 +451,15 @@ impl<'a> Ctx<'a> {
             // (generate_captures_bb_into). Regenerating them here wastes ~50%
             // of movegen work per node on a 36x36 board with ~700 legal moves.
             crate::movegen::generate_pseudo_legal_quiets_into(&mut pb.moves, self.board);
-            if pb.moves.is_empty() { return (-(MATE_SCORE - self.ply as i32), pb); }
+            if pb.moves.is_empty() {
+                return (-(MATE_SCORE - self.ply as i32), pb);
+            }
             pb.scored.clear();
             for (i, m) in pb.moves.iter().enumerate() {
                 let packed = ordering::m_pack(m);
-                let hist = self.heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
+                let hist = self
+                    .heur
+                    .history_score(m.from_sq as usize, m.to_sq as usize, stm);
                 let cntr = self.heur.counter_score(self.prev_move, packed);
                 let s = ordering::score_move(self.heur, m, iid_move, hist, cntr, d);
                 pb.scored.push((s, i as u32, packed));
@@ -405,13 +469,15 @@ impl<'a> Ctx<'a> {
             let lmp_n = if self.cfg.late_move_pruning {
                 let lmp_base = params::lmp_base(d, improving);
                 (lmp_base * (1 + n_quiets / params::LMP_BRANCH_SCALE))
-                    .min(n_quiets).min(params::LMP_MAX)
+                    .min(n_quiets)
+                    .min(params::LMP_MAX)
             } else {
                 n_quiets
             };
             let select_n = lmp_n;
             if select_n > 1 && pb.scored.len() > select_n {
-                pb.scored.select_nth_unstable_by(select_n - 1, |a, b| b.0.cmp(&a.0));
+                pb.scored
+                    .select_nth_unstable_by(select_n - 1, |a, b| b.0.cmp(&a.0));
             } else {
                 pb.scored.sort_unstable_by_key(|e| std::cmp::Reverse(e.0));
             }
@@ -425,15 +491,23 @@ impl<'a> Ctx<'a> {
                 if cur_move >= lmp_n && !in_check && searched {
                     break;
                 }
-                if cur_move > 0 && self.past_deadline() { break; }
+                if cur_move > 0 && self.past_deadline() {
+                    break;
+                }
                 // ── QUIET FUTILITY PRUNING (depth ≤ 2) ────────────
-                if self.cfg.futility && d <= params::QUIET_FUTILITY_MAX_DEPTH && !in_check && cur_move > 0
-                    && order_score < params::TACTICAL_BASE_SCORE && params::mate_gate_ok(alpha)
+                if self.cfg.futility
+                    && d <= params::QUIET_FUTILITY_MAX_DEPTH
+                    && !in_check
+                    && cur_move > 0
+                    && order_score < params::TACTICAL_BASE_SCORE
+                    && params::mate_gate_ok(alpha)
                     && static_eval + params::quiet_futility_margin(d) <= alpha
                 {
                     continue;
                 }
-                if cur_move > 0 && self.past_deadline() { break; }
+                if cur_move > 0 && self.past_deadline() {
+                    break;
+                }
                 let m = &pb.moves[idx];
                 self.board.apply_move(m);
                 // Every pseudo-legal move is legal in Taikyoku (no check): consume
@@ -449,24 +523,35 @@ impl<'a> Ctx<'a> {
                 // reduced depth with the TT move EXCLUDED to verify it is the
                 // only good move) — just a depth bump for the hash move.
                 let tt_move_ext = self.cfg.hash_move_extension
-                    && d >= params::TT_MOVE_EXT_MIN_DEPTH && !in_check
-                    && iid_move != 0 && packed == iid_move
+                    && d >= params::TT_MOVE_EXT_MIN_DEPTH
+                    && !in_check
+                    && iid_move != 0
+                    && packed == iid_move
                     && order_score < params::TACTICAL_BASE_SCORE;
                 let reduction = if self.cfg.late_move_reductions
-                    && cur_move >= params::LMR_MIN_MOVE_INDEX && d >= params::LMR_MIN_DEPTH
-                    && order_score < params::TACTICAL_BASE_SCORE && !in_check
+                    && cur_move >= params::LMR_MIN_MOVE_INDEX
+                    && d >= params::LMR_MIN_DEPTH
+                    && order_score < params::TACTICAL_BASE_SCORE
+                    && !in_check
                 {
                     let base = params::lmr_base(cur_move);
                     let depth_factor = params::lmr_depth_factor(d);
                     // A quiet with a strong history is statistically good —
                     // soften its reduction so it is not searched too shallowly
                     // (LMR + history interaction, standard in modern engines).
-                    let soften = params::lmr_history_soften(
-                        self.heur.history_score(m.from_sq as usize, m.to_sq as usize, stm));
+                    let soften = params::lmr_history_soften(self.heur.history_score(
+                        m.from_sq as usize,
+                        m.to_sq as usize,
+                        stm,
+                    ));
                     (base + depth_factor).saturating_sub(soften)
-                } else { 0 };
+                } else {
+                    0
+                };
                 let mut new_d = d.saturating_sub(1 + reduction);
-                if tt_move_ext { new_d = new_d.saturating_add(1); }
+                if tt_move_ext {
+                    new_d = new_d.saturating_add(1);
+                }
                 let score;
                 if cur_move == 0 {
                     score = -self.pvs(new_d, -beta, -alpha);
@@ -474,12 +559,16 @@ impl<'a> Ctx<'a> {
                     let nw = -self.pvs(new_d, -alpha - 1, -alpha);
                     if nw > alpha && nw < beta {
                         score = -self.pvs(d.saturating_sub(1), -beta, -alpha);
-                    } else { score = nw; }
+                    } else {
+                        score = nw;
+                    }
                 } else {
                     let nw = -self.pvs(new_d, -alpha - 1, -alpha);
                     if nw > alpha && nw < beta {
                         score = -self.pvs(new_d, -beta, -alpha);
-                    } else { score = nw; }
+                    } else {
+                        score = nw;
+                    }
                 }
                 self.board.undo_move();
                 if score > alpha {
@@ -491,9 +580,12 @@ impl<'a> Ctx<'a> {
                     tt_flag = 1;
                     if order_score < params::TACTICAL_BASE_SCORE {
                         self.heur.killer_store(d, packed);
-                        self.heur.history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
+                        self.heur
+                            .history_store(m.from_sq as usize, m.to_sq as usize, d, stm);
                     }
-                    if self.prev_move != 0 { self.heur.counter_store(self.prev_move, packed); }
+                    if self.prev_move != 0 {
+                        self.heur.counter_store(self.prev_move, packed);
+                    }
                     break;
                 }
             }
@@ -504,17 +596,20 @@ impl<'a> Ctx<'a> {
         // nodes (valid UPPERBOUND entries). Skipping those used to waste TT
         // probes on positions the tree reaches repeatedly via transpositions.
         if searched {
-            self.tt.store(self.board.hash, tt::TTEntry {
-                score: alpha,
-                depth: d.min(120) as i8,
-                flag: if alpha <= init_alpha { 2 } else { tt_flag },
-                // Coherence: tt_pack overrides this field with the ACTIVE
-                // generation, so a hardcoded 0 had no packed effect — but an
-                // inspected struct must not lie. Set the real generation.
-                generation: self.tt.gen(),
-                best_move: best_packed,
-                in_check: false, // no such thing as check in Taikyoku
-            });
+            self.tt.store(
+                self.board.hash,
+                tt::TTEntry {
+                    score: alpha,
+                    depth: d.min(120) as i8,
+                    flag: if alpha <= init_alpha { 2 } else { tt_flag },
+                    // Coherence: tt_pack overrides this field with the ACTIVE
+                    // generation, so a hardcoded 0 had no packed effect — but an
+                    // inspected struct must not lie. Set the real generation.
+                    generation: self.tt.gen(),
+                    best_move: best_packed,
+                    in_check: false, // no such thing as check in Taikyoku
+                },
+            );
         }
 
         (alpha, pb)
@@ -525,11 +620,32 @@ impl<'a> Ctx<'a> {
 /// pool, the transposition table and the heuristic tables so all four survive
 /// across moves and iterations.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn pvs_with_pool(board: &mut Board, depth: u32, alpha: i32, beta: i32,
-                            nodes: &mut u64, deadline: Option<Instant>, ply: u32,
-                            prev_move: u32, stop: &AtomicBool,
-                            pool: &mut SearchPool, tt: &Tt, heur: &mut Heuristics,
-                            cfg: SearchConfig) -> i32 {
-    let mut ctx = Ctx { cfg, board, nodes, deadline, ply, prev_move, stop, pool, tt, heur };
+pub(crate) fn pvs_with_pool(
+    board: &mut Board,
+    depth: u32,
+    alpha: i32,
+    beta: i32,
+    nodes: &mut u64,
+    deadline: Option<Instant>,
+    ply: u32,
+    prev_move: u32,
+    stop: &AtomicBool,
+    pool: &mut SearchPool,
+    tt: &Tt,
+    heur: &mut Heuristics,
+    cfg: SearchConfig,
+) -> i32 {
+    let mut ctx = Ctx {
+        cfg,
+        board,
+        nodes,
+        deadline,
+        ply,
+        prev_move,
+        stop,
+        pool,
+        tt,
+        heur,
+    };
     ctx.run(depth, alpha, beta)
 }

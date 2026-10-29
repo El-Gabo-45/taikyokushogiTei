@@ -17,9 +17,9 @@
 //! Stockfish maintains incremental material and PSQT scores this way.
 
 pub mod families;
-pub mod zones;
 pub mod nnue;
 pub mod psqt;
+pub mod zones;
 
 use crate::board::Board;
 use crate::types::*;
@@ -62,8 +62,20 @@ pub fn evaluate(board: &Board) -> i32 {
     // is scoring non-terminal positions.
     if let Some(result) = board.game_result() {
         return match result {
-            GameResult::BlackWins => if board.side_to_move == BLACK { MATE_SCORE } else { -MATE_SCORE },
-            GameResult::WhiteWins => if board.side_to_move == WHITE { MATE_SCORE } else { -MATE_SCORE },
+            GameResult::BlackWins => {
+                if board.side_to_move == BLACK {
+                    MATE_SCORE
+                } else {
+                    -MATE_SCORE
+                }
+            }
+            GameResult::WhiteWins => {
+                if board.side_to_move == WHITE {
+                    MATE_SCORE
+                } else {
+                    -MATE_SCORE
+                }
+            }
             GameResult::Draw => 0,
         };
     }
@@ -81,19 +93,23 @@ pub fn evaluate(board: &Board) -> i32 {
     // Incremental PSQT score (combines material + family weight + zone
     // bonuses). Maintained O(1) in apply_move/undo_move — no O(pieces)
     // scan needed.
-    let score = board.psqt_score
-        + king_safety(board, BLACK)
-        - king_safety(board, WHITE);
+    let score = board.psqt_score + king_safety(board, BLACK) - king_safety(board, WHITE);
 
     // Return from side-to-move perspective.
-    if board.side_to_move == BLACK { score } else { -score }
+    if board.side_to_move == BLACK {
+        score
+    } else {
+        -score
+    }
 }
 
 /// Simple king safety: penalize if the king has no friendly pieces nearby.
 /// Uses the precomputed threat-zone bitboard for O(1) defender counting.
 fn king_safety(board: &Board, color: u8) -> i32 {
     let king_sq = board.king_square(color);
-    if king_sq == INVALID_SQ || (king_sq as usize) >= NUM_SQUARES { return 0; }
+    if king_sq == INVALID_SQ || (king_sq as usize) >= NUM_SQUARES {
+        return 0;
+    }
 
     // Use the precomputed 5x5 threat zone around the king and intersect
     // with friendly occupancy — O(1) bitboard AND + popcount instead of

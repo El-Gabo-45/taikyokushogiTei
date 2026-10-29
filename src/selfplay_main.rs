@@ -1,4 +1,4 @@
-use taikyokushogi::selfplay::{SelfPlayConfig, run_selfplay};
+use taikyokushogi::selfplay::{run_selfplay, SelfPlayConfig};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -12,7 +12,14 @@ fn main() {
     println!("=== Taikyoku Shogi Self-Play ===");
     println!("Games:         {}", num_games);
     println!("Depth:         {}", depth);
-    println!("Max moves:     {}", if max_moves == 0 { "unlimited".to_string() } else { max_moves.to_string() });
+    println!(
+        "Max moves:     {}",
+        if max_moves == 0 {
+            "unlimited".to_string()
+        } else {
+            max_moves.to_string()
+        }
+    );
     println!("Workers:       {}", num_workers);
     println!("Time limit/ms: {}", time_limit_ms);
     println!("Data:          training_data/");

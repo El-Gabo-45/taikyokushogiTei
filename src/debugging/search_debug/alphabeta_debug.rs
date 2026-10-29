@@ -29,7 +29,11 @@ pub fn debug_alphabeta_frame(
     node_count: u64,
 ) -> AlphaBetaDebugFrame {
     let static_eval = evaluate(board);
-    let side_to_move = if board.side_to_move == BLACK { "black" } else { "white" };
+    let side_to_move = if board.side_to_move == BLACK {
+        "black"
+    } else {
+        "white"
+    };
 
     AlphaBetaDebugFrame {
         depth,
@@ -55,7 +59,9 @@ pub fn format_alphabeta_debug(
     move_count: usize,
     node_count: u64,
 ) -> String {
-    let frame = debug_alphabeta_frame(board, depth, alpha, beta, ply, in_check, move_count, node_count);
+    let frame = debug_alphabeta_frame(
+        board, depth, alpha, beta, ply, in_check, move_count, node_count,
+    );
     format!(
         "alphabeta depth={} ply={} side={} alpha={} beta={} in_check={} eval={} moves={} nodes={}",
         frame.depth,

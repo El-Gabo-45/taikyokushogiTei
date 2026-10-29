@@ -60,12 +60,17 @@
 
 use std::io::{BufRead, Write};
 use taikyokushogi::elo::{self, EngineConfig, MatchConfig, Sprt};
-use taikyokushogi::{Board, Color, Move};
 use taikyokushogi::search::params::SearchConfig;
+use taikyokushogi::{Board, Color, Move};
 
 // ── Engine configuration ────────────────────────────────────────
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum EngineSide { None, Black, White, Both }
+enum EngineSide {
+    None,
+    Black,
+    White,
+    Both,
+}
 
 struct Options {
     depth: u32,
@@ -108,16 +113,28 @@ impl Default for Options {
 
 // ── Coordinate parsing ──────────────────────────────────────────
 fn file_char(col: usize) -> char {
-    if col < 26 { (b'a' + col as u8) as char } else { (b'A' + (col - 26) as u8) as char }
+    if col < 26 {
+        (b'a' + col as u8) as char
+    } else {
+        (b'A' + (col - 26) as u8) as char
+    }
 }
 
 fn parse_file(c: char) -> Option<usize> {
     if c.is_ascii_lowercase() {
         let v = c as usize - 'a' as usize;
-        if v < 26 { Some(v) } else { None }
+        if v < 26 {
+            Some(v)
+        } else {
+            None
+        }
     } else if c.is_ascii_uppercase() {
         let v = c as usize - 'A' as usize;
-        if v < 10 { Some(v + 26) } else { None }
+        if v < 10 {
+            Some(v + 26)
+        } else {
+            None
+        }
     } else {
         None
     }
@@ -131,12 +148,18 @@ fn parse_square(tok: &str) -> Option<(usize, usize)> {
         let col: usize = c.trim().parse().ok()?;
         return if row >= 1 && row <= 36 && col >= 1 && col <= 36 {
             Some((row - 1, col - 1))
-        } else { None };
+        } else {
+            None
+        };
     }
     let mut chars = tok.chars();
     let file = parse_file(chars.next()?)?;
     let rank: usize = chars.as_str().parse().ok()?;
-    if rank >= 1 && rank <= 36 { Some((rank - 1, file)) } else { None }
+    if rank >= 1 && rank <= 36 {
+        Some((rank - 1, file))
+    } else {
+        None
+    }
 }
 
 fn sq_name(row: usize, col: usize) -> String {
@@ -145,9 +168,14 @@ fn sq_name(row: usize, col: usize) -> String {
 
 fn move_name(m: &Move) -> String {
     let r = m.raw();
-    let mut s = format!("{}{}", sq_name((r.from_sq / 36) as usize, (r.from_sq % 36) as usize),
-                        sq_name((r.to_sq / 36) as usize, (r.to_sq % 36) as usize));
-    if r.promotion { s.push('+'); }
+    let mut s = format!(
+        "{}{}",
+        sq_name((r.from_sq / 36) as usize, (r.from_sq % 36) as usize),
+        sq_name((r.to_sq / 36) as usize, (r.to_sq % 36) as usize)
+    );
+    if r.promotion {
+        s.push('+');
+    }
     s
 }
 
@@ -157,7 +185,9 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
     let s = s.trim();
     let promo_suffix = s.ends_with('+');
     let body = s.trim_end_matches('+').trim();
-    if body.is_empty() { return Err("empty move".into()); }
+    if body.is_empty() {
+        return Err("empty move".into());
+    }
 
     let (from, to) = if body.contains(',') {
         // numeric form: `row,col-row,col` (also tolerate spaces instead of the dash)
@@ -167,9 +197,16 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
             .filter(|p| !p.is_empty())
             .map(|p| p.trim().parse().map_err(|_| format!("bad number `{}`", p)))
             .collect::<Result<_, _>>()?;
-        if nums.len() != 4 { return Err(format!("numeric moves need 4 numbers: `row,col-row,col`, got `{}`", body)); }
+        if nums.len() != 4 {
+            return Err(format!(
+                "numeric moves need 4 numbers: `row,col-row,col`, got `{}`",
+                body
+            ));
+        }
         for n in &nums {
-            if *n < 1 || *n > 36 { return Err(format!("square `{}` is off the 36x36 board", n)); }
+            if *n < 1 || *n > 36 {
+                return Err(format!("square `{}` is off the 36x36 board", n));
+            }
         }
         ((nums[0] - 1, nums[1] - 1), (nums[2] - 1, nums[3] - 1))
     } else {
@@ -179,45 +216,69 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
         let mut segments = Vec::new();
         let mut cur = String::new();
         for ch in body.chars() {
-            if !cur.is_empty() && parse_file(ch).is_some() && cur.chars().last().map_or(false, |c| c.is_ascii_digit()) {
+            if !cur.is_empty()
+                && parse_file(ch).is_some()
+                && cur.chars().last().map_or(false, |c| c.is_ascii_digit())
+            {
                 segments.push(cur.clone());
                 cur.clear();
             }
             cur.push(ch);
         }
         segments.push(cur);
-        if segments.len() != 2 { return Err(format!("cannot parse move `{}` (expected e.g. `f19f20`)", s)); }
-        (parse_square(&segments[0]).ok_or_else(|| format!("bad square `{}`", segments[0]))?,
-         parse_square(&segments[1]).ok_or_else(|| format!("bad square `{}`", segments[1]))?)
+        if segments.len() != 2 {
+            return Err(format!(
+                "cannot parse move `{}` (expected e.g. `f19f20`)",
+                s
+            ));
+        }
+        (
+            parse_square(&segments[0]).ok_or_else(|| format!("bad square `{}`", segments[0]))?,
+            parse_square(&segments[1]).ok_or_else(|| format!("bad square `{}`", segments[1]))?,
+        )
     };
 
     let legal = board.legal_moves();
-    let matching: Vec<&Move> = legal.iter().filter(|m| {
-        let r = m.raw();
-        let f = (r.from_sq as usize / 36, r.from_sq as usize % 36);
-        let t = (r.to_sq as usize / 36, r.to_sq as usize % 36);
-        f == from && t == to
-    }).collect();
+    let matching: Vec<&Move> = legal
+        .iter()
+        .filter(|m| {
+            let r = m.raw();
+            let f = (r.from_sq as usize / 36, r.from_sq as usize % 36);
+            let t = (r.to_sq as usize / 36, r.to_sq as usize % 36);
+            f == from && t == to
+        })
+        .collect();
 
     if matching.is_empty() {
         // helpful hint: moves FROM that square
-        let from_moves: Vec<String> = legal.iter()
+        let from_moves: Vec<String> = legal
+            .iter()
             .filter(|m| {
                 let r = m.raw();
                 (r.from_sq as usize / 36, r.from_sq as usize % 36) == from
             })
-            .take(8).map(move_name).collect();
+            .take(8)
+            .map(move_name)
+            .collect();
         return Err(if from_moves.is_empty() {
             format!("no legal moves from {}", sq_name(from.0, from.1))
         } else {
-            format!("`{}` is not legal. Moves from {}: {}", s, sq_name(from.0, from.1), from_moves.join(", "))
+            format!(
+                "`{}` is not legal. Moves from {}: {}",
+                s,
+                sq_name(from.0, from.1),
+                from_moves.join(", ")
+            )
         });
     }
     let promo_variants = matching.iter().filter(|m| m.raw().promotion).count();
     if promo_variants > 0 && promo_variants < matching.len() {
         // both variants exist -> promotion is optional, suffix decides
         let want = promo_suffix;
-        return matching.into_iter().find(|m| m.raw().promotion == want).cloned()
+        return matching
+            .into_iter()
+            .find(|m| m.raw().promotion == want)
+            .cloned()
             .ok_or_else(|| format!("`{}`: add `+` to promote, remove it to keep the piece", s));
     }
     // single variant (or promo-only): accept as-is
@@ -226,9 +287,13 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
 
 // ── Command execution ───────────────────────────────────────────
 fn perft(board: &Board, depth: u32) -> u64 {
-    if depth == 0 { return 1; }
+    if depth == 0 {
+        return 1;
+    }
     let moves = board.legal_moves();
-    if depth == 1 { return moves.len() as u64; }
+    if depth == 1 {
+        return moves.len() as u64;
+    }
     let mut n = 0;
     let mut b = board.clone();
     for m in &moves {
@@ -245,7 +310,10 @@ fn cmd_go(board: &mut Board, opt: &Options) {
     match &r.best_move {
         Some(m) => println!(
             "bestmove {} score {} nodes {} time {}ms",
-            move_name(m), r.score, r.nodes, r.time_ms
+            move_name(m),
+            r.score,
+            r.nodes,
+            r.time_ms
         ),
         None => println!("bestmove none (no legal moves) score {}", r.score),
     }
@@ -259,7 +327,9 @@ fn engine_turn(board: &mut Board, opt: &Options) -> Option<String> {
         EngineSide::White => side == Color::White,
         EngineSide::Both => true,
     };
-    if !engine_moves { return None; }
+    if !engine_moves {
+        return None;
+    }
     taikyokushogi::set_use_nnue(opt.nnue);
     let mut searcher = opt.searcher();
     let r = board.search_with(&mut searcher, opt.depth, opt.movetime);
@@ -267,12 +337,24 @@ fn engine_turn(board: &mut Board, opt: &Options) -> Option<String> {
         Some(m) => {
             let name = move_name(&m);
             board.apply(&m);
-            println!("[engine {}] {}  (score {}, nodes {}, {}ms)",
-                     if side == Color::Black { "black" } else { "white" },
-                     name, r.score, r.nodes, r.time_ms);
+            println!(
+                "[engine {}] {}  (score {}, nodes {}, {}ms)",
+                if side == Color::Black {
+                    "black"
+                } else {
+                    "white"
+                },
+                name,
+                r.score,
+                r.nodes,
+                r.time_ms
+            );
             Some(name)
         }
-        None => { println!("[engine] no legal moves — side to move loses"); None }
+        None => {
+            println!("[engine] no legal moves — side to move loses");
+            None
+        }
     }
 }
 
@@ -285,8 +367,20 @@ fn check_terminal(board: &Board) {
 /// Per-game progress callback used by `selfplay` / `match` / `sprt`.
 fn print_game_result(game: usize, result: taikyokushogi::GameResult, a_was_white: bool) {
     let winner = match result {
-        taikyokushogi::GameResult::BlackWins => if a_was_white { "B" } else { "A" },
-        taikyokushogi::GameResult::WhiteWins => if a_was_white { "A" } else { "B" },
+        taikyokushogi::GameResult::BlackWins => {
+            if a_was_white {
+                "B"
+            } else {
+                "A"
+            }
+        }
+        taikyokushogi::GameResult::WhiteWins => {
+            if a_was_white {
+                "A"
+            } else {
+                "B"
+            }
+        }
         taikyokushogi::GameResult::Draw => "draw",
     };
     println!("  game {}: {}", game + 1, winner);
@@ -310,7 +404,11 @@ fn save_game(path: &str, board: &Board, hist: &[String]) -> Result<(), String> {
     let gf = GameFile {
         tsfen: board.to_tsfen(),
         moves: hist.to_vec(),
-        side: if board.side_to_move() == Color::Black { "b".into() } else { "w".into() },
+        side: if board.side_to_move() == Color::Black {
+            "b".into()
+        } else {
+            "w".into()
+        },
         move_number: board.move_number(),
     };
     let json = serde_json::to_string_pretty(&gf).map_err(|e| e.to_string())?;
@@ -340,7 +438,12 @@ struct MatchKeywords {
 }
 
 fn parse_match_keywords(tokens: &[&str]) -> MatchKeywords {
-    let mut kw = MatchKeywords { movetime: None, max_plies: None, threads_a: 1, threads_b: 1 };
+    let mut kw = MatchKeywords {
+        movetime: None,
+        max_plies: None,
+        threads_a: 1,
+        threads_b: 1,
+    };
     let mut it = tokens.iter();
     while let Some(k) = it.next() {
         match k.to_ascii_lowercase().as_str() {
@@ -369,59 +472,105 @@ fn status(board: &Board, opt: &Options) {
     println!("material:     {} (black-white)", board.material_score());
     println!("legal moves:  {}", board.legal_moves().len());
     println!("eval:         {}", board.evaluate());
-    println!("result:       {}", board.game_result().map_or("ongoing".to_string(), |r| r.to_string()));
-    println!("engine:       depth {} movetime {}ms threads {} nnue {} hash {}MiB plays {:?}",
-             opt.depth, opt.movetime, opt.threads,
-             if opt.nnue { "on" } else { "off" },
-             taikyokushogi::search::hash_mb(), opt.engine_side);
+    println!(
+        "result:       {}",
+        board
+            .game_result()
+            .map_or("ongoing".to_string(), |r| r.to_string())
+    );
+    println!(
+        "engine:       depth {} movetime {}ms threads {} nnue {} hash {}MiB plays {:?}",
+        opt.depth,
+        opt.movetime,
+        opt.threads,
+        if opt.nnue { "on" } else { "off" },
+        taikyokushogi::search::hash_mb(),
+        opt.engine_side
+    );
     println!("tsfen:        {}", board.to_tsfen());
 }
 
 fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<String>) -> bool {
     let line = line.trim();
-    if line.is_empty() { return true; }
+    if line.is_empty() {
+        return true;
+    }
     let mut tokens = line.split_whitespace();
     let cmd = tokens.next().unwrap_or("").to_ascii_lowercase();
     let rest: Vec<&str> = tokens.collect();
     match cmd.as_str() {
-        "help" | "?" => { print_help(); }
-        "quit" | "exit" => { return false; }
-        "new" | "startpos" => { *board = Board::initial(); hist.clear(); println!("new game"); }
+        "help" | "?" => {
+            print_help();
+        }
+        "quit" | "exit" => {
+            return false;
+        }
+        "new" | "startpos" => {
+            *board = Board::initial();
+            hist.clear();
+            println!("new game");
+        }
         "position" => {
             let tsfen = rest.join(" ");
             let tsfen = tsfen.strip_prefix("tsfen ").unwrap_or(&tsfen);
             match Board::from_tsfen(tsfen) {
-                Ok(b) => { *board = b; println!("position loaded"); }
+                Ok(b) => {
+                    *board = b;
+                    println!("position loaded");
+                }
                 Err(e) => println!("error: {}", e),
             }
         }
-        "board" => { println!("{}", board.display()); }
-        "status" => { status(board, opt); }
+        "board" => {
+            println!("{}", board.display());
+        }
+        "status" => {
+            status(board, opt);
+        }
         "legal" => {
             let moves = board.legal_moves();
             let filtered: Vec<_> = match rest.first() {
                 Some(sq) => match parse_square(sq) {
-                    Some((row, col)) => moves.iter().filter(|m| {
-                        let r = m.raw();
-                        (r.from_sq as usize / 36, r.from_sq as usize % 36) == (row, col)
-                    }).collect(),
-                    None => { println!("error: bad square `{}`", sq); return true; }
+                    Some((row, col)) => moves
+                        .iter()
+                        .filter(|m| {
+                            let r = m.raw();
+                            (r.from_sq as usize / 36, r.from_sq as usize % 36) == (row, col)
+                        })
+                        .collect(),
+                    None => {
+                        println!("error: bad square `{}`", sq);
+                        return true;
+                    }
                 },
                 None => moves.iter().collect(),
             };
-            if filtered.is_empty() { println!("no legal moves"); }
+            if filtered.is_empty() {
+                println!("no legal moves");
+            }
             for (i, m) in filtered.iter().enumerate() {
                 let r = m.raw();
                 let mut extra = String::new();
-                if r.captured_piece != 0 { extra.push_str(&format!(" x{}", r.captured_piece)); }
-                if r.mid_piece != 0 { extra.push_str(&format!(" +mid{}", r.mid_piece)); }
-                if r.range_cap && r.caps_value != 0 { extra.push_str(&format!(" rc({})", r.caps_value)); }
-                if r.is_igui { extra.push_str(" igui"); }
+                if r.captured_piece != 0 {
+                    extra.push_str(&format!(" x{}", r.captured_piece));
+                }
+                if r.mid_piece != 0 {
+                    extra.push_str(&format!(" +mid{}", r.mid_piece));
+                }
+                if r.range_cap && r.caps_value != 0 {
+                    extra.push_str(&format!(" rc({})", r.caps_value));
+                }
+                if r.is_igui {
+                    extra.push_str(" igui");
+                }
                 println!("{:>4}: {}{}", i, move_name(m), extra);
             }
         }
         "move" => {
-            if rest.is_empty() { println!("error: usage `move f19f20`"); return true; }
+            if rest.is_empty() {
+                println!("error: usage `move f19f20`");
+                return true;
+            }
             match parse_move(board, &rest.join(" ")) {
                 Ok(m) => {
                     let name = move_name(&m);
@@ -430,7 +579,9 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     println!("played {}", hist.last().unwrap());
                     check_terminal(board);
                     if board.game_result().is_none() {
-                        if let Some(em) = engine_turn(board, opt) { hist.push(em); }
+                        if let Some(em) = engine_turn(board, opt) {
+                            hist.push(em);
+                        }
                         check_terminal(board);
                     }
                 }
@@ -441,51 +592,74 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             if board.undo() {
                 hist.pop();
                 println!("undone");
-            } else { println!("nothing to undo"); }
+            } else {
+                println!("nothing to undo");
+            }
         }
-        "fen" => { println!("{}", board.to_tsfen()); }
-        "hint" => { taikyokushogi::set_use_nnue(opt.nnue); cmd_go(board, opt); }
+        "fen" => {
+            println!("{}", board.to_tsfen());
+        }
+        "hint" => {
+            taikyokushogi::set_use_nnue(opt.nnue);
+            cmd_go(board, opt);
+        }
         "history" => {
-            if hist.is_empty() { println!("no moves played yet"); }
+            if hist.is_empty() {
+                println!("no moves played yet");
+            }
             for (i, mv) in hist.iter().enumerate() {
-                if i % 2 == 0 { print!("{}. {}", i / 2 + 1, mv); }
-                else { println!(" {}", mv); }
+                if i % 2 == 0 {
+                    print!("{}. {}", i / 2 + 1, mv);
+                } else {
+                    println!(" {}", mv);
+                }
             }
             println!();
         }
-        "save" => {
-            match rest.first() {
-                Some(p) => match save_game(p, board, hist) {
-                    Ok(()) => println!("saved to {}", p),
-                    Err(e) => println!("error: {}", e),
-                },
-                None => println!("error: usage `save <file.json>`"),
-            }
-        }
-        "load" => {
-            match rest.first() {
-                Some(p) => match load_game(p, board, hist) {
-                    Ok(()) => println!("loaded {} ({} moves)", p, hist.len()),
-                    Err(e) => println!("error: {}", e),
-                },
-                None => println!("error: usage `load <file.json>`"),
-            }
-        }
+        "save" => match rest.first() {
+            Some(p) => match save_game(p, board, hist) {
+                Ok(()) => println!("saved to {}", p),
+                Err(e) => println!("error: {}", e),
+            },
+            None => println!("error: usage `save <file.json>`"),
+        },
+        "load" => match rest.first() {
+            Some(p) => match load_game(p, board, hist) {
+                Ok(()) => println!("loaded {} ({} moves)", p, hist.len()),
+                Err(e) => println!("error: {}", e),
+            },
+            None => println!("error: usage `load <file.json>`"),
+        },
         "selfplay" => {
             // selfplay [games] [depth] [maxplies] [movetime] [threadsA N] [threadsB N]
             let games: usize = rest.first().and_then(|s| s.parse().ok()).unwrap_or(2);
-            let depth: u32 = rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(opt.depth);
+            let depth: u32 = rest
+                .get(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(opt.depth);
             let kw = parse_match_keywords(&rest[4.min(rest.len())..]);
-            let max_plies: u32 = kw.max_plies
+            let max_plies: u32 = kw
+                .max_plies
                 .or_else(|| rest.get(2).and_then(|s| s.parse().ok()))
                 .unwrap_or(200);
-            let movetime: u64 = kw.movetime
+            let movetime: u64 = kw
+                .movetime
                 .or_else(|| rest.get(3).and_then(|s| s.parse().ok()))
                 .unwrap_or(opt.movetime);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth, time_ms: movetime, nnue: false, threads: kw.threads_a },
-                b: EngineConfig { depth, time_ms: movetime, nnue: false, threads: kw.threads_b },
+                a: EngineConfig {
+                    depth,
+                    time_ms: movetime,
+                    nnue: false,
+                    threads: kw.threads_a,
+                },
+                b: EngineConfig {
+                    depth,
+                    time_ms: movetime,
+                    nnue: false,
+                    threads: kw.threads_b,
+                },
                 max_plies,
                 on_game: Some(print_game_result),
             };
@@ -508,8 +682,18 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                      games, da, kw.threads_a, db, kw.threads_b, movetime, max_plies);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth: da, time_ms: movetime, nnue: false, threads: kw.threads_a },
-                b: EngineConfig { depth: db, time_ms: movetime, nnue: false, threads: kw.threads_b },
+                a: EngineConfig {
+                    depth: da,
+                    time_ms: movetime,
+                    nnue: false,
+                    threads: kw.threads_a,
+                },
+                b: EngineConfig {
+                    depth: db,
+                    time_ms: movetime,
+                    nnue: false,
+                    threads: kw.threads_b,
+                },
                 max_plies,
                 on_game: Some(print_game_result),
             };
@@ -524,7 +708,8 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             let da: u32 = rest.get(3).and_then(|s| s.parse().ok()).unwrap_or(2);
             let db: u32 = rest.get(4).and_then(|s| s.parse().ok()).unwrap_or(3);
             let kw = parse_match_keywords(&rest[6.min(rest.len())..]);
-            let movetime: u64 = kw.movetime
+            let movetime: u64 = kw
+                .movetime
                 .or_else(|| rest.get(5).and_then(|s| s.parse().ok()))
                 .unwrap_or(0);
             let max_plies = kw.max_plies.unwrap_or(400);
@@ -532,26 +717,56 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                      elo0, elo1, games, da, kw.threads_a, db, kw.threads_b);
             let cfg = MatchConfig {
                 games,
-                a: EngineConfig { depth: da, time_ms: movetime, nnue: false, threads: kw.threads_a },
-                b: EngineConfig { depth: db, time_ms: movetime, nnue: false, threads: kw.threads_b },
+                a: EngineConfig {
+                    depth: da,
+                    time_ms: movetime,
+                    nnue: false,
+                    threads: kw.threads_a,
+                },
+                b: EngineConfig {
+                    depth: db,
+                    time_ms: movetime,
+                    nnue: false,
+                    threads: kw.threads_b,
+                },
                 max_plies,
                 on_game: Some(print_game_result),
             };
-            let sprt = Sprt { elo0, elo1, alpha: 0.05, beta: 0.05 };
+            let sprt = Sprt {
+                elo0,
+                elo1,
+                alpha: 0.05,
+                beta: 0.05,
+            };
             let r = elo::run_sprt(&cfg, &sprt);
             r.print();
         }
         "about" => {
-            println!("taikyokushogi v{} — Taikyoku Shogi engine", env!("CARGO_PKG_VERSION"));
-            println!("  board: 36x36 (1296 squares), 804 pieces, {} piece types", taikyokushogi::num_piece_types());
-            println!("  evaluator: {} (setoption nnue on|off)", if taikyokushogi::using_nnue() { "NNUE" } else { "hand-crafted" });
+            println!(
+                "taikyokushogi v{} — Taikyoku Shogi engine",
+                env!("CARGO_PKG_VERSION")
+            );
+            println!(
+                "  board: 36x36 (1296 squares), 804 pieces, {} piece types",
+                taikyokushogi::num_piece_types()
+            );
+            println!(
+                "  evaluator: {} (setoption nnue on|off)",
+                if taikyokushogi::using_nnue() {
+                    "NNUE"
+                } else {
+                    "hand-crafted"
+                }
+            );
             println!("  search: threads {}..={} (setoption threads <N>), hash {}MiB (setoption hash <MiB>)",
                      taikyokushogi::search::DEFAULT_THREADS, taikyokushogi::search::MAX_THREADS,
                      taikyokushogi::search::hash_mb());
         }
         "go" => {
             // inline overrides: `go depth 5` / `go movetime 1000` / `go threads 4`
-            let mut d = opt.depth; let mut t = opt.movetime; let mut th = opt.threads;
+            let mut d = opt.depth;
+            let mut t = opt.movetime;
+            let mut th = opt.threads;
             let mut args = rest.iter();
             while let Some(k) = args.next() {
                 match *k {
@@ -562,45 +777,77 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 }
             }
             taikyokushogi::set_use_nnue(opt.nnue);
-            cmd_go(board, &Options { depth: d, movetime: t, threads: th, ..*opt });
+            cmd_go(
+                board,
+                &Options {
+                    depth: d,
+                    movetime: t,
+                    threads: th,
+                    ..*opt
+                },
+            );
         }
         "play" => {
             opt.engine_side = match rest.first().map(|s| s.to_ascii_lowercase()).as_deref() {
                 Some("black") | Some("b") => EngineSide::Black,
                 Some("white") | Some("w") => EngineSide::White,
                 Some("both") => EngineSide::Both,
-                _ => { println!("error: `play black|white|both`"); return true; }
+                _ => {
+                    println!("error: `play black|white|both`");
+                    return true;
+                }
             };
             println!("engine takes: {:?}", opt.engine_side);
-            if let Some(em) = engine_turn(board, opt) { hist.push(em); }
+            if let Some(em) = engine_turn(board, opt) {
+                hist.push(em);
+            }
             check_terminal(board);
         }
-        "stop" => { opt.engine_side = EngineSide::None; println!("engine stopped"); }
-        "eval" => { println!("eval = {}", board.evaluate()); }
+        "stop" => {
+            opt.engine_side = EngineSide::None;
+            println!("engine stopped");
+        }
+        "eval" => {
+            println!("eval = {}", board.evaluate());
+        }
         "perft" => {
             let depth: u32 = rest.first().and_then(|s| s.parse().ok()).unwrap_or(2);
             let t = std::time::Instant::now();
             let n = perft(board, depth);
             let secs = t.elapsed().as_secs_f64().max(1e-9);
-            println!("perft({}) = {}  ({:.1}ms, {:.1} Mnps)", depth, n,
-                     secs * 1000.0, n as f64 / secs / 1e6);
+            println!(
+                "perft({}) = {}  ({:.1}ms, {:.1} Mnps)",
+                depth,
+                n,
+                secs * 1000.0,
+                n as f64 / secs / 1e6
+            );
         }
         "bench" => {
             const ITERS: usize = 50;
             let t = std::time::Instant::now();
-            for _ in 0..ITERS { let _ = board.legal_moves(); }
+            for _ in 0..ITERS {
+                let _ = board.legal_moves();
+            }
             let mg = t.elapsed().as_micros() as f64 / ITERS as f64;
             let t = std::time::Instant::now();
-            for _ in 0..ITERS { let _ = board.evaluate(); }
+            for _ in 0..ITERS {
+                let _ = board.evaluate();
+            }
             let ev = t.elapsed().as_micros() as f64 / ITERS as f64;
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
                 let m = board.legal_moves().into_iter().next();
-                if let Some(m) = m { board.apply(&m); board.undo(); }
+                if let Some(m) = m {
+                    board.apply(&m);
+                    board.undo();
+                }
             }
             let au = t.elapsed().as_micros() as f64 / ITERS as f64;
-            println!("movegen {:.1}us  eval {:.1}us  apply+undo {:.1}us  ({} iters each)",
-                     mg, ev, au, ITERS);
+            println!(
+                "movegen {:.1}us  eval {:.1}us  apply+undo {:.1}us  ({} iters each)",
+                mg, ev, au, ITERS
+            );
         }
         "setoption" => {
             if rest.len() < 2 {
@@ -611,17 +858,25 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             let val = rest[1].to_ascii_lowercase();
             match key.as_str() {
                 "depth" => match val.parse() {
-                    Ok(d) => { opt.depth = d; println!("depth = {}", d); }
+                    Ok(d) => {
+                        opt.depth = d;
+                        println!("depth = {}", d);
+                    }
                     Err(_) => println!("error: bad depth"),
                 },
                 "movetime" => match val.parse() {
-                    Ok(t) => { opt.movetime = t; println!("movetime = {}ms", t); }
+                    Ok(t) => {
+                        opt.movetime = t;
+                        println!("movetime = {}ms", t);
+                    }
                     Err(_) => println!("error: bad movetime"),
                 },
                 "threads" => match val.parse::<usize>() {
                     Ok(n) if n >= 1 => {
                         let capped = n.min(taikyokushogi::search::MAX_THREADS);
-                        if capped != n { println!("warning: threads capped at {}", capped); }
+                        if capped != n {
+                            println!("warning: threads capped at {}", capped);
+                        }
                         opt.threads = capped;
                         println!("threads = {}", opt.threads);
                     }
@@ -640,7 +895,9 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     taikyokushogi::set_use_nnue(opt.nnue);
                     println!("nnue = {}", if opt.nnue { "on" } else { "off" });
                     if opt.nnue && std::env::var_os("TAIKYOKU_NNUE_PATH").is_none() {
-                        println!("warning: TAIKYOKU_NNUE_PATH not set — using random untrained weights");
+                        println!(
+                            "warning: TAIKYOKU_NNUE_PATH not set — using random untrained weights"
+                        );
                     }
                 }
                 other => println!("error: unknown option `{}`", other),
@@ -653,7 +910,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
 
 fn print_help() {
     println!(
-"Comandos (commands):
+        "Comandos (commands):
   help | ?                    esta ayuda (this help)
   new | startpos              posición inicial (new game)
   position <tsfen>            cargar posición TSFEN
@@ -689,7 +946,8 @@ fn print_help() {
   quit | exit                 salir
 
 Coordenadas: archivos a-z (cols 1-26) y A-J (27-36); fila+1 desde ARRIBA (fila 0 = rank 1).
-La notación coincide con el orden de filas del TSFEN. El sufijo '+' promociona.");
+La notación coincide con el orden de filas del TSFEN. El sufijo '+' promociona."
+    );
 }
 
 fn main() {
@@ -702,28 +960,61 @@ fn main() {
             std::process::exit(2);
         }
     };
-    if args.help { println!("{}", usage()); return; }
+    if args.help {
+        println!("{}", usage());
+        return;
+    }
 
     let mut board = Board::initial();
 
     // Build SearchConfig from CLI toggles: production default, then disable
     // any technique the user explicitly turned off.
     let mut cfg = SearchConfig::production();
-    if args.no_razoring.unwrap_or(false) { cfg.razoring = false; }
-    if args.no_rfp.unwrap_or(false) { cfg.reverse_futility = false; }
-    if args.no_futility.unwrap_or(false) { cfg.futility = false; }
-    if args.no_null_move.unwrap_or(false) { cfg.null_move_pruning = false; }
-    if args.no_probcut.unwrap_or(false) { cfg.probcut = false; }
-    if args.no_tt.unwrap_or(false) { cfg.transposition_table = false; }
-    if args.no_killers.unwrap_or(false) { cfg.killer_moves = false; }
-    if args.no_history.unwrap_or(false) { cfg.history_heuristic = false; }
-    if args.no_counter.unwrap_or(false) { cfg.counter_moves = false; }
-    if args.no_iid.unwrap_or(false) { cfg.internal_iterative_deepening = false; }
-    if args.no_lmr.unwrap_or(false) { cfg.late_move_reductions = false; }
-    if args.no_lmp.unwrap_or(false) { cfg.late_move_pruning = false; }
-    if args.no_beam.unwrap_or(false) { cfg.capture_beam = false; }
-    if args.no_hash_ext.unwrap_or(false) { cfg.hash_move_extension = false; }
-    if args.no_quiescence.unwrap_or(false) { cfg.quiescence = false; }
+    if args.no_razoring.unwrap_or(false) {
+        cfg.razoring = false;
+    }
+    if args.no_rfp.unwrap_or(false) {
+        cfg.reverse_futility = false;
+    }
+    if args.no_futility.unwrap_or(false) {
+        cfg.futility = false;
+    }
+    if args.no_null_move.unwrap_or(false) {
+        cfg.null_move_pruning = false;
+    }
+    if args.no_probcut.unwrap_or(false) {
+        cfg.probcut = false;
+    }
+    if args.no_tt.unwrap_or(false) {
+        cfg.transposition_table = false;
+    }
+    if args.no_killers.unwrap_or(false) {
+        cfg.killer_moves = false;
+    }
+    if args.no_history.unwrap_or(false) {
+        cfg.history_heuristic = false;
+    }
+    if args.no_counter.unwrap_or(false) {
+        cfg.counter_moves = false;
+    }
+    if args.no_iid.unwrap_or(false) {
+        cfg.internal_iterative_deepening = false;
+    }
+    if args.no_lmr.unwrap_or(false) {
+        cfg.late_move_reductions = false;
+    }
+    if args.no_lmp.unwrap_or(false) {
+        cfg.late_move_pruning = false;
+    }
+    if args.no_beam.unwrap_or(false) {
+        cfg.capture_beam = false;
+    }
+    if args.no_hash_ext.unwrap_or(false) {
+        cfg.hash_move_extension = false;
+    }
+    if args.no_quiescence.unwrap_or(false) {
+        cfg.quiescence = false;
+    }
 
     let mut opt = Options::with_config(cfg);
     let mut hist: Vec<String> = Vec::new();
@@ -731,11 +1022,17 @@ fn main() {
     if let Some(mb) = args.hash_mb {
         println!("hash = {}MiB", taikyokushogi::set_hash_mb(mb));
     }
-    if let Some(d) = args.depth { opt.depth = d; }
-    if let Some(t) = args.movetime { opt.movetime = t; }
+    if let Some(d) = args.depth {
+        opt.depth = d;
+    }
+    if let Some(t) = args.movetime {
+        opt.movetime = t;
+    }
     if let Some(n) = args.threads {
         let capped = n.min(taikyokushogi::search::MAX_THREADS);
-        if capped != n { eprintln!("warning: threads capped at {}", capped); }
+        if capped != n {
+            eprintln!("warning: threads capped at {}", capped);
+        }
         opt.threads = capped;
     }
     if let Some(pos) = &args.position {
@@ -758,7 +1055,9 @@ fn main() {
     if !args.commands.is_empty() {
         ran_command = true;
         for line in args.commands.join(" ").split("&&") {
-            if !execute(line, &mut board, &mut opt, &mut hist) { return; }
+            if !execute(line, &mut board, &mut opt, &mut hist) {
+                return;
+            }
         }
     }
 
@@ -766,8 +1065,13 @@ fn main() {
         let t = std::time::Instant::now();
         let nodes = perft(&board, n);
         let secs = t.elapsed().as_secs_f64().max(1e-9);
-        println!("perft({}) = {}  ({:.1}ms, {:.1} Mnps)", n, nodes,
-                 secs * 1000.0, nodes as f64 / secs / 1e6);
+        println!(
+            "perft({}) = {}  ({:.1}ms, {:.1} Mnps)",
+            n,
+            nodes,
+            secs * 1000.0,
+            nodes as f64 / secs / 1e6
+        );
         return;
     }
     if args.go {
@@ -775,13 +1079,19 @@ fn main() {
         cmd_go(&mut board, &opt);
         return;
     }
-    if ran_command { return; }
+    if ran_command {
+        return;
+    }
 
     println!("Taikyoku Shogi CLI — `help` para comandos.");
     let stdin = std::io::stdin();
     for line in stdin.lock().lines() {
         match line {
-            Ok(l) => { if !execute(&l, &mut board, &mut opt, &mut hist) { break; } }
+            Ok(l) => {
+                if !execute(&l, &mut board, &mut opt, &mut hist) {
+                    break;
+                }
+            }
             Err(_) => break,
         }
     }
@@ -866,7 +1176,6 @@ COMMANDS:
     With no arguments the CLI reads commands from stdin (REPL)."
 }
 
-
 // ============================================================
 // Tests — parsing helpers and command plumbing
 // ============================================================
@@ -882,7 +1191,9 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
         // Consume the value token after a flag.
         let take_value = |i: &mut usize, flag: &str| -> Result<String, String> {
             *i += 1;
-            args.get(*i).cloned().ok_or_else(|| format!("`{}` needs a value", flag))
+            args.get(*i)
+                .cloned()
+                .ok_or_else(|| format!("`{}` needs a value", flag))
         };
         match tok.as_str() {
             "--depth" | "-d" => {
@@ -896,13 +1207,17 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             "--threads" | "-j" => {
                 let v = take_value(&mut i, &tok)?;
                 let n: usize = v.parse().map_err(|_| format!("bad thread count `{}`", v))?;
-                if n == 0 { return Err("`--threads` must be at least 1".to_string()); }
+                if n == 0 {
+                    return Err("`--threads` must be at least 1".to_string());
+                }
                 out.threads = Some(n);
             }
             "--hash" => {
                 let v = take_value(&mut i, &tok)?;
                 let mb: usize = v.parse().map_err(|_| format!("bad hash size `{}`", v))?;
-                if mb == 0 { return Err("`--hash` must be at least 1 MiB".to_string()); }
+                if mb == 0 {
+                    return Err("`--hash` must be at least 1 MiB".to_string());
+                }
                 out.hash_mb = Some(mb);
             }
             // ── Technique toggles ──
@@ -933,8 +1248,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                     let mut pos = v;
                     while i + 1 < args.len()
                         && !args[i + 1].starts_with('-')
-                        && !(pos.split_whitespace().count() >= 3
-                             && Board::from_tsfen(&pos).is_ok())
+                        && !(pos.split_whitespace().count() >= 3 && Board::from_tsfen(&pos).is_ok())
                     {
                         i += 1;
                         pos.push(' ');
@@ -949,7 +1263,10 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 out.perft = Some(v.parse().map_err(|_| format!("bad perft depth `{}`", v))?);
             }
             "--help" | "-h" => out.help = true,
-            "--" => { out.commands.extend_from_slice(&args[i + 1..]); break; }
+            "--" => {
+                out.commands.extend_from_slice(&args[i + 1..]);
+                break;
+            }
             other if other.starts_with('-') => {
                 return Err(format!("unknown flag `{}` — see `--help`", other));
             }
@@ -1012,7 +1329,11 @@ mod tests {
     #[test]
     fn move_name_roundtrip() {
         let board = Board::initial();
-        let m = board.legal_moves().into_iter().next().expect("startpos has moves");
+        let m = board
+            .legal_moves()
+            .into_iter()
+            .next()
+            .expect("startpos has moves");
         let name = move_name(&m);
         // name = file + rank (1-36) + file + rank, optional '+'
         let body = name.trim_end_matches('+');
@@ -1021,7 +1342,10 @@ mod tests {
         let mut digits = String::new();
         let mut f2 = ' ';
         for c in chars.by_ref() {
-            if c.is_ascii_alphabetic() { f2 = c; break; }
+            if c.is_ascii_alphabetic() {
+                f2 = c;
+                break;
+            }
             digits.push(c);
         }
         let digits2: String = chars.collect();
@@ -1047,18 +1371,30 @@ mod tests {
             let mut d1 = String::new();
             let mut f2 = ' ';
             for c in chars.by_ref() {
-                if c.is_ascii_alphabetic() { f2 = c; break; }
+                if c.is_ascii_alphabetic() {
+                    f2 = c;
+                    break;
+                }
                 d1.push(c);
             }
-            (format!("{}{}", f1, d1), format!("{}{}", f2, chars.by_ref().collect::<String>()))
+            (
+                format!("{}{}", f1, d1),
+                format!("{}{}", f2, chars.by_ref().collect::<String>()),
+            )
         };
         let m1 = parse_move(&board, &format!("{}{}", sq1, sq2)).expect("algebraic");
         let m2 = parse_move(&board, &format!("{}-{}", sq1, sq2)).expect("dashed");
         assert_eq!(m1.raw().from_sq, m2.raw().from_sq);
         assert_eq!(m1.raw().to_sq, m2.raw().to_sq);
         // numeric form row,col-row,col
-        let (r1, c1) = (m1.raw().from_sq as usize / 36 + 1, m1.raw().from_sq as usize % 36 + 1);
-        let (r2, c2) = (m1.raw().to_sq as usize / 36 + 1, m1.raw().to_sq as usize % 36 + 1);
+        let (r1, c1) = (
+            m1.raw().from_sq as usize / 36 + 1,
+            m1.raw().from_sq as usize % 36 + 1,
+        );
+        let (r2, c2) = (
+            m1.raw().to_sq as usize / 36 + 1,
+            m1.raw().to_sq as usize % 36 + 1,
+        );
         let m3 = parse_move(&board, &format!("{},{}-{},{}", r1, c1, r2, c2)).expect("numeric");
         assert_eq!(m1.raw().from_sq, m3.raw().from_sq);
         assert_eq!(m1.raw().to_sq, m3.raw().to_sq);
@@ -1072,7 +1408,11 @@ mod tests {
     fn parse_move_error_is_helpful() {
         let board = Board::initial();
         let err = parse_move(&board, "a1a2").unwrap_err();
-        assert!(err.contains("no legal moves from a1") || err.contains("not legal"), "got: {}", err);
+        assert!(
+            err.contains("no legal moves from a1") || err.contains("not legal"),
+            "got: {}",
+            err
+        );
         let err2 = parse_move(&board, "q99q99").unwrap_err();
         assert!(err2.contains("bad square"), "got: {}", err2);
     }
@@ -1083,16 +1423,33 @@ mod tests {
         let mut opt = Options::default();
         let mut hist = Vec::new();
         for l in lines {
-            if !execute(l, &mut board, &mut opt, &mut hist) { break; }
+            if !execute(l, &mut board, &mut opt, &mut hist) {
+                break;
+            }
         }
         (board, opt, hist)
     }
 
     #[test]
     fn execute_quit_stops_repl() {
-        assert!(!execute("quit", &mut Board::initial(), &mut Options::default(), &mut Vec::new()));
-        assert!(!execute("exit", &mut Board::initial(), &mut Options::default(), &mut Vec::new()));
-        assert!(execute("help", &mut Board::initial(), &mut Options::default(), &mut Vec::new()));
+        assert!(!execute(
+            "quit",
+            &mut Board::initial(),
+            &mut Options::default(),
+            &mut Vec::new()
+        ));
+        assert!(!execute(
+            "exit",
+            &mut Board::initial(),
+            &mut Options::default(),
+            &mut Vec::new()
+        ));
+        assert!(execute(
+            "help",
+            &mut Board::initial(),
+            &mut Options::default(),
+            &mut Vec::new()
+        ));
     }
 
     #[test]
@@ -1104,8 +1461,14 @@ mod tests {
         let m2 = move_name(&probe.legal_moves().into_iter().next().unwrap());
         drop(probe);
 
-        let (board, _, hist) = run_cmds(&[&format!("move {}", m1), &format!("move {}", m2), "undo"]);
-        assert_eq!(hist.len(), 1, "one move remains after undo, hist = {:?}", hist);
+        let (board, _, hist) =
+            run_cmds(&[&format!("move {}", m1), &format!("move {}", m2), "undo"]);
+        assert_eq!(
+            hist.len(),
+            1,
+            "one move remains after undo, hist = {:?}",
+            hist
+        );
         assert_eq!(hist[0], m1);
         // black + white played, white's move undone → white to move again
         assert_eq!(board.side_to_move(), Color::White);
@@ -1142,12 +1505,23 @@ mod tests {
         let m2 = move_name(&probe.legal_moves().into_iter().next().unwrap());
         drop(probe);
 
-        let (mut board, mut opt, mut hist) = run_cmds(&[&format!("move {}", m1), &format!("move {}", m2)]);
-        assert!(execute(&format!("save {}", path), &mut board, &mut opt, &mut hist));
+        let (mut board, mut opt, mut hist) =
+            run_cmds(&[&format!("move {}", m1), &format!("move {}", m2)]);
+        assert!(execute(
+            &format!("save {}", path),
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         // reset and load
         assert!(execute("new", &mut board, &mut opt, &mut hist));
         assert!(hist.is_empty());
-        assert!(execute(&format!("load {}", path), &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            &format!("load {}", path),
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         assert_eq!(hist.len(), 2);
         assert_eq!(hist[0], m1);
         // board matches the saved TSFEN
@@ -1179,9 +1553,19 @@ mod tests {
     #[test]
     fn parse_args_reads_engine_flags() {
         let a = parse_args(&argv(&[
-            "--depth", "6", "--movetime", "1500", "--threads", "4",
-            "--hash", "128", "--position", "startpos", "--go",
-        ])).expect("flags must parse");
+            "--depth",
+            "6",
+            "--movetime",
+            "1500",
+            "--threads",
+            "4",
+            "--hash",
+            "128",
+            "--position",
+            "startpos",
+            "--go",
+        ]))
+        .expect("flags must parse");
         assert_eq!(a.depth, Some(6));
         assert_eq!(a.movetime, Some(1500));
         assert_eq!(a.threads, Some(4));
@@ -1201,8 +1585,8 @@ mod tests {
         assert_eq!(a.commands, vec!["status"]);
         assert_eq!(a.commands.join(" "), "status");
         // short aliases + `--` terminator + bare perft command
-        let a = parse_args(&argv(&["-d", "4", "-t", "500", "--", "perft", "2"]))
-            .expect("must parse");
+        let a =
+            parse_args(&argv(&["-d", "4", "-t", "500", "--", "perft", "2"])).expect("must parse");
         assert_eq!(a.depth, Some(4));
         assert_eq!(a.movetime, Some(500));
         assert_eq!(a.commands, vec!["perft", "2"]);
@@ -1214,8 +1598,14 @@ mod tests {
     fn parse_args_rejects_bad_values() {
         assert!(parse_args(&argv(&["--depth"])).is_err(), "missing value");
         assert!(parse_args(&argv(&["--depth", "x"])).is_err(), "bad number");
-        assert!(parse_args(&argv(&["--threads", "0"])).is_err(), "zero workers");
-        assert!(parse_args(&argv(&["--threads", "lots"])).is_err(), "non-number");
+        assert!(
+            parse_args(&argv(&["--threads", "0"])).is_err(),
+            "zero workers"
+        );
+        assert!(
+            parse_args(&argv(&["--threads", "lots"])).is_err(),
+            "non-number"
+        );
         assert!(parse_args(&argv(&["--hash", "0"])).is_err(), "zero hash");
         assert!(parse_args(&argv(&["--nope"])).is_err(), "unknown flag");
     }
@@ -1226,12 +1616,16 @@ mod tests {
         let tsfen = Board::initial().to_tsfen();
         let a = parse_args(&argv(&["--position", &tsfen, "status"])).expect("quoted parses");
         assert_eq!(a.position.as_deref(), Some(tsfen.as_str()));
-        assert_eq!(a.commands, vec!["status"], "commands after a full TSFEN stay commands");
+        assert_eq!(
+            a.commands,
+            vec!["status"],
+            "commands after a full TSFEN stay commands"
+        );
         // unquoted: three tokens (ranks side number) reassembled
         let parts: Vec<&str> = tsfen.split_whitespace().collect();
         assert_eq!(parts.len(), 3, "TSFEN must be ranks + side + move number");
-        let a = parse_args(&argv(&["--position", parts[0], parts[1], parts[2]]))
-            .expect("split parses");
+        let a =
+            parse_args(&argv(&["--position", parts[0], parts[1], parts[2]])).expect("split parses");
         assert_eq!(a.position.as_deref(), Some(tsfen.as_str()));
     }
 
@@ -1241,17 +1635,37 @@ mod tests {
         let mut opt = Options::default();
         let mut hist = Vec::new();
         assert_eq!(opt.threads, taikyokushogi::search::DEFAULT_THREADS);
-        assert!(execute("setoption threads 4", &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            "setoption threads 4",
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         assert_eq!(opt.threads, 4);
         // above the cap → clamped to MAX_THREADS
         let over = taikyokushogi::search::MAX_THREADS * 2;
-        assert!(execute(&format!("setoption threads {}", over), &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            &format!("setoption threads {}", over),
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         assert_eq!(opt.threads, taikyokushogi::search::MAX_THREADS);
         // 0 rejected, previous value kept
-        assert!(execute("setoption threads 0", &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            "setoption threads 0",
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         assert_eq!(opt.threads, taikyokushogi::search::MAX_THREADS);
         // garbage rejected, previous value kept
-        assert!(execute("setoption threads banana", &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            "setoption threads banana",
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         assert_eq!(opt.threads, taikyokushogi::search::MAX_THREADS);
     }
 
@@ -1264,10 +1678,20 @@ mod tests {
         let actual = taikyokushogi::search::hash_mb();
         assert!(actual >= 1, "the table must report a real size");
         // the reported size is the allocated one (round trip)
-        assert!(execute("setoption hash 16", &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            "setoption hash 16",
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
         assert!(taikyokushogi::search::hash_mb() >= 1);
         // garbage rejected
-        assert!(execute("setoption hash huge", &mut board, &mut opt, &mut hist));
+        assert!(execute(
+            "setoption hash huge",
+            &mut board,
+            &mut opt,
+            &mut hist
+        ));
     }
 
     #[test]

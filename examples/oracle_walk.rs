@@ -32,17 +32,29 @@ fn main() {
     for ply in 0..3000 {
         let before = snap(&board);
         let moves = board.legal_moves();
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         let m = moves[ply % moves.len()].clone();
         board.apply(&m);
         board.undo();
         let after = snap(&board);
         checks += 1;
-        if before.tsfen != after.tsfen || before.mat != after.mat
-            || before.black != after.black || before.white != after.white {
+        if before.tsfen != after.tsfen
+            || before.mat != after.mat
+            || before.black != after.black
+            || before.white != after.white
+        {
             mismatches += 1;
-            println!("MISMATCH at ply {} move {}->{}", ply, m.raw().from_sq, m.raw().to_sq);
-            if mismatches > 5 { break; }
+            println!(
+                "MISMATCH at ply {} move {}->{}",
+                ply,
+                m.raw().from_sq,
+                m.raw().to_sq
+            );
+            if mismatches > 5 {
+                break;
+            }
         }
         // advance the walk (with occasional deep unwind)
         let m = moves[(ply * 7919 + 13) % moves.len()].clone();
@@ -54,15 +66,22 @@ fn main() {
                 let _ = m;
             }
             let back = snap(&board);
-            if back.tsfen != base_snap.tsfen || back.mat != base_snap.mat
-                || back.black != base_snap.black || back.white != base_snap.white {
+            if back.tsfen != base_snap.tsfen
+                || back.mat != base_snap.mat
+                || back.black != base_snap.black
+                || back.white != base_snap.white
+            {
                 mismatches += 1;
                 println!("BULK UNWIND MISMATCH at ply {}", ply);
-                if mismatches > 5 { break; }
+                if mismatches > 5 {
+                    break;
+                }
             }
             base_snap = snap(&board);
         }
     }
     println!("checks={} mismatches={}", checks, mismatches);
-    if mismatches == 0 { println!("ORACLE OK"); }
+    if mismatches == 0 {
+        println!("ORACLE OK");
+    }
 }

@@ -22,7 +22,7 @@
 #![allow(dead_code)] // utility/debug API kept intentionally
 use crate::pieces;
 use crate::types::*;
-use crate::types::{N, S, E, W, NE, SE, SW, NW};
+use crate::types::{E, N, NE, NW, S, SE, SW, W};
 use std::sync::OnceLock;
 
 /// Symbolic family of a piece type.  Pieces can belong to multiple families
@@ -62,19 +62,19 @@ impl Family {
     /// Human-readable label (used in logs and analysis).
     pub fn label(self) -> &'static str {
         match self {
-            Family::Royal     => "Royal",
-            Family::RangeCap  => "Range-capturer",
-            Family::Lion      => "Lion (area)",
-            Family::Eagle     => "Eagle (queen+jump)",
-            Family::Dragon    => "Dragon (W+B)",
-            Family::Demon     => "Demon (long-range)",
-            Family::Standard  => "Standard (B3R)",
-            Family::Slider    => "Slider",
-            Family::Stepper   => "Stepper",
-            Family::Pawn      => "Pawn-rank",
-            Family::Hook      => "Hook mover",
-            Family::Special   => "Special",
-            Family::Other     => "Other",
+            Family::Royal => "Royal",
+            Family::RangeCap => "Range-capturer",
+            Family::Lion => "Lion (area)",
+            Family::Eagle => "Eagle (queen+jump)",
+            Family::Dragon => "Dragon (W+B)",
+            Family::Demon => "Demon (long-range)",
+            Family::Standard => "Standard (B3R)",
+            Family::Slider => "Slider",
+            Family::Stepper => "Stepper",
+            Family::Pawn => "Pawn-rank",
+            Family::Hook => "Hook mover",
+            Family::Special => "Special",
+            Family::Other => "Other",
         }
     }
 }
@@ -82,20 +82,20 @@ impl Family {
 /// Per-family value weight.  The engine's raw `pieces::value` is a baseline;
 /// the family weight acts as a multiplier / strategic bias.
 pub const FAMILY_WEIGHT: &[i32] = &[
-    0, // unused index 0
-    100,  // Royal
-    90,   // RangeCap
-    85,   // Lion
-    70,   // Eagle
-    60,   // Dragon
-    50,   // Demon
-    45,   // Standard
-    30,   // Slider
-    25,   // Stepper
-    10,   // Pawn
-    20,   // Hook
-    60,   // Special
-    15,   // Other
+    0,   // unused index 0
+    100, // Royal
+    90,  // RangeCap
+    85,  // Lion
+    70,  // Eagle
+    60,  // Dragon
+    50,  // Demon
+    45,  // Standard
+    30,  // Slider
+    25,  // Stepper
+    10,  // Pawn
+    20,  // Hook
+    60,  // Special
+    15,  // Other
 ];
 
 /// Compute the family of a piece type.
@@ -136,7 +136,8 @@ pub fn classify(piece_type: u16) -> Family {
     }
 
     // Dragons: half-queen (W + B or B + R).
-    if m.slides.len() == 4 && m.jumps.iter().all(|&(r, c)| r.abs() == c.abs())
+    if m.slides.len() == 4
+        && m.jumps.iter().all(|&(r, c)| r.abs() == c.abs())
         && !m.jumps.is_empty()
     {
         return Family::Dragon;
@@ -150,8 +151,14 @@ pub fn classify(piece_type: u16) -> Family {
     }
 
     // Standards: B + R combination (a rook + bishop base).
-    let has_b = m.slides.iter().any(|&(d, _)| matches!(d as usize, NE | SE | SW | NW));
-    let has_r = m.slides.iter().any(|&(d, _)| matches!(d as usize, N | S | E | W));
+    let has_b = m
+        .slides
+        .iter()
+        .any(|&(d, _)| matches!(d as usize, NE | SE | SW | NW));
+    let has_r = m
+        .slides
+        .iter()
+        .any(|&(d, _)| matches!(d as usize, N | S | E | W));
     if has_b && has_r {
         return Family::Standard;
     }
@@ -195,7 +202,11 @@ pub fn family_value(piece_type: u16) -> i32 {
         // engine stores them with the same `value()` as their base, so we
         // add a flat bonus here.
         let abbrev = pieces::abbrev(piece_type);
-        if abbrev.starts_with('+') { PROMOTION_MULT } else { 1 }
+        if abbrev.starts_with('+') {
+            PROMOTION_MULT
+        } else {
+            1
+        }
     };
 
     // Blend the per-piece value and the family weight (50/50).

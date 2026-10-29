@@ -19,8 +19,14 @@ fn main() {
 
     println!("{{");
     println!("  \"num_piece_types\": {},", n);
-    println!("  \"royal_piece_types\": [{}]", 
-              royal_types.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "));
+    println!(
+        "  \"royal_piece_types\": [{}]",
+        royal_types
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     println!("}}");
 
     eprintln!("num_piece_types = {}", n);

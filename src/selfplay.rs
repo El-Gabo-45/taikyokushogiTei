@@ -1,13 +1,13 @@
 //! GPU-accelerated self-play for Taikyoku Shogi.
-use crate::types::*;
 use crate::board::Board;
 use crate::search::search;
+use crate::types::*;
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use crossbeam::channel::{bounded, Sender, Receiver};
+use crossbeam::channel::{bounded, Receiver, Sender};
 
 #[derive(Debug, Clone)]
 pub struct SelfPlayConfig {
@@ -145,10 +145,18 @@ impl SelfPlayStats {
         println!("=== Self-Play Stats ===");
         println!("Games: {}", games);
         if games > 0 {
-            println!("Moves: {} ({:.1} moves/game)", moves, moves as f64 / games as f64);
+            println!(
+                "Moves: {} ({:.1} moves/game)",
+                moves,
+                moves as f64 / games as f64
+            );
         }
         if time > 0 {
-            println!("Nodes: {} ({:.0} nps)", nodes, nodes as f64 / (time as f64 / 1000.0));
+            println!(
+                "Nodes: {} ({:.0} nps)",
+                nodes,
+                nodes as f64 / (time as f64 / 1000.0)
+            );
         }
         println!("Time: {:.1}s", time as f64 / 1000.0);
     }
@@ -189,7 +197,11 @@ impl SelfPlayWorker {
             let best_move = match search_result.best_move {
                 Some(m) => m,
                 None => {
-                    result_val = if board.side_to_move == BLACK { -1i8 } else { 1i8 };
+                    result_val = if board.side_to_move == BLACK {
+                        -1i8
+                    } else {
+                        1i8
+                    };
                     break;
                 }
             };
@@ -230,13 +242,17 @@ impl SelfPlayWorker {
                     // Shogi piece set). Color now goes in bit 9 instead, and
                     // piece_type is masked to 9 bits defensively even though
                     // it should never exceed that range.
-                    sample.board[sq] = (cell_piece(cell) & 0x1FF) | ((cell_color(cell) as u16) << 9);
+                    sample.board[sq] =
+                        (cell_piece(cell) & 0x1FF) | ((cell_color(cell) as u16) << 9);
                 }
             }
             // Use pseudo-legal moves for policy target (much faster than generate_legal_moves)
             let pseudo_moves = crate::movegen::generate_pseudo_legal_moves(&board);
             for (idx, m) in pseudo_moves.iter().enumerate() {
-                if m.from_sq == best_move.from_sq && m.to_sq == best_move.to_sq && m.promotion == best_move.promotion {
+                if m.from_sq == best_move.from_sq
+                    && m.to_sq == best_move.to_sq
+                    && m.promotion == best_move.promotion
+                {
                     sample.policy_target = idx as u16;
                     break;
                 }
@@ -246,12 +262,20 @@ impl SelfPlayWorker {
             board.apply_move(&best_move);
             move_count += 1;
             self.stats.total_moves.fetch_add(1, Ordering::Relaxed);
-            self.stats.total_nodes.fetch_add(search_result.nodes, Ordering::Relaxed);
-            self.stats.total_time_ms.fetch_add(search_result.time_ms, Ordering::Relaxed);
+            self.stats
+                .total_nodes
+                .fetch_add(search_result.nodes, Ordering::Relaxed);
+            self.stats
+                .total_time_ms
+                .fetch_add(search_result.time_ms, Ordering::Relaxed);
         }
 
         for s in &mut game_samples {
-            let from_perspective = if s.side_to_move == BLACK { result_val as f32 } else { -(result_val as f32) };
+            let from_perspective = if s.side_to_move == BLACK {
+                result_val as f32
+            } else {
+                -(result_val as f32)
+            };
             s.value_target = from_perspective;
             s.result = from_perspective as i8;
         }
@@ -279,21 +303,34 @@ impl SelfPlayWorker {
             return;
         }
         let my_count = my_end - my_start;
-        eprintln!("[worker-{}] will play {} games ({}..{})", self.id, my_count, my_start, my_end);
+        eprintln!(
+            "[worker-{}] will play {} games ({}..{})",
+            self.id, my_count, my_start, my_end
+        );
 
         for (i, game_id) in (my_start..my_end).enumerate() {
             let (samples, record) = self.play_one_game(game_id as u64);
             let n = samples.len();
-            let result_str = match record.result { 1 => "BlackWins", -1 => "WhiteWins", _ => "Draw" };
+            let result_str = match record.result {
+                1 => "BlackWins",
+                -1 => "WhiteWins",
+                _ => "Draw",
+            };
             for s in samples {
                 let _ = self.sample_tx.send(s);
             }
             let _ = self.game_tx.send(record);
             self.stats.games_completed.fetch_add(1, Ordering::Relaxed);
-            eprintln!("[worker-{}] game {}/{} (id={}) finished: {} moves, result={}",
-                self.id, i + 1, my_count, game_id, n, result_str);
+            eprintln!(
+                "[worker-{}] game {}/{} (id={}) finished: {} moves, result={}",
+                self.id,
+                i + 1,
+                my_count,
+                game_id,
+                n,
+                result_str
+            );
         }
-
     }
 }
 
@@ -351,9 +388,13 @@ impl SelfPlayCoordinator {
         };
 
         Self {
-            config, stats, workers: Vec::new(),
-            writer_handle: Some(writer_handle), db_handle,
-            sample_tx, game_tx,
+            config,
+            stats,
+            workers: Vec::new(),
+            writer_handle: Some(writer_handle),
+            db_handle,
+            sample_tx,
+            game_tx,
         }
     }
 
@@ -377,7 +418,12 @@ impl SelfPlayCoordinator {
                 }
                 std::fs::write(&filename, &data).expect("failed to write training samples");
                 total_saved += buffer.len() as u64;
-                println!("[writer] Saved {} samples (total {}) to {}", buffer.len(), total_saved, filename);
+                println!(
+                    "[writer] Saved {} samples (total {}) to {}",
+                    buffer.len(),
+                    total_saved,
+                    filename
+                );
                 buffer.clear();
                 file_count += 1;
             }
@@ -394,7 +440,12 @@ impl SelfPlayCoordinator {
             }
             std::fs::write(&filename, &data).expect("failed to write training samples");
             total_saved += buffer.len() as u64;
-            println!("[writer] Flushed {} samples (total {}) to {}", buffer.len(), total_saved, filename);
+            println!(
+                "[writer] Flushed {} samples (total {}) to {}",
+                buffer.len(),
+                total_saved,
+                filename
+            );
         }
     }
 
@@ -412,7 +463,10 @@ impl SelfPlayCoordinator {
         std::fs::create_dir_all(&output_dir).ok();
         let conn = match rusqlite::Connection::open(&db_path) {
             Ok(c) => c,
-            Err(e) => { eprintln!("[db] open failed: {}", e); return; }
+            Err(e) => {
+                eprintln!("[db] open failed: {}", e);
+                return;
+            }
         };
         if let Err(_e) = conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS games (
@@ -434,7 +488,7 @@ impl SelfPlayCoordinator {
                 black_pieces INTEGER NOT NULL,
                 white_pieces INTEGER NOT NULL,
                 PRIMARY KEY (game_id, move_number)
-            );"
+            );",
         ) {
             eprintln!("[db] schema failed");
             return;
@@ -449,7 +503,10 @@ impl SelfPlayCoordinator {
                 eprintln!("[db] insert game failed: {}", e);
                 continue;
             }
-            let tx = match conn.unchecked_transaction() { Ok(t) => t, Err(_) => continue };
+            let tx = match conn.unchecked_transaction() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
             let mut failed = false;
             for m in &record.moves {
                 if tx.execute(
@@ -461,7 +518,9 @@ impl SelfPlayCoordinator {
                     ]
                 ).is_err() { failed = true; break; }
             }
-            if !failed { let _ = tx.commit(); }
+            if !failed {
+                let _ = tx.commit();
+            }
             total += 1;
             if last_print.elapsed().as_secs() >= 2 {
                 last_print = std::time::Instant::now();
@@ -479,7 +538,13 @@ impl SelfPlayCoordinator {
             let config = self.config.clone();
             let stats = self.stats.clone();
             let handle = std::thread::spawn(move || {
-                let mut worker = SelfPlayWorker { id: i, config, stats, sample_tx: tx, game_tx: gx };
+                let mut worker = SelfPlayWorker {
+                    id: i,
+                    config,
+                    stats,
+                    sample_tx: tx,
+                    game_tx: gx,
+                };
                 worker.run();
             });
             self.workers.push(handle);
@@ -505,9 +570,15 @@ impl SelfPlayCoordinator {
 
 pub fn run_selfplay(config: Option<SelfPlayConfig>) {
     let config = config.unwrap_or_default();
-    let max_moves = if config.max_moves == 0 { "unlimited".to_string() } else { config.max_moves.to_string() };
-    println!("Starting self-play: {} games, {} workers, depth={}, max_moves={}",
-        config.num_games, config.num_workers, config.depth, max_moves);
+    let max_moves = if config.max_moves == 0 {
+        "unlimited".to_string()
+    } else {
+        config.max_moves.to_string()
+    };
+    println!(
+        "Starting self-play: {} games, {} workers, depth={}, max_moves={}",
+        config.num_games, config.num_workers, config.depth, max_moves
+    );
     let mut coord = SelfPlayCoordinator::new(config);
     coord.start();
     coord.wait();

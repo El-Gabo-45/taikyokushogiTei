@@ -88,7 +88,10 @@ pub(crate) struct Tt {
 
 impl Tt {
     pub fn new() -> Self {
-        Tt { storage: OnceLock::new(), generation: AtomicU64::new(1) }
+        Tt {
+            storage: OnceLock::new(),
+            generation: AtomicU64::new(1),
+        }
     }
 
     #[inline]
@@ -206,7 +209,9 @@ impl Tt {
                 if t[idx].load(Ordering::Acquire) != stored {
                     continue; // slot overwritten mid-read — try next bucket slot
                 }
-                if entry.depth >= 0 { return Some(entry); }
+                if entry.depth >= 0 {
+                    return Some(entry);
+                }
             }
         }
         None
@@ -288,19 +293,34 @@ mod tests {
         let tt = Tt::new();
         let before = tt.size_mb();
         let actual = tt.resize_mb(8);
-        assert!(actual >= 4 && actual <= 8, "8 MiB request rounded to {} MiB", actual);
+        assert!(
+            actual >= 4 && actual <= 8,
+            "8 MiB request rounded to {} MiB",
+            actual
+        );
         assert_eq!(tt.size_mb(), actual);
         // A store/probe round-trip must survive the resize.
-        tt.store(0xDEAD_BEEF, TTEntry {
-            score: 42, depth: 3, flag: 0, generation: 0, best_move: 7, in_check: false,
-        });
-        let hit = tt.probe(0xDEAD_BEEF).expect("entry must be found after resize");
+        tt.store(
+            0xDEAD_BEEF,
+            TTEntry {
+                score: 42,
+                depth: 3,
+                flag: 0,
+                generation: 0,
+                best_move: 7,
+                in_check: false,
+            },
+        );
+        let hit = tt
+            .probe(0xDEAD_BEEF)
+            .expect("entry must be found after resize");
         assert_eq!(hit.score, 42);
         assert_eq!(hit.best_move, 7);
         tt.resize_mb(before);
         assert_eq!(tt.size_mb(), before);
     }
 
+    #[ignore = "would allocate up to 4 GiB (TT_MAX_MB), causing SIGABRT on machines with little RAM"]
     #[test]
     fn resize_clamps_absurd_requests() {
         let tt = Tt::new();

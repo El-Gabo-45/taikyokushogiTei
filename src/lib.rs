@@ -58,13 +58,13 @@
 //! ```
 
 #![allow(unexpected_cfgs)] // `python` cfg is set via RUSTFLAGS by the pyo3 build
-mod types;
-mod pieces;
-mod board;
-mod movegen;
 mod attack;
+mod board;
 mod eval;
+mod movegen;
+mod pieces;
 pub mod search;
+mod types;
 
 /// Centralized correctness suite (runs with `cargo test`). Lives inside the
 /// crate because the release profile uses `panic = "abort"`, which external
@@ -88,17 +88,16 @@ pub(crate) mod test_lock {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     pub(crate) fn lock() -> MutexGuard<'static, ()> {
-        LOCK
-            .get_or_init(|| Mutex::new(()))
+        LOCK.get_or_init(|| Mutex::new(()))
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 }
-mod tsfen;
 mod bitboard;
 mod debugging;
-pub mod selfplay;
 pub mod elo;
+pub mod selfplay;
+mod tsfen;
 
 #[cfg(feature = "python")]
 mod python;
@@ -134,7 +133,11 @@ impl Color {
     }
 
     pub(crate) fn from_raw(v: u8) -> Self {
-        if v == 0 { Color::Black } else { Color::White }
+        if v == 0 {
+            Color::Black
+        } else {
+            Color::White
+        }
     }
 }
 
@@ -182,7 +185,10 @@ impl Square {
     }
 
     pub(crate) fn from_index(idx: usize) -> Self {
-        Square { row: idx / BOARD_SIZE, col: idx % BOARD_SIZE }
+        Square {
+            row: idx / BOARD_SIZE,
+            col: idx % BOARD_SIZE,
+        }
     }
 
     /// Convert to flat index (row * 36 + col).
@@ -293,7 +299,9 @@ impl Move {
 impl std::fmt::Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}->{}", self.from(), self.to())?;
-        if self.is_promotion() { write!(f, "+")?; }
+        if self.is_promotion() {
+            write!(f, "+")?;
+        }
         Ok(())
     }
 }
@@ -408,7 +416,9 @@ pub struct Board {
 impl Board {
     /// Create an empty board.
     pub fn empty() -> Self {
-        Board { inner: board::Board::new() }
+        Board {
+            inner: board::Board::new(),
+        }
     }
 
     /// Create a board with the standard initial position (804 pieces).
@@ -500,13 +510,21 @@ impl Board {
     /// let mut board = taikyokushogi::Board::initial();
     /// board.apply_by_coord(25, 0, 24, 0, false, None); // move pawn forward
     /// ```
-    pub fn apply_by_coord(&mut self, from_row: usize, from_col: usize,
-                          to_row: usize, to_col: usize, promotion: bool,
-                          mid_sq: Option<usize>) -> bool {
+    pub fn apply_by_coord(
+        &mut self,
+        from_row: usize,
+        from_col: usize,
+        to_row: usize,
+        to_col: usize,
+        promotion: bool,
+        mid_sq: Option<usize>,
+    ) -> bool {
         // Validate coordinates before any indexing — out-of-range coordinates
         // would otherwise panic on array access.
-        if from_row >= types::BOARD_SIZE || from_col >= types::BOARD_SIZE
-            || to_row >= types::BOARD_SIZE || to_col >= types::BOARD_SIZE
+        if from_row >= types::BOARD_SIZE
+            || from_col >= types::BOARD_SIZE
+            || to_row >= types::BOARD_SIZE
+            || to_col >= types::BOARD_SIZE
         {
             return false;
         }
@@ -516,9 +534,7 @@ impl Board {
         let moves = movegen::generate_legal_moves(&self.inner);
         for m in &moves {
             let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
-            if m.from_sq == from_sq && m.to_sq == to_sq
-                && m.promotion == promotion && mid_match
-            {
+            if m.from_sq == from_sq && m.to_sq == to_sq && m.promotion == promotion && mid_match {
                 self.inner.apply_move(m);
                 return true;
             }
@@ -534,10 +550,14 @@ impl Board {
     /// Pick a uniformly random legal move, or `None` if no moves exist.
     pub fn random_move(&self) -> Option<Move> {
         let moves = movegen::generate_legal_moves(&self.inner);
-        if moves.is_empty() { return None; }
+        if moves.is_empty() {
+            return None;
+        }
         use rand::Rng;
         let idx = rand::thread_rng().gen_range(0..moves.len());
-        Some(Move { inner: moves.into_iter().nth(idx).unwrap() })
+        Some(Move {
+            inner: moves.into_iter().nth(idx).unwrap(),
+        })
     }
 
     /// Run an alpha-beta search.
@@ -557,8 +577,12 @@ impl Board {
     /// [`Board::search`] with Lazy SMP: `threads` workers (1 = plain search)
     /// share the default searcher's transposition table. See
     /// [`search::search_threads`].
-    pub fn search_threads(&mut self, depth: u32, time_limit_ms: u64,
-                          threads: usize) -> SearchResult {
+    pub fn search_threads(
+        &mut self,
+        depth: u32,
+        time_limit_ms: u64,
+        threads: usize,
+    ) -> SearchResult {
         let r = search::search_threads(&mut self.inner, depth, time_limit_ms, threads);
         SearchResult {
             best_move: r.best_move.map(|m| Move { inner: m }),
@@ -574,8 +598,12 @@ impl Board {
     /// ordering heuristics from move to move, to size the table
     /// ([`Searcher::set_hash_mb`]) or to share it between workers
     /// ([`Searcher::share_tt`]). Call [`Searcher::clear`] for a new game.
-    pub fn search_with(&mut self, searcher: &mut search::Searcher, depth: u32,
-                       time_limit_ms: u64) -> SearchResult {
+    pub fn search_with(
+        &mut self,
+        searcher: &mut search::Searcher,
+        depth: u32,
+        time_limit_ms: u64,
+    ) -> SearchResult {
         self.search_with_threads(searcher, depth, time_limit_ms, 1)
     }
 
@@ -585,8 +613,13 @@ impl Board {
     /// With more than one thread the result is no longer bit-reproducible —
     /// workers fill the table in a timing-dependent order — so use
     /// `threads = 1` for tests and for A/B comparisons.
-    pub fn search_with_threads(&mut self, searcher: &mut search::Searcher, depth: u32,
-                               time_limit_ms: u64, threads: usize) -> SearchResult {
+    pub fn search_with_threads(
+        &mut self,
+        searcher: &mut search::Searcher,
+        depth: u32,
+        time_limit_ms: u64,
+        threads: usize,
+    ) -> SearchResult {
         let r = searcher.search_threads(&mut self.inner, depth, time_limit_ms, threads);
         SearchResult {
             best_move: r.best_move.map(|m| Move { inner: m }),
@@ -638,9 +671,13 @@ impl Board {
         let mut result = Vec::new();
         for i in 0..self.inner.piece_list_len[c] {
             let sq = self.inner.piece_list[c][i];
-            if sq == types::INVALID_SQ { continue; }
+            if sq == types::INVALID_SQ {
+                continue;
+            }
             let cell = self.inner.cells[sq as usize];
-            if cell == types::EMPTY_CELL { continue; }
+            if cell == types::EMPTY_CELL {
+                continue;
+            }
             result.push((
                 Square::from_index(sq as usize),
                 Piece {
@@ -655,7 +692,9 @@ impl Board {
 
 impl Clone for Board {
     fn clone(&self) -> Self {
-        Board { inner: self.inner.clone() }
+        Board {
+            inner: self.inner.clone(),
+        }
     }
 }
 

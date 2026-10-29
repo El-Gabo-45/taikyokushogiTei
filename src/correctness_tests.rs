@@ -11,11 +11,18 @@ use crate::{Board, Color};
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
     fn pick(&mut self, n: usize) -> usize {
-        if n == 0 { 0 } else { (self.next() as usize) % n }
+        if n == 0 {
+            0
+        } else {
+            (self.next() as usize) % n
+        }
     }
 }
 
@@ -37,7 +44,9 @@ fn tsfen_roundtrip_after_random_walk() {
     let mut board = Board::initial();
     for _ in 0..40 {
         let moves = board.legal_moves();
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         board.apply(&moves[rng.pick(moves.len())]);
     }
     let tsfen = board.to_tsfen();
@@ -56,9 +65,13 @@ fn perft_golden_initial() {
 }
 
 fn perft(board: &mut Board, depth: u32) -> u64 {
-    if depth == 0 { return 1; }
+    if depth == 0 {
+        return 1;
+    }
     let moves = board.legal_moves();
-    if depth == 1 { return moves.len() as u64; }
+    if depth == 1 {
+        return moves.len() as u64;
+    }
     let mut n = 0;
     for m in &moves {
         board.apply(m);
@@ -76,17 +89,37 @@ fn apply_undo_restores_state() {
     for ply in 0..80 {
         let before_tsfen = board.to_tsfen();
         let before_mat = board.material_score();
-        let before_counts = (board.piece_count(Color::Black), board.piece_count(Color::White));
+        let before_counts = (
+            board.piece_count(Color::Black),
+            board.piece_count(Color::White),
+        );
         let moves = board.legal_moves();
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         let m = moves[rng.pick(moves.len())].clone();
         board.apply(&m);
         board.undo();
-        assert_eq!(board.to_tsfen(), before_tsfen, "cells diverged at ply {}", ply);
-        assert_eq!(board.material_score(), before_mat, "material diverged at ply {}", ply);
         assert_eq!(
-            (board.piece_count(Color::Black), board.piece_count(Color::White)),
-            before_counts, "piece counts diverged at ply {}", ply
+            board.to_tsfen(),
+            before_tsfen,
+            "cells diverged at ply {}",
+            ply
+        );
+        assert_eq!(
+            board.material_score(),
+            before_mat,
+            "material diverged at ply {}",
+            ply
+        );
+        assert_eq!(
+            (
+                board.piece_count(Color::Black),
+                board.piece_count(Color::White)
+            ),
+            before_counts,
+            "piece counts diverged at ply {}",
+            ply
         );
         board.apply(&moves[(ply * 7919 + 13) % moves.len()]);
     }
@@ -96,9 +129,12 @@ fn apply_undo_restores_state() {
 // Crafted-position and rule tests (board.rs internals are crate-visible)
 // ══════════════════════════════════════════════════════════════════
 use crate::board;
-use crate::types::{make_cell, cell_piece, cell_color, BLACK, WHITE, EMPTY_CELL, NUM_SQUARES, INVALID_SQ, DRAW_PLIES, GameResult, Move};
-use crate::pieces;
 use crate::movegen;
+use crate::pieces;
+use crate::types::{
+    cell_color, cell_piece, make_cell, GameResult, Move, BLACK, DRAW_PLIES, EMPTY_CELL, INVALID_SQ,
+    NUM_SQUARES, WHITE,
+};
 
 type IntBoard = board::Board;
 
@@ -109,19 +145,23 @@ fn initial_int() -> IntBoard {
     b
 }
 
-fn empty_board() -> IntBoard { board::Board::new() }
+fn empty_board() -> IntBoard {
+    board::Board::new()
+}
 
 fn put(b: &mut IntBoard, row: usize, col: usize, pt: u16, color: u8) {
     b.cells[row * 36 + col] = make_cell(pt, color);
 }
 
 fn find_piece(name: &str) -> u16 {
-    (1..=301u16).find(|&pt| pieces::name(pt) == name)
+    (1..=301u16)
+        .find(|&pt| pieces::name(pt) == name)
         .unwrap_or_else(|| panic!("piece `{}` not found in PIECE_DEFS", name))
 }
 
 fn moves_from(b: &IntBoard, row: usize, col: usize) -> Vec<Move> {
-    movegen::generate_pseudo_legal_moves(b).into_iter()
+    movegen::generate_pseudo_legal_moves(b)
+        .into_iter()
         .filter(|m| m.from_sq as usize == row * 36 + col)
         .collect()
 }
@@ -134,15 +174,31 @@ fn legal_equals_pseudo_legal_random_walk() {
         let legal = movegen::generate_legal_moves(&b);
         let pseudo = movegen::generate_pseudo_legal_moves(&b);
         assert_eq!(legal.len(), pseudo.len());
-        let key = |m: &Move| (m.from_sq, m.to_sq, m.promotion, m.mid_sq, m.is_igui,
-                              m.captured_piece, m.range_cap, m.caps_value);
+        let key = |m: &Move| {
+            (
+                m.from_sq,
+                m.to_sq,
+                m.promotion,
+                m.mid_sq,
+                m.is_igui,
+                m.captured_piece,
+                m.range_cap,
+                m.caps_value,
+            )
+        };
         let mut seen_l = std::collections::HashSet::new();
         let mut seen_p = std::collections::HashSet::new();
-        for m in &legal { seen_l.insert(key(m)); }
-        for m in &pseudo { seen_p.insert(key(m)); }
+        for m in &legal {
+            seen_l.insert(key(m));
+        }
+        for m in &pseudo {
+            seen_p.insert(key(m));
+        }
         assert_eq!(seen_l, seen_p, "legal != pseudo-legal move sets");
         let moves = legal;
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         b.apply_move(&moves[rng.pick(moves.len())]);
     }
 }
@@ -155,7 +211,9 @@ fn undo_restores_hash_and_scores_every_ply() {
     for ply in 0..60 {
         let (h, mat, psqt) = (b.hash, b.material_score, b.psqt_score);
         let moves = movegen::generate_legal_moves(&b);
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         b.apply_move(&moves[rng.pick(moves.len())]);
         b.undo_move();
         assert_eq!(b.hash, h, "hash diverged at ply {}", ply);
@@ -169,8 +227,11 @@ fn undo_restores_hash_and_scores_every_ply() {
 #[test]
 fn zobrist_transposition_independent_moves() {
     let quiet = |m: &Move| {
-        m.captured_piece == 0 && m.mid_sq == INVALID_SQ && !m.range_cap
-            && m.from_sq != m.to_sq && !m.is_igui
+        m.captured_piece == 0
+            && m.mid_sq == INVALID_SQ
+            && !m.range_cap
+            && m.from_sq != m.to_sq
+            && !m.is_igui
     };
     let mut b = initial_int();
     let mvs = movegen::generate_legal_moves(&b);
@@ -186,7 +247,9 @@ fn zobrist_transposition_independent_moves() {
                 break;
             }
         }
-        if found.is_some() { break; }
+        if found.is_some() {
+            break;
+        }
     }
     let (m1, m2) = found.expect("initial position has many quiet moves");
     let used: std::collections::HashSet<u16> = [m1.from_sq, m1.to_sq, m2.from_sq, m2.to_sq].into();
@@ -194,38 +257,49 @@ fn zobrist_transposition_independent_moves() {
     // a white quiet move w disjoint from all four squares
     b.apply_move(&m2);
     let wmvs = movegen::generate_legal_moves(&b);
-    let w = wmvs.iter().find(|m| quiet(m)
-        && !used.contains(&m.from_sq) && !used.contains(&m.to_sq))
-        .expect("quiet white move exists").clone();
+    let w = wmvs
+        .iter()
+        .find(|m| quiet(m) && !used.contains(&m.from_sq) && !used.contains(&m.to_sq))
+        .expect("quiet white move exists")
+        .clone();
     b.undo_move();
 
     // path A: m1, w, m2  — path B: m2, w, m1
     b.apply_move(&m1);
     // w must be legal and identical after m1 too
-    let w_after_m1 = movegen::generate_legal_moves(&b).into_iter()
+    let w_after_m1 = movegen::generate_legal_moves(&b)
+        .into_iter()
         .find(|m| m.from_sq == w.from_sq && m.to_sq == w.to_sq && m.promotion == w.promotion)
         .expect("white quiet move legal after m1 as well");
     b.apply_move(&w_after_m1);
-    let m2_after = movegen::generate_legal_moves(&b).into_iter()
+    let m2_after = movegen::generate_legal_moves(&b)
+        .into_iter()
         .find(|m| m.from_sq == m2.from_sq && m.to_sq == m2.to_sq)
         .expect("second black move still legal");
     b.apply_move(&m2_after);
     let hash_a = b.hash;
-    b.undo_move(); b.undo_move(); b.undo_move();
+    b.undo_move();
+    b.undo_move();
+    b.undo_move();
     assert_eq!(b.hash, initial_int().hash, "triple undo restores start");
 
     b.apply_move(&m2);
-    let w_after_m2 = movegen::generate_legal_moves(&b).into_iter()
+    let w_after_m2 = movegen::generate_legal_moves(&b)
+        .into_iter()
         .find(|m| m.from_sq == w.from_sq && m.to_sq == w.to_sq && m.promotion == w.promotion)
         .expect("white quiet move legal after m2");
     b.apply_move(&w_after_m2);
-    let m1_after = movegen::generate_legal_moves(&b).into_iter()
+    let m1_after = movegen::generate_legal_moves(&b)
+        .into_iter()
         .find(|m| m.from_sq == m1.from_sq && m.to_sq == m1.to_sq)
         .expect("first black move still legal");
     b.apply_move(&m1_after);
     let hash_b = b.hash;
 
-    assert_eq!(hash_a, hash_b, "transposed move orders must hash identically");
+    assert_eq!(
+        hash_a, hash_b,
+        "transposed move orders must hash identically"
+    );
 }
 
 // ── Draw by the no-progress rule ────────────────────────────────
@@ -250,8 +324,10 @@ fn losing_last_royal_loses() {
         }
     }
     b.rebuild_lists_pub();
-    assert!(matches!(b.game_result(), Some(GameResult::BlackWins)),
-        "removing all white royals must end the game with a black win");
+    assert!(
+        matches!(b.game_result(), Some(GameResult::BlackWins)),
+        "removing all white royals must end the game with a black win"
+    );
     // black still has royals
     assert!(matches!(b.game_result(), Some(GameResult::BlackWins)));
 }
@@ -259,7 +335,8 @@ fn losing_last_royal_loses() {
 // ── Igui: capture without moving ────────────────────────────────
 #[test]
 fn igui_captures_without_moving() {
-    let mover = (1..=301u16).find(|&pt| pieces::movement(pt).igui)
+    let mover = (1..=301u16)
+        .find(|&pt| pieces::movement(pt).igui)
         .expect("at least one piece has igui");
     let victim = find_piece("Pawn");
     let mut b = empty_board();
@@ -268,15 +345,24 @@ fn igui_captures_without_moving() {
     b.rebuild_lists_pub();
 
     let moves = movegen::generate_pseudo_legal_moves(&b);
-    let igui: Vec<Move> = moves.into_iter()
+    let igui: Vec<Move> = moves
+        .into_iter()
         .filter(|m| m.is_igui && m.captured_piece == victim && !m.promotion)
         .collect();
     assert!(!igui.is_empty(), "expected a non-promo igui move");
 
     let before = b.piece_count[0] + b.piece_count[1];
     b.apply_move(&igui[0]);
-    assert_eq!(b.piece_count[0] + b.piece_count[1], before - 1, "victim removed");
-    assert_eq!(cell_piece(b.cells[17 * 36 + 17]), mover, "mover stays on its square");
+    assert_eq!(
+        b.piece_count[0] + b.piece_count[1],
+        before - 1,
+        "victim removed"
+    );
+    assert_eq!(
+        cell_piece(b.cells[17 * 36 + 17]),
+        mover,
+        "mover stays on its square"
+    );
     assert_eq!(b.cells[16 * 36 + 17], EMPTY_CELL, "victim square empty");
     b.undo_move();
     assert_eq!(b.piece_count[0] + b.piece_count[1], before);
@@ -286,7 +372,8 @@ fn igui_captures_without_moving() {
 // ── Lion-type mid capture removes BOTH pieces ───────────────────
 #[test]
 fn area_mid_capture_removes_both_pieces() {
-    let mover = (1..=301u16).find(|&pt| pieces::movement(pt).area >= 2)
+    let mover = (1..=301u16)
+        .find(|&pt| pieces::movement(pt).area >= 2)
         .expect("at least one piece has area>=2");
     let victim = find_piece("Pawn");
     let mut b = empty_board();
@@ -299,14 +386,24 @@ fn area_mid_capture_removes_both_pieces() {
     b.rebuild_lists_pub();
 
     let moves = movegen::generate_pseudo_legal_moves(&b);
-    let mid = moves.iter().find(|m| {
-        m.mid_piece != 0 && m.captured_piece != 0 && m.to_sq != m.from_sq
-    }).expect("expected a mid-capture move").clone();
+    let mid = moves
+        .iter()
+        .find(|m| m.mid_piece != 0 && m.captured_piece != 0 && m.to_sq != m.from_sq)
+        .expect("expected a mid-capture move")
+        .clone();
 
     let before = b.piece_count[0] + b.piece_count[1];
     b.apply_move(&mid);
-    assert_eq!(b.piece_count[0] + b.piece_count[1], before - 2, "mid + landing both removed");
-    assert_eq!(cell_piece(b.cells[mid.to_sq as usize]), mover, "mover landed at to");
+    assert_eq!(
+        b.piece_count[0] + b.piece_count[1],
+        before - 2,
+        "mid + landing both removed"
+    );
+    assert_eq!(
+        cell_piece(b.cells[mid.to_sq as usize]),
+        mover,
+        "mover landed at to"
+    );
     assert_eq!(b.cells[mid.mid_sq as usize], EMPTY_CELL, "mid square empty");
     b.undo_move();
     assert_eq!(b.piece_count[0] + b.piece_count[1], before);
@@ -320,10 +417,10 @@ fn pawn_promotion_variants_follow_zone_rules() {
     let pawn = find_piece("Pawn");
     // (start_row, dest_row, expected_variants, expected_promo_only)
     let cases: &[(usize, usize, usize, bool)] = &[
-        (13, 12, 1, false),  // outside the zone: single non-promo move
-        (11, 10, 2, false),  // entering the zone: promotion optional
-        (6, 5, 1, false),    // inside zone, quiet move: no promo (only captures promote)
-        (1, 0, 1, true),     // farthest rank: must promote
+        (13, 12, 1, false), // outside the zone: single non-promo move
+        (11, 10, 2, false), // entering the zone: promotion optional
+        (6, 5, 1, false),   // inside zone, quiet move: no promo (only captures promote)
+        (1, 0, 1, true),    // farthest rank: must promote
     ];
     for &(start, dest, variants, promo_only) in cases {
         let mut b = empty_board();
@@ -331,12 +428,20 @@ fn pawn_promotion_variants_follow_zone_rules() {
         b.rebuild_lists_pub();
         let to = (dest * 36 + 17) as u16;
         let generated = moves_from(&b, start, 17);
-        let matching: Vec<&Move> = generated.iter()
-            .filter(|m| m.to_sq == to).collect();
-        assert_eq!(matching.len(), variants,
-            "black pawn {}->{}: expected {} variants", start, dest, variants);
+        let matching: Vec<&Move> = generated.iter().filter(|m| m.to_sq == to).collect();
+        assert_eq!(
+            matching.len(),
+            variants,
+            "black pawn {}->{}: expected {} variants",
+            start,
+            dest,
+            variants
+        );
         if promo_only {
-            assert!(matching.iter().all(|m| m.promotion), "must promote at the farthest rank");
+            assert!(
+                matching.iter().all(|m| m.promotion),
+                "must promote at the farthest rank"
+            );
         } else if variants == 2 {
             assert!(matching.iter().any(|m| m.promotion) && matching.iter().any(|m| !m.promotion));
         }
@@ -359,10 +464,15 @@ fn white_pawn_promotion_mirrors_black() {
         b.rebuild_lists_pub();
         let to = (dest * 36 + 17) as u16;
         let generated = moves_from(&b, start, 17);
-        let matching: Vec<&Move> = generated.iter()
-            .filter(|m| m.to_sq == to).collect();
-        assert_eq!(matching.len(), variants,
-            "white pawn {}->{}: expected {} variants", start, dest, variants);
+        let matching: Vec<&Move> = generated.iter().filter(|m| m.to_sq == to).collect();
+        assert_eq!(
+            matching.len(),
+            variants,
+            "white pawn {}->{}: expected {} variants",
+            start,
+            dest,
+            variants
+        );
         if promo_only {
             assert!(matching.iter().all(|m| m.promotion));
         }
@@ -385,12 +495,22 @@ fn range_capture_respects_rank_hierarchy() {
     put(&mut b, 17, 22, king, WHITE);
     b.rebuild_lists_pub();
     let from_ro = moves_from(&b, 17, 17);
-    assert!(from_ro.iter().any(|m| m.to_sq == (17 * 36 + 19) as u16 && m.captured_piece == pawn),
-        "lower-rank enemy must be capturable");
-    assert!(!from_ro.iter().any(|m| m.to_sq == (17 * 36 + 22) as u16),
-        "royals cannot be range-captured or overflown");
-    assert!(!from_ro.iter().any(|m| (m.to_sq as usize % 36) > 22 && (m.to_sq as usize / 36) == 17),
-        "nothing beyond the blocking royal is reachable");
+    assert!(
+        from_ro
+            .iter()
+            .any(|m| m.to_sq == (17 * 36 + 19) as u16 && m.captured_piece == pawn),
+        "lower-rank enemy must be capturable"
+    );
+    assert!(
+        !from_ro.iter().any(|m| m.to_sq == (17 * 36 + 22) as u16),
+        "royals cannot be range-captured or overflown"
+    );
+    assert!(
+        !from_ro
+            .iter()
+            .any(|m| (m.to_sq as usize % 36) > 22 && (m.to_sq as usize / 36) == 17),
+        "nothing beyond the blocking royal is reachable"
+    );
 
     // an equal-rank piece also stops the ray (not capturable)
     let mut b2 = empty_board();
@@ -398,8 +518,10 @@ fn range_capture_respects_rank_hierarchy() {
     put(&mut b2, 17, 19, ro, WHITE);
     b2.rebuild_lists_pub();
     let from_ro2 = moves_from(&b2, 17, 17);
-    assert!(!from_ro2.iter().any(|m| m.to_sq == (17 * 36 + 19) as u16),
-        "equal-rank pieces must not be capturable");
+    assert!(
+        !from_ro2.iter().any(|m| m.to_sq == (17 * 36 + 19) as u16),
+        "equal-rank pieces must not be capturable"
+    );
 }
 
 // ── Exhaustive apply/undo over ALL initial moves ────────────────
@@ -413,7 +535,11 @@ fn exhaustive_apply_undo_initial() {
         let before_cells = b.cells;
         b.apply_move(m);
         b.undo_move();
-        assert_eq!(b.hash, before_hash, "hash after undo of {:?}->{:?}", m.from_sq, m.to_sq);
+        assert_eq!(
+            b.hash, before_hash,
+            "hash after undo of {:?}->{:?}",
+            m.from_sq, m.to_sq
+        );
         assert_eq!(b.cells, before_cells, "cells after undo");
     }
 }
@@ -430,13 +556,23 @@ fn material_score_matches_piece_sum() {
             let cell = b.cells[sq];
             if cell != EMPTY_CELL {
                 let v = pieces::value(cell_piece(cell));
-                if cell_color(cell) == BLACK { sum += v; } else { sum -= v; }
+                if cell_color(cell) == BLACK {
+                    sum += v;
+                } else {
+                    sum -= v;
+                }
             }
         }
-        assert_eq!(b.material_score, sum, "incremental material diverged (check {})", check);
+        assert_eq!(
+            b.material_score, sum,
+            "incremental material diverged (check {})",
+            check
+        );
         check += 1;
         let moves = movegen::generate_legal_moves(&b);
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         b.apply_move(&moves[rng.pick(moves.len())]);
     }
 }
@@ -449,9 +585,15 @@ fn search_terminates_with_time_limit() {
     let start = std::time::Instant::now();
     let mut b = initial_int();
     let r = crate::search::search(&mut b, 6, 300);
-    assert!(r.best_move.is_some(), "time-limited search must return a move");
-    assert!(start.elapsed() < std::time::Duration::from_secs(10),
-        "search(6, 300ms) took {:?}", start.elapsed());
+    assert!(
+        r.best_move.is_some(),
+        "time-limited search must return a move"
+    );
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(10),
+        "search(6, 300ms) took {:?}",
+        start.elapsed()
+    );
 }
 
 // ── Selfplay smoke: a short game always stays legal ─────────────
@@ -473,7 +615,8 @@ fn short_selfplay_game_smoke() {
     let tsfen = crate::tsfen::to_tsfen(&b);
     let restored = crate::tsfen::from_tsfen(&tsfen).expect("selfplay position must round-trip");
     assert_eq!(crate::tsfen::to_tsfen(&restored), tsfen);
-}#[test]
+}
+#[test]
 fn bulk_unwind_restores_state() {
     let mut rng = Lcg(0x5EED);
     let mut board = Board::initial();
@@ -483,7 +626,9 @@ fn bulk_unwind_restores_state() {
         let mut stack = Vec::new();
         for _ in 0..30 {
             let moves = board.legal_moves();
-            if moves.is_empty() { break; }
+            if moves.is_empty() {
+                break;
+            }
             let m = moves[rng.pick(moves.len())].clone();
             board.apply(&m);
             stack.push(m);
@@ -506,11 +651,26 @@ fn legal_moves_have_no_duplicate_effects() {
         let mut seen = std::collections::HashSet::new();
         for m in &moves {
             let r = m.raw();
-            let key = (r.from_sq, r.to_sq, r.promotion, r.mid_sq, r.mid_piece != 0,
-                       r.captured_piece, r.range_cap, r.caps_value);
-            assert!(seen.insert(key), "duplicate-effect move {:?}->{:?}", r.from_sq, r.to_sq);
+            let key = (
+                r.from_sq,
+                r.to_sq,
+                r.promotion,
+                r.mid_sq,
+                r.mid_piece != 0,
+                r.captured_piece,
+                r.range_cap,
+                r.caps_value,
+            );
+            assert!(
+                seen.insert(key),
+                "duplicate-effect move {:?}->{:?}",
+                r.from_sq,
+                r.to_sq
+            );
         }
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         board.apply(&moves[rng.pick(moves.len())]);
     }
 }
@@ -520,10 +680,14 @@ fn legal_moves_have_no_duplicate_effects() {
 fn range_capture_empties_intermediates() {
     let mut board = Board::initial();
     let moves = board.legal_moves();
-    let rc = moves.iter().find(|m| {
-        let r = m.raw();
-        r.range_cap && r.caps_value != 0
-    }).expect("initial position has range-capture moves").clone();
+    let rc = moves
+        .iter()
+        .find(|m| {
+            let r = m.raw();
+            r.range_cap && r.caps_value != 0
+        })
+        .expect("initial position has range-capture moves")
+        .clone();
     let (from, to) = (rc.raw().from_sq as usize, rc.raw().to_sq as usize);
     let (fr, fc) = (from / 36, from % 36);
     let (tr, tc) = (to / 36, to % 36);
@@ -533,17 +697,26 @@ fn range_capture_empties_intermediates() {
     let mut occupied_between: usize = 0;
     let (mut r, mut c) = (fr as i32 + dr, fc as i32 + dc);
     while (r, c) != (tr as i32, tc as i32) {
-        if board.get(r as usize, c as usize).is_some() { occupied_between += 1; }
-        r += dr; c += dc;
+        if board.get(r as usize, c as usize).is_some() {
+            occupied_between += 1;
+        }
+        r += dr;
+        c += dc;
     }
     let landing_occupied = board.get(tr, tc).is_some() as usize;
     let before_total = board.piece_count(Color::Black) + board.piece_count(Color::White);
     board.apply(&rc);
     let after_total = board.piece_count(Color::Black) + board.piece_count(Color::White);
-    assert_eq!(before_total - after_total, occupied_between + landing_occupied,
-        "range capture must remove ALL occupied path squares (any color)");
+    assert_eq!(
+        before_total - after_total,
+        occupied_between + landing_occupied,
+        "range capture must remove ALL occupied path squares (any color)"
+    );
     board.undo();
-    assert_eq!(board.piece_count(Color::Black) + board.piece_count(Color::White), before_total);
+    assert_eq!(
+        board.piece_count(Color::Black) + board.piece_count(Color::White),
+        before_total
+    );
 }
 
 // ── Search: returns a legal move and leaves the board untouched ─────
@@ -571,10 +744,17 @@ fn search_expands_a_real_tree() {
     let _serial = crate::test_lock::lock();
     let mut board = Board::initial();
     let r = board.search(3, 0);
-    assert!(r.score.abs() < 1_000_000, "non-mate score must be below MATE_SCORE");
+    assert!(
+        r.score.abs() < 1_000_000,
+        "non-mate score must be below MATE_SCORE"
+    );
     // With the material fast path DISABLED, depth-3 must genuinely expand
     // the tree (the old fake path produced ~1536 nodes, one per root move).
-    assert!(r.nodes > 1_000, "depth-3 must expand a real tree (got {} nodes)", r.nodes);
+    assert!(
+        r.nodes > 1_000,
+        "depth-3 must expand a real tree (got {} nodes)",
+        r.nodes
+    );
 }
 
 // ============================================================
@@ -633,8 +813,16 @@ fn clone_is_independent() {
     assert_eq!(clone.move_number(), 1);
     assert_eq!(clone.side_to_move(), Color::White);
     // clone state is self-consistent: material equals the recomputed sum
-    let sum: i32 = clone.pieces(Color::Black).iter().map(|(_, p)| p.value()).sum::<i32>()
-        - clone.pieces(Color::White).iter().map(|(_, p)| p.value()).sum::<i32>();
+    let sum: i32 = clone
+        .pieces(Color::Black)
+        .iter()
+        .map(|(_, p)| p.value())
+        .sum::<i32>()
+        - clone
+            .pieces(Color::White)
+            .iter()
+            .map(|(_, p)| p.value())
+            .sum::<i32>();
     assert_eq!(clone.material_score(), sum);
 }
 
@@ -644,13 +832,27 @@ fn material_score_matches_recomputed_sum() {
     let mut board = Board::initial();
     for _ in 0..40 {
         let moves = board.legal_moves();
-        if moves.is_empty() { break; }
+        if moves.is_empty() {
+            break;
+        }
         board.apply(&moves[rng.pick(moves.len())]);
-        let sum: i32 = board.pieces(Color::Black).iter().map(|(_, p)| p.value()).sum::<i32>()
-            - board.pieces(Color::White).iter().map(|(_, p)| p.value()).sum::<i32>();
-        assert_eq!(board.material_score(), sum,
+        let sum: i32 = board
+            .pieces(Color::Black)
+            .iter()
+            .map(|(_, p)| p.value())
+            .sum::<i32>()
+            - board
+                .pieces(Color::White)
+                .iter()
+                .map(|(_, p)| p.value())
+                .sum::<i32>();
+        assert_eq!(
+            board.material_score(),
+            sum,
             "incremental material diverged at move {} (tsfen {})",
-            board.move_number(), board.to_tsfen());
+            board.move_number(),
+            board.to_tsfen()
+        );
     }
 }
 
@@ -667,9 +869,17 @@ fn no_progress_counter_resets_on_capture() {
         let captured = board.piece_count(Color::Black) != b_before
             || board.piece_count(Color::White) != w_before;
         if captured {
-            assert_eq!(board.no_progress_plies(), 0, "capture must reset the counter");
+            assert_eq!(
+                board.no_progress_plies(),
+                0,
+                "capture must reset the counter"
+            );
         } else {
-            assert_eq!(board.no_progress_plies(), quiet + 1, "quiet move must increment");
+            assert_eq!(
+                board.no_progress_plies(),
+                quiet + 1,
+                "quiet move must increment"
+            );
         }
     }
 }
@@ -680,8 +890,16 @@ fn piece_type_table_is_complete() {
     assert!(crate::num_piece_types() >= 301);
     // every type has a non-empty abbreviation and a positive material value
     for i in 1..crate::num_piece_types() as u16 {
-        assert!(!crate::pieces::abbrev(i).is_empty(), "type {} abbreviation empty", i);
-        assert!(crate::pieces::value(i) > 0, "type {} value must be positive", i);
+        assert!(
+            !crate::pieces::abbrev(i).is_empty(),
+            "type {} abbreviation empty",
+            i
+        );
+        assert!(
+            crate::pieces::value(i) > 0,
+            "type {} value must be positive",
+            i
+        );
         assert!(!crate::pieces::name(i).is_empty(), "type {} name empty", i);
     }
 }
@@ -691,9 +909,17 @@ fn royal_pieces_exist_in_startpos() {
     let board = Board::initial();
     let mut kings = 0;
     let mut princes = 0;
-    for (_, p) in board.pieces(Color::Black).into_iter().chain(board.pieces(Color::White)) {
+    for (_, p) in board
+        .pieces(Color::Black)
+        .into_iter()
+        .chain(board.pieces(Color::White))
+    {
         if p.is_royal() {
-            if p.abbrev() == "K" { kings += 1; } else { princes += 1; }
+            if p.abbrev() == "K" {
+                kings += 1;
+            } else {
+                princes += 1;
+            }
         }
     }
     assert_eq!(kings, 2, "one king per side");
@@ -766,7 +992,9 @@ fn undo_to_start_restores_initial_tsfen() {
     let mut applied = 0;
     for _ in 0..25 {
         let ms = board.legal_moves();
-        if ms.is_empty() { break; }
+        if ms.is_empty() {
+            break;
+        }
         board.apply(&ms[rng.pick(ms.len())]);
         applied += 1;
     }
@@ -784,29 +1012,61 @@ fn elo_expected_and_elo_roundtrip() {
     let back = crate::elo::elo_from_score(e);
     assert!((back - 200.0).abs() < 1e-6);
     // WDL of all draws → exactly 0 Elo
-    let w = crate::elo::Wdl { wins: 0, draws: 10, losses: 0 };
+    let w = crate::elo::Wdl {
+        wins: 0,
+        draws: 10,
+        losses: 0,
+    };
     assert!(w.elo().abs() < 1e-9);
     assert!(w.elo_margin95().is_finite());
 }
 
 #[test]
 fn elo_match_report_math_is_consistent() {
-    let w = crate::elo::Wdl { wins: 55, draws: 30, losses: 15 };
+    let w = crate::elo::Wdl {
+        wins: 55,
+        draws: 30,
+        losses: 15,
+    };
     let expected = crate::elo::elo_from_score(w.score());
     assert!((w.elo() - expected).abs() < 1e-9);
     assert!(w.elo() > 0.0);
-    let mirror = crate::elo::Wdl { wins: 15, draws: 30, losses: 55 };
-    assert!((w.elo() + mirror.elo()).abs() < 1e-9, "mirrored WDLs must negate");
+    let mirror = crate::elo::Wdl {
+        wins: 15,
+        draws: 30,
+        losses: 55,
+    };
+    assert!(
+        (w.elo() + mirror.elo()).abs() < 1e-9,
+        "mirrored WDLs must negate"
+    );
 }
 
 #[test]
 fn sprt_accepts_a_dominant_engine() {
-    let s = crate::elo::Sprt { elo0: 0.0, elo1: 50.0, alpha: 0.05, beta: 0.05 };
-    let dominant = crate::elo::Wdl { wins: 80, draws: 15, losses: 5 };
+    let s = crate::elo::Sprt {
+        elo0: 0.0,
+        elo1: 50.0,
+        alpha: 0.05,
+        beta: 0.05,
+    };
+    let dominant = crate::elo::Wdl {
+        wins: 80,
+        draws: 15,
+        losses: 5,
+    };
     assert_eq!(s.decision(&dominant), crate::elo::SprtDecision::AcceptH1);
-    let terrible = crate::elo::Wdl { wins: 5, draws: 15, losses: 80 };
+    let terrible = crate::elo::Wdl {
+        wins: 5,
+        draws: 15,
+        losses: 80,
+    };
     assert_eq!(s.decision(&terrible), crate::elo::SprtDecision::AcceptH0);
-    let marginal = crate::elo::Wdl { wins: 11, draws: 0, losses: 11 };
+    let marginal = crate::elo::Wdl {
+        wins: 11,
+        draws: 0,
+        losses: 11,
+    };
     assert_eq!(s.decision(&marginal), crate::elo::SprtDecision::Continue);
 }
 
@@ -817,5 +1077,8 @@ fn selfplay_one_game_terminates_and_counts_plies() {
     let a = crate::elo::EngineConfig::depth(1);
     let o = crate::elo::play_game(&a, &a, 20);
     assert!(o.plies <= 20);
-    assert!(o.plies >= 1, "at least one ply must be played before any terminal check");
+    assert!(
+        o.plies >= 1,
+        "at least one ply must be played before any terminal check"
+    );
 }

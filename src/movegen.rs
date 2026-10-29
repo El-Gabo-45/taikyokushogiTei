@@ -1,6 +1,6 @@
-use crate::types::*;
-use crate::pieces;
 use crate::board::Board;
+use crate::pieces;
+use crate::types::*;
 use std::sync::OnceLock;
 
 const HOOK_ORTHO_NS: [usize; 2] = [N, S];
@@ -72,14 +72,18 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
             vec![[[[INVALID_SQ; 8]; 2]; NUM_SQUARES]; 512];
         for pt in 1..=301u16 {
             let mv = pieces::movement(pt);
-            if mv.jumps.is_empty() { continue; }
+            if mv.jumps.is_empty() {
+                continue;
+            }
             for sq in 0..NUM_SQUARES {
                 let r = sq_row(sq) as i32;
                 let c = sq_col(sq) as i32;
                 for color in 0..2u8 {
                     let mut dests = [INVALID_SQ; 8];
                     for (j, &(jdr, jdc)) in mv.jumps.iter().enumerate() {
-                        if j >= 8 { break; }
+                        if j >= 8 {
+                            break;
+                        }
                         let (dr, dc) = if color == BLACK {
                             (jdr as i32, jdc as i32)
                         } else {
@@ -128,9 +132,13 @@ pub fn generate_pseudo_legal_moves_into(moves: &mut Vec<Move>, board: &Board) {
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
-        if sq == INVALID_SQ as usize { continue; }
+        if sq == INVALID_SQ as usize {
+            continue;
+        }
         let cell = board.cells[sq];
-        if cell == EMPTY_CELL { continue; }
+        if cell == EMPTY_CELL {
+            continue;
+        }
         let pt = cell_piece(cell);
         let start = moves.len();
         let tmpl = &t[(pt as usize).min(511)][color as usize];
@@ -187,9 +195,13 @@ pub fn generate_pseudo_legal_quiets_into(moves: &mut Vec<Move>, board: &Board) {
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
-        if sq == INVALID_SQ as usize { continue; }
+        if sq == INVALID_SQ as usize {
+            continue;
+        }
         let cell = board.cells[sq];
-        if cell == EMPTY_CELL { continue; }
+        if cell == EMPTY_CELL {
+            continue;
+        }
         let pt = cell_piece(cell);
         let start = moves.len();
         let tmpl = &t[(pt as usize).min(511)][color as usize];
@@ -254,9 +266,13 @@ pub fn generate_pseudo_legal_captures_into(moves: &mut Vec<Move>, board: &Board)
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
-        if sq == INVALID_SQ as usize { continue; }
+        if sq == INVALID_SQ as usize {
+            continue;
+        }
         let cell = board.cells[sq];
-        if cell == EMPTY_CELL { continue; }
+        if cell == EMPTY_CELL {
+            continue;
+        }
         let pt = cell_piece(cell);
         let start = moves.len();
         let mv = pieces::movement(pt);
@@ -281,11 +297,22 @@ pub fn generate_pseudo_legal_captures_into(moves: &mut Vec<Move>, board: &Board)
 }
 
 // capture generators
-fn gen_slides_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                       rt: &RayTable, moves: &mut Vec<Move>) {
+fn gen_slides_captures(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<Move>,
+) {
     for &(dir, max_range) in &mv.slides {
         let ray = rt.ray_for_color(sq, dir as usize, color);
-        let limit = if max_range == 0 { ray.len() } else { (max_range as usize).min(ray.len()) };
+        let limit = if max_range == 0 {
+            ray.len()
+        } else {
+            (max_range as usize).min(ray.len())
+        };
 
         for j in 0..limit {
             let target_sq = ray[j] as usize;
@@ -306,15 +333,23 @@ fn gen_slides_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Moveme
 }
 
 fn gen_jumps_captures(
-    board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
     jt: &[[[[u16; 8]; 2]; NUM_SQUARES]],
     moves: &mut Vec<Move>,
 ) {
-    if mv.jumps.is_empty() { return; }
+    if mv.jumps.is_empty() {
+        return;
+    }
     let dests = &jt[pt as usize][sq][color as usize];
     for j in 0..mv.jumps.len().min(8) {
         let nsq = dests[j];
-        if nsq == INVALID_SQ { continue; }
+        if nsq == INVALID_SQ {
+            continue;
+        }
         let nsq_u = nsq as usize;
         let target = board.cells[nsq_u];
         if target != EMPTY_CELL && cell_color(target) != color {
@@ -323,8 +358,15 @@ fn gen_jumps_captures(
     }
 }
 
-fn gen_hooks_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                      rt: &RayTable, moves: &mut Vec<Move>) {
+fn gen_hooks_captures(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<Move>,
+) {
     let dirs: &[usize] = match mv.hook {
         Some(HookType::Orthogonal) => &[N, E, S, W],
         Some(HookType::Diagonal) => &[NE, SE, SW, NW],
@@ -344,7 +386,11 @@ fn gen_hooks_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movemen
             }
             let turn_dirs: &[usize] = match mv.hook {
                 Some(HookType::Orthogonal) => {
-                    if d == N || d == S { &HOOK_ORTHO_EW } else { &HOOK_ORTHO_NS }
+                    if d == N || d == S {
+                        &HOOK_ORTHO_EW
+                    } else {
+                        &HOOK_ORTHO_NS
+                    }
                 }
                 Some(HookType::Diagonal) => match d {
                     NE => &HOOK_TURN_NE,
@@ -373,8 +419,14 @@ fn gen_hooks_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movemen
     }
 }
 
-fn gen_area_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                     moves: &mut Vec<Move>) {
+fn gen_area_captures(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    moves: &mut Vec<Move>,
+) {
     let r = sq_row(sq) as i32;
     let c = sq_col(sq) as i32;
 
@@ -382,10 +434,14 @@ fn gen_area_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
         let (dr1, dc1) = get_deltas(d1, color);
         let r1 = r + dr1;
         let c1 = c + dc1;
-        if r1 < 0 || r1 >= BOARD_SIZE as i32 || c1 < 0 || c1 >= BOARD_SIZE as i32 { continue; }
+        if r1 < 0 || r1 >= BOARD_SIZE as i32 || c1 < 0 || c1 >= BOARD_SIZE as i32 {
+            continue;
+        }
         let sq1 = r1 as usize * BOARD_SIZE + c1 as usize;
         let t1 = board.cells[sq1];
-        if t1 != EMPTY_CELL && cell_color(t1) == color { continue; }
+        if t1 != EMPTY_CELL && cell_color(t1) == color {
+            continue;
+        }
 
         if t1 != EMPTY_CELL && cell_color(t1) != color {
             add_move(moves, sq as u16, sq1 as u16, pt, color, t1);
@@ -396,11 +452,17 @@ fn gen_area_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
                 let (dr2, dc2) = get_deltas(d2, color);
                 let r2 = r1 + dr2;
                 let c2 = c1 + dc2;
-                if r2 < 0 || r2 >= BOARD_SIZE as i32 || c2 < 0 || c2 >= BOARD_SIZE as i32 { continue; }
+                if r2 < 0 || r2 >= BOARD_SIZE as i32 || c2 < 0 || c2 >= BOARD_SIZE as i32 {
+                    continue;
+                }
                 let sq2 = r2 as usize * BOARD_SIZE + c2 as usize;
-                if sq2 == sq { continue; }
+                if sq2 == sq {
+                    continue;
+                }
                 let t2 = board.cells[sq2];
-                if t2 != EMPTY_CELL && cell_color(t2) == color { continue; }
+                if t2 != EMPTY_CELL && cell_color(t2) == color {
+                    continue;
+                }
 
                 if t1 != EMPTY_CELL && cell_color(t1) != color {
                     let mut m = Move::simple(sq as u16, sq2 as u16);
@@ -429,16 +491,34 @@ fn can_promote(pt: u16) -> bool {
 /// path in attack.rs delegates here so promotion rules are identical in
 /// both generators).
 pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, target: Cell) {
-    let captured = if target != EMPTY_CELL { cell_piece(target) } else { 0 };
-    let cap_color = if target != EMPTY_CELL { cell_color(target) } else { 0 };
+    let captured = if target != EMPTY_CELL {
+        cell_piece(target)
+    } else {
+        0
+    };
+    let cap_color = if target != EMPTY_CELL {
+        cell_color(target)
+    } else {
+        0
+    };
 
     if !can_promote(pt) {
-        push_move_raw(moves, Move {
-            from_sq: from, to_sq: to, promotion: false,
-            captured_piece: captured, captured_color: cap_color,
-            is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-            range_cap: false, caps_value: 0,
-        });
+        push_move_raw(
+            moves,
+            Move {
+                from_sq: from,
+                to_sq: to,
+                promotion: false,
+                captured_piece: captured,
+                captured_color: cap_color,
+                is_igui: false,
+                mid_sq: INVALID_SQ,
+                mid_piece: 0,
+                mid_color: 0,
+                range_cap: false,
+                caps_value: 0,
+            },
+        );
         return;
     }
 
@@ -446,49 +526,97 @@ pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, t
     let to_in_zone = in_promo_zone(to as usize, color);
     let is_capture = captured != 0;
 
-    let may_promote =
-        (!from_in_zone && to_in_zone) ||
-        (from_in_zone && to_in_zone && is_capture);
+    let may_promote = (!from_in_zone && to_in_zone) || (from_in_zone && to_in_zone && is_capture);
 
-    let must_promote = to_in_zone
-        && is_farthest_rank(to as usize, color)
-        && pieces::must_promote_at_far_rank(pt);
+    let must_promote =
+        to_in_zone && is_farthest_rank(to as usize, color) && pieces::must_promote_at_far_rank(pt);
 
     if must_promote {
-        push_move_raw(moves, Move {
-            from_sq: from, to_sq: to, promotion: true,
-            captured_piece: captured, captured_color: cap_color,
-            is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-            range_cap: false, caps_value: 0,
-        });
+        push_move_raw(
+            moves,
+            Move {
+                from_sq: from,
+                to_sq: to,
+                promotion: true,
+                captured_piece: captured,
+                captured_color: cap_color,
+                is_igui: false,
+                mid_sq: INVALID_SQ,
+                mid_piece: 0,
+                mid_color: 0,
+                range_cap: false,
+                caps_value: 0,
+            },
+        );
     } else if may_promote {
-        push_move_raw(moves, Move {
-            from_sq: from, to_sq: to, promotion: false,
-            captured_piece: captured, captured_color: cap_color,
-            is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-            range_cap: false, caps_value: 0,
-        });
-        push_move_raw(moves, Move {
-            from_sq: from, to_sq: to, promotion: true,
-            captured_piece: captured, captured_color: cap_color,
-            is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-            range_cap: false, caps_value: 0,
-        });
+        push_move_raw(
+            moves,
+            Move {
+                from_sq: from,
+                to_sq: to,
+                promotion: false,
+                captured_piece: captured,
+                captured_color: cap_color,
+                is_igui: false,
+                mid_sq: INVALID_SQ,
+                mid_piece: 0,
+                mid_color: 0,
+                range_cap: false,
+                caps_value: 0,
+            },
+        );
+        push_move_raw(
+            moves,
+            Move {
+                from_sq: from,
+                to_sq: to,
+                promotion: true,
+                captured_piece: captured,
+                captured_color: cap_color,
+                is_igui: false,
+                mid_sq: INVALID_SQ,
+                mid_piece: 0,
+                mid_color: 0,
+                range_cap: false,
+                caps_value: 0,
+            },
+        );
     } else {
-        push_move_raw(moves, Move {
-            from_sq: from, to_sq: to, promotion: false,
-            captured_piece: captured, captured_color: cap_color,
-            is_igui: false, mid_sq: INVALID_SQ, mid_piece: 0, mid_color: 0,
-            range_cap: false, caps_value: 0,
-        });
+        push_move_raw(
+            moves,
+            Move {
+                from_sq: from,
+                to_sq: to,
+                promotion: false,
+                captured_piece: captured,
+                captured_color: cap_color,
+                is_igui: false,
+                mid_sq: INVALID_SQ,
+                mid_piece: 0,
+                mid_color: 0,
+                range_cap: false,
+                caps_value: 0,
+            },
+        );
     }
 }
 
-fn gen_slides(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-              rt: &RayTable, moves: &mut Vec<Move>) {
+fn gen_slides(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<Move>,
+) {
     for &(dir, max_range) in &mv.slides {
         let ray = rt.ray_for_color(sq, dir as usize, color);
-        let limit = if max_range == 0 { ray.len() } else { (max_range as usize).min(ray.len()) };
+        let limit = if max_range == 0 {
+            ray.len()
+        } else {
+            (max_range as usize).min(ray.len())
+        };
 
         for j in 0..limit {
             let target_sq = ray[j] as usize;
@@ -507,15 +635,23 @@ fn gen_slides(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
 
 /// Fast jump generation using precomputed destination table.
 fn gen_jumps_fast(
-    board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
     jt: &[[[[u16; 8]; 2]; NUM_SQUARES]],
     moves: &mut Vec<Move>,
 ) {
-    if mv.jumps.is_empty() { return; }
+    if mv.jumps.is_empty() {
+        return;
+    }
     let dests = &jt[pt as usize][sq][color as usize];
     for j in 0..mv.jumps.len().min(8) {
         let nsq = dests[j];
-        if nsq == INVALID_SQ { continue; }
+        if nsq == INVALID_SQ {
+            continue;
+        }
         let nsq_u = nsq as usize;
         let target = board.cells[nsq_u];
         if target == EMPTY_CELL {
@@ -526,8 +662,15 @@ fn gen_jumps_fast(
     }
 }
 
-fn gen_hooks(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-             rt: &RayTable, moves: &mut Vec<Move>) {
+fn gen_hooks(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<Move>,
+) {
     let dirs: &[usize] = match mv.hook {
         Some(HookType::Orthogonal) => &[N, E, S, W],
         Some(HookType::Diagonal) => &[NE, SE, SW, NW],
@@ -547,7 +690,11 @@ fn gen_hooks(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
             }
             let turn_dirs: &[usize] = match mv.hook {
                 Some(HookType::Orthogonal) => {
-                    if d == N || d == S { &HOOK_ORTHO_EW } else { &HOOK_ORTHO_NS }
+                    if d == N || d == S {
+                        &HOOK_ORTHO_EW
+                    } else {
+                        &HOOK_ORTHO_NS
+                    }
                 }
                 Some(HookType::Diagonal) => match d {
                     NE => &HOOK_TURN_NE,
@@ -576,8 +723,7 @@ fn gen_hooks(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
     }
 }
 
-fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-            moves: &mut Vec<Move>) {
+fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement, moves: &mut Vec<Move>) {
     let r = sq_row(sq) as i32;
     let c = sq_col(sq) as i32;
 
@@ -585,10 +731,14 @@ fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
         let (dr1, dc1) = get_deltas(d1, color);
         let r1 = r + dr1;
         let c1 = c + dc1;
-        if r1 < 0 || r1 >= BOARD_SIZE as i32 || c1 < 0 || c1 >= BOARD_SIZE as i32 { continue; }
+        if r1 < 0 || r1 >= BOARD_SIZE as i32 || c1 < 0 || c1 >= BOARD_SIZE as i32 {
+            continue;
+        }
         let sq1 = r1 as usize * BOARD_SIZE + c1 as usize;
         let t1 = board.cells[sq1];
-        if t1 != EMPTY_CELL && cell_color(t1) == color { continue; }
+        if t1 != EMPTY_CELL && cell_color(t1) == color {
+            continue;
+        }
 
         add_move(moves, sq as u16, sq1 as u16, pt, color, t1);
 
@@ -597,11 +747,17 @@ fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
                 let (dr2, dc2) = get_deltas(d2, color);
                 let r2 = r1 + dr2;
                 let c2 = c1 + dc2;
-                if r2 < 0 || r2 >= BOARD_SIZE as i32 || c2 < 0 || c2 >= BOARD_SIZE as i32 { continue; }
+                if r2 < 0 || r2 >= BOARD_SIZE as i32 || c2 < 0 || c2 >= BOARD_SIZE as i32 {
+                    continue;
+                }
                 let sq2 = r2 as usize * BOARD_SIZE + c2 as usize;
-                if sq2 == sq { continue; }
+                if sq2 == sq {
+                    continue;
+                }
                 let t2 = board.cells[sq2];
-                if t2 != EMPTY_CELL && cell_color(t2) == color { continue; }
+                if t2 != EMPTY_CELL && cell_color(t2) == color {
+                    continue;
+                }
 
                 if t1 != EMPTY_CELL && cell_color(t1) != color {
                     let mut m = Move::simple(sq as u16, sq2 as u16);
@@ -621,8 +777,15 @@ fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
     }
 }
 
-fn gen_range_capture(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                     rt: &RayTable, moves: &mut Vec<Move>) {
+fn gen_range_capture(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<Move>,
+) {
     let piece_rank = pieces::rank(pt);
 
     for &dir in &mv.range_capture {
@@ -655,7 +818,8 @@ fn gen_range_capture(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
                     // while inside it" — reduces to "lands inside the zone":
                     // the capture half of that rule is already satisfied.
                     let may_promo = can_promote(pt) && in_promo_zone(rsq as usize, color);
-                    let must_promo = may_promo && is_farthest_rank(rsq as usize, color)
+                    let must_promo = may_promo
+                        && is_farthest_rank(rsq as usize, color)
                         && pieces::must_promote_at_far_rank(pt);
                     if must_promo {
                         let mut m = Move::simple(sq as u16, rsq);
@@ -710,17 +874,30 @@ fn gen_igui(board: &Board, sq: usize, pt: u16, color: u8, moves: &mut Vec<Move>)
 /// Build an igui (stationary capture) move. The mover stays on `sq`; the
 /// victim sits on `victim_sq`, which is stored in `mid_sq` so that
 /// `Board::apply_move` / `undo_move` can remove and restore it.
-pub fn add_igui_move(moves: &mut Vec<Move>, sq: usize, victim_sq: usize, pt: u16,
-                     color: u8, target: Cell) {
+pub fn add_igui_move(
+    moves: &mut Vec<Move>,
+    sq: usize,
+    victim_sq: usize,
+    pt: u16,
+    color: u8,
+    target: Cell,
+) {
     let in_zone = in_promo_zone(sq, color);
     let may_promo = can_promote(pt) && in_zone;
     let captured = cell_piece(target);
     let cap_color = cell_color(target);
     let base = |promo: bool| Move {
-        from_sq: sq as u16, to_sq: sq as u16, promotion: promo,
-        captured_piece: captured, captured_color: cap_color,
-        is_igui: true, mid_sq: victim_sq as u16, mid_piece: 0, mid_color: 0,
-        range_cap: false, caps_value: 0,
+        from_sq: sq as u16,
+        to_sq: sq as u16,
+        promotion: promo,
+        captured_piece: captured,
+        captured_color: cap_color,
+        is_igui: true,
+        mid_sq: victim_sq as u16,
+        mid_piece: 0,
+        mid_color: 0,
+        range_cap: false,
+        caps_value: 0,
     };
     if may_promo {
         push_move_raw(moves, base(false));

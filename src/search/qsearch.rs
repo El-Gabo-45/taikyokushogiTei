@@ -35,10 +35,18 @@ impl<'a> Ctx<'a> {
             let stm = self.board.side_to_move;
             return match result {
                 GameResult::BlackWins => {
-                    if stm == BLACK { MATE_SCORE - qd as i32 } else { -(MATE_SCORE - qd as i32) }
+                    if stm == BLACK {
+                        MATE_SCORE - qd as i32
+                    } else {
+                        -(MATE_SCORE - qd as i32)
+                    }
                 }
                 GameResult::WhiteWins => {
-                    if stm == WHITE { MATE_SCORE - qd as i32 } else { -(MATE_SCORE - qd as i32) }
+                    if stm == WHITE {
+                        MATE_SCORE - qd as i32
+                    } else {
+                        -(MATE_SCORE - qd as i32)
+                    }
                 }
                 GameResult::Draw => 0,
             };
@@ -62,9 +70,15 @@ impl<'a> Ctx<'a> {
 
         // Stand pat
         let stand_pat = evaluate(self.board);
-        if stand_pat >= beta { return beta; }
-        if stand_pat > alpha { alpha = stand_pat; }
-        if qd >= params::MAX_QDEPTH { return alpha; }
+        if stand_pat >= beta {
+            return beta;
+        }
+        if stand_pat > alpha {
+            alpha = stand_pat;
+        }
+        if qd >= params::MAX_QDEPTH {
+            return alpha;
+        }
 
         // Generate only captures and promotions (staged move generation —
         // Reference: docx §3.2 Futility Pruning & §4.4 Quiescence Search).
@@ -93,30 +107,43 @@ impl<'a> Ctx<'a> {
         // cutoff skips the TT store, while falling out of the loop stores.
         let mut early: Option<i32> = None;
         for (i_idx, &(_, i, _)) in pb.scored.iter().enumerate() {
-            if i_idx > 0 && self.past_deadline() { early = Some(alpha); break; }
+            if i_idx > 0 && self.past_deadline() {
+                early = Some(alpha);
+                break;
+            }
             let m = &pb.caps[i as usize];
             self.board.apply_move(m);
             let score = -self.qsearch(-beta, -alpha, qd + 1);
             self.board.undo_move();
-            if score >= beta { early = Some(beta); break; }
-            if score > alpha { alpha = score; }
+            if score >= beta {
+                early = Some(beta);
+                break;
+            }
+            if score > alpha {
+                alpha = score;
+            }
         }
         // The immutable borrow of `pb.scored` above ends here, so the buffer
         // can go back to the pool before any return.
         self.pool.put(slot, pb);
 
-        if let Some(score) = early { return score; }
+        if let Some(score) = early {
+            return score;
+        }
 
         if qd > 0 {
-            self.tt.store(q_hash, tt::TTEntry {
-                score: alpha,
-                depth: 0,
-                flag: if alpha <= init_q_alpha { 2 } else { 0 },
-                generation: self.tt.gen(),
-                best_move: 0,
-                // Taikyoku has no check (SPEC §7.3) — always false.
-                in_check: false,
-            });
+            self.tt.store(
+                q_hash,
+                tt::TTEntry {
+                    score: alpha,
+                    depth: 0,
+                    flag: if alpha <= init_q_alpha { 2 } else { 0 },
+                    generation: self.tt.gen(),
+                    best_move: 0,
+                    // Taikyoku has no check (SPEC §7.3) — always false.
+                    in_check: false,
+                },
+            );
         }
         alpha
     }

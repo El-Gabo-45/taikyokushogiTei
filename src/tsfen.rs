@@ -10,9 +10,9 @@
 //! - Side to move: `b` (Black) or `w` (White)
 //! - Move number: integer starting at 1
 
-use crate::types::*;
-use crate::pieces;
 use crate::board::Board;
+use crate::pieces;
+use crate::types::*;
 
 /// Encode a board position as a TSFEN string.
 pub fn to_tsfen(board: &Board) -> String {
@@ -20,7 +20,11 @@ pub fn to_tsfen(board: &Board) -> String {
     for r in 0..BOARD_SIZE {
         ranks.push(encode_rank(board, r));
     }
-    let side = if board.side_to_move == BLACK { 'b' } else { 'w' };
+    let side = if board.side_to_move == BLACK {
+        'b'
+    } else {
+        'w'
+    };
     format!("{} {} {}", ranks.join("/"), side, board.move_number)
 }
 
@@ -29,9 +33,7 @@ pub fn from_tsfen(tsfen: &str) -> Result<Board, String> {
     let parts: Vec<&str> = tsfen.trim().splitn(3, ' ').collect();
     let rank_str = parts.first().ok_or("empty TSFEN")?;
     let side = parts.get(1).copied().unwrap_or("b");
-    let move_num: u32 = parts.get(2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    let move_num: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
 
     let mut board = Board::new();
     board.side_to_move = if side == "w" { WHITE } else { BLACK };
@@ -39,7 +41,11 @@ pub fn from_tsfen(tsfen: &str) -> Result<Board, String> {
 
     let ranks: Vec<&str> = rank_str.split('/').collect();
     if ranks.len() != BOARD_SIZE {
-        return Err(format!("expected {} ranks, got {}", BOARD_SIZE, ranks.len()));
+        return Err(format!(
+            "expected {} ranks, got {}",
+            BOARD_SIZE,
+            ranks.len()
+        ));
     }
 
     for (r, rank) in ranks.iter().enumerate() {
@@ -107,7 +113,8 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
             while i < n && (bytes[i] as char).is_ascii_digit() {
                 i += 1;
             }
-            let count: usize = rank_str[start..i].parse()
+            let count: usize = rank_str[start..i]
+                .parse()
                 .map_err(|_| format!("invalid number in rank {}", row))?;
             col += count;
         } else if ch == '(' {
@@ -131,7 +138,11 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
             col += 1;
         } else {
             // Single character piece
-            let color = if ch.is_ascii_uppercase() { BLACK } else { WHITE };
+            let color = if ch.is_ascii_uppercase() {
+                BLACK
+            } else {
+                WHITE
+            };
             let abbrev = ch.to_ascii_uppercase().to_string();
             if let Some(pt) = pieces::find_by_abbrev(&abbrev) {
                 let sq = row * BOARD_SIZE + col;

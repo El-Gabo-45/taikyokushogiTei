@@ -1,5 +1,5 @@
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn main() {
     let b = Board::initial();
@@ -27,8 +27,12 @@ fn main() {
     let t = Instant::now();
     let result = board.search(1, 0);
     let ms = t.elapsed().as_micros() as f64 / 1000.0;
-    println!("depth-1 search: {} nodes  {:.2}ms  {:.0} nps",
-             result.nodes, ms, result.nodes as f64 / (ms / 1000.0));
+    println!(
+        "depth-1 search: {} nodes  {:.2}ms  {:.0} nps",
+        result.nodes,
+        ms,
+        result.nodes as f64 / (ms / 1000.0)
+    );
 
     // 4. Simular selfplay: 10 movimientos
     let mut board = Board::initial();
@@ -44,6 +48,9 @@ fn main() {
         }
     }
     let ms = t.elapsed().as_micros() as f64 / 1000.0;
-    println!("selfplay (10 moves, depth-1): {:.2}ms  {:.0} nps",
-             ms, total_nodes as f64 / (ms / 1000.0));
+    println!(
+        "selfplay (10 moves, depth-1): {:.2}ms  {:.0} nps",
+        ms,
+        total_nodes as f64 / (ms / 1000.0)
+    );
 }

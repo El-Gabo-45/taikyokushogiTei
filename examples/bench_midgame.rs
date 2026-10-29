@@ -2,8 +2,8 @@
 // selfplay), not just the initial position where few pieces are near each
 // other. More opposing pieces scattered around the board means more ray
 // walks can reach a target, so this is the worst case for move generation.
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn main() {
     let mut board = Board::initial();
@@ -27,6 +27,9 @@ fn main() {
         total += moves.len();
     }
     let us = t.elapsed().as_micros() as f64 / iters as f64;
-    println!("midgame legal_moves: {} moves  {:.1}us each (after 12 plies of selfplay)",
-             total / iters, us);
+    println!(
+        "midgame legal_moves: {} moves  {:.1}us each (after 12 plies of selfplay)",
+        total / iters,
+        us
+    );
 }

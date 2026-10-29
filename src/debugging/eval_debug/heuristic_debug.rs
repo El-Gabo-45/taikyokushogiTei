@@ -3,7 +3,7 @@ use crate::board::Board;
 use crate::eval::families::family_value;
 use crate::eval::zones::zone_score;
 use crate::pieces;
-use crate::types::{cell_color, cell_piece, EMPTY_CELL, INVALID_SQ, BLACK, WHITE};
+use crate::types::{cell_color, cell_piece, BLACK, EMPTY_CELL, INVALID_SQ, WHITE};
 
 /// Resumen detallado del heuristic para inspección rápida.
 #[derive(Debug, Clone)]
@@ -102,7 +102,11 @@ fn king_safety(board: &Board, color: u8) -> i32 {
             }
             let r = kr as i32 + dr;
             let c = kc as i32 + dc;
-            if r < 0 || r >= crate::types::BOARD_SIZE as i32 || c < 0 || c >= crate::types::BOARD_SIZE as i32 {
+            if r < 0
+                || r >= crate::types::BOARD_SIZE as i32
+                || c < 0
+                || c >= crate::types::BOARD_SIZE as i32
+            {
                 continue;
             }
             let sq = (r as usize) * crate::types::BOARD_SIZE + (c as usize);

@@ -64,7 +64,13 @@ const SCALE: i32 = 256; // Q8.8 fixed point
 // not line up with what the Rust inference code looks up.
 
 #[inline]
-pub fn feature_index(king_sq: usize, piece_sq: usize, piece_type: u16, color: u8, perspective: u8) -> usize {
+pub fn feature_index(
+    king_sq: usize,
+    piece_sq: usize,
+    piece_type: u16,
+    color: u8,
+    perspective: u8,
+) -> usize {
     let pt = piece_type as usize;
     let half_buckets = FT_BUCKETS / 2;
     let raw = (king_sq * NUM_PIECE_TYPES * NUM_SQUARES) + (piece_sq * NUM_PIECE_TYPES) + pt;
@@ -100,23 +106,29 @@ impl Accumulator {
     pub fn refresh(&mut self, board: &Board, ft: &FeatureTransformer) {
         self.white.fill(0);
         self.black.fill(0);
-        
+
         // Add features for all pieces from both perspectives
         for color in 0..2 {
             let c = color as usize;
             let king_sq = board.king_square(color as u8) as usize;
-            if king_sq >= NUM_SQUARES { continue; }
-            
+            if king_sq >= NUM_SQUARES {
+                continue;
+            }
+
             for i in 0..board.piece_list_len[c] {
                 let sq = board.piece_list[c][i] as usize;
-                if sq >= NUM_SQUARES { continue; }
+                if sq >= NUM_SQUARES {
+                    continue;
+                }
                 let cell = board.cells[sq];
-                if cell == EMPTY_CELL { continue; }
+                if cell == EMPTY_CELL {
+                    continue;
+                }
                 let pt = cell_piece(cell);
-                
+
                 let idx_white = feature_index(king_sq, sq, pt, color as u8, WHITE);
                 let idx_black = feature_index(king_sq, sq, pt, color as u8, BLACK);
-                
+
                 // Add feature weights to accumulators
                 for n in 0..FT_NEURONS {
                     self.white[n] = self.white[n].saturating_add(ft.weights[idx_white][n] as i32);
@@ -133,10 +145,18 @@ impl Accumulator {
     /// piece, which diverged from `refresh` — these methods are the correct
     /// primitive used by Board::apply_move. If an anchor changed, the caller
     /// must do a full refresh instead of deltas.
-    pub fn remove_piece(&mut self, board: &Board, sq: usize, pt: u16, color: u8,
-                        ft: &FeatureTransformer) {
+    pub fn remove_piece(
+        &mut self,
+        board: &Board,
+        sq: usize,
+        pt: u16,
+        color: u8,
+        ft: &FeatureTransformer,
+    ) {
         let anchor = board.king_square(color) as usize;
-        if anchor >= NUM_SQUARES { return; }
+        if anchor >= NUM_SQUARES {
+            return;
+        }
         let idx_white = feature_index(anchor, sq, pt, color, WHITE);
         let idx_black = feature_index(anchor, sq, pt, color, BLACK);
         for n in 0..FT_NEURONS {
@@ -146,10 +166,18 @@ impl Accumulator {
     }
 
     /// See `remove_piece`.
-    pub fn add_piece(&mut self, board: &Board, sq: usize, pt: u16, color: u8,
-                     ft: &FeatureTransformer) {
+    pub fn add_piece(
+        &mut self,
+        board: &Board,
+        sq: usize,
+        pt: u16,
+        color: u8,
+        ft: &FeatureTransformer,
+    ) {
         let anchor = board.king_square(color) as usize;
-        if anchor >= NUM_SQUARES { return; }
+        if anchor >= NUM_SQUARES {
+            return;
+        }
         let idx_white = feature_index(anchor, sq, pt, color, WHITE);
         let idx_black = feature_index(anchor, sq, pt, color, BLACK);
         for n in 0..FT_NEURONS {
@@ -159,11 +187,20 @@ impl Accumulator {
     }
 
     /// Update accumulator when a piece moves (incremental)
-    pub fn update_move(&mut self, board: &Board, from: usize, to: usize, pt: u16, color: u8,
-                       captured_pt: u16, captured_color: u8, ft: &FeatureTransformer) {
+    pub fn update_move(
+        &mut self,
+        board: &Board,
+        from: usize,
+        to: usize,
+        pt: u16,
+        color: u8,
+        captured_pt: u16,
+        captured_color: u8,
+        ft: &FeatureTransformer,
+    ) {
         let king_sq_white = board.king_square(WHITE) as usize;
         let king_sq_black = board.king_square(BLACK) as usize;
-        
+
         // Remove piece from old position
         if king_sq_white < NUM_SQUARES {
             let old_idx = feature_index(king_sq_white, from, pt, color, WHITE);
@@ -177,7 +214,7 @@ impl Accumulator {
                 self.black[n] = self.black[n].saturating_sub(ft.weights[old_idx][n] as i32);
             }
         }
-        
+
         // Add piece to new position
         if king_sq_white < NUM_SQUARES {
             let new_idx = feature_index(king_sq_white, to, pt, color, WHITE);
@@ -191,7 +228,7 @@ impl Accumulator {
                 self.black[n] = self.black[n].saturating_add(ft.weights[new_idx][n] as i32);
             }
         }
-        
+
         // Remove captured piece
         if captured_pt != 0 {
             if king_sq_white < NUM_SQUARES {
@@ -238,7 +275,11 @@ impl FeatureTransformer {
 
     /// Forward pass: compute clipped ReLU of (weights · features + bias)
     pub fn forward(&self, acc: &Accumulator, perspective: u8) -> Vec<i16> {
-        let acc_ref = if perspective == WHITE { &acc.white } else { &acc.black };
+        let acc_ref = if perspective == WHITE {
+            &acc.white
+        } else {
+            &acc.black
+        };
         let mut output = Vec::with_capacity(FT_NEURONS);
         for n in 0..FT_NEURONS {
             let val = (acc_ref[n] as i32) + (self.biases[n] as i32);
@@ -269,7 +310,7 @@ impl FactorizedLayer {
     pub fn new(input_size: usize, hidden_size: usize, output_size: usize) -> Self {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        
+
         let mut w1 = Vec::with_capacity(input_size);
         for _ in 0..input_size {
             let mut row = Vec::with_capacity(hidden_size);
@@ -279,7 +320,7 @@ impl FactorizedLayer {
             w1.push(row);
         }
         let b1 = vec![0i16; hidden_size];
-        
+
         let mut w2 = Vec::with_capacity(hidden_size);
         for _ in 0..hidden_size {
             let mut row = Vec::with_capacity(output_size);
@@ -289,14 +330,14 @@ impl FactorizedLayer {
             w2.push(row);
         }
         let b2 = vec![0i16; output_size];
-        
+
         FactorizedLayer { w1, b1, w2, b2 }
     }
 
     pub fn forward(&self, input: &[i16]) -> Vec<i16> {
         let hidden_size = self.b1.len();
         let output_size = self.b2.len();
-        
+
         // Hidden layer: ReLU(W1 · input + b1)
         let mut hidden = Vec::with_capacity(hidden_size);
         for h in 0..hidden_size {
@@ -307,7 +348,7 @@ impl FactorizedLayer {
             // Clipped ReLU
             hidden.push((sum / SCALE).clamp(0, 255) as i16);
         }
-        
+
         // Output layer: W2 · hidden + b2
         let mut output = Vec::with_capacity(output_size);
         for o in 0..output_size {
@@ -317,7 +358,7 @@ impl FactorizedLayer {
             }
             output.push((sum / SCALE).clamp(-32000, 32000) as i16);
         }
-        
+
         output
     }
 }
@@ -327,10 +368,10 @@ impl FactorizedLayer {
 
 pub struct NnueEvaluator {
     pub ft: FeatureTransformer,
-    pub l1: FactorizedLayer,  // 1024 → 1024(hidden) → 256
-    pub l2: FactorizedLayer,  // 256 → 512(hidden) → 128
-    pub l3: FactorizedLayer,  // 128 → 128(hidden) → 64
-    pub output: LinearLayer,  // 64 → 1
+    pub l1: FactorizedLayer, // 1024 → 1024(hidden) → 256
+    pub l2: FactorizedLayer, // 256 → 512(hidden) → 128
+    pub l3: FactorizedLayer, // 128 → 128(hidden) → 64
+    pub output: LinearLayer, // 64 → 1
 }
 
 impl NnueEvaluator {
@@ -358,29 +399,33 @@ impl NnueEvaluator {
         // Forward pass through the network
         let ft_white = self.ft.forward(acc, WHITE);
         let ft_black = self.ft.forward(acc, BLACK);
-        
+
         // Concatenate both perspectives
         let mut ft_concat = Vec::with_capacity(FT_NEURONS * 2);
         ft_concat.extend_from_slice(&ft_white);
         ft_concat.extend_from_slice(&ft_black);
-        
+
         // L1: 1024 → 256
         let l1_out = self.l1.forward(&ft_concat);
-        
+
         // L2: 1024 → 128
         let l2_out = self.l2.forward(&l1_out);
-        
+
         // L3: 512 → 64
         let l3_out = self.l3.forward(&l2_out);
-        
+
         // Output: 128 → 1
         let out = self.output.forward(&l3_out);
-        
+
         // Convert to centipawns
         let score = out[0] as i32;
-        
+
         // Return from side to move's perspective
-        if board.side_to_move == BLACK { score } else { -score }
+        if board.side_to_move == BLACK {
+            score
+        } else {
+            -score
+        }
     }
 }
 
@@ -395,7 +440,7 @@ impl LinearLayer {
     pub fn new(input_size: usize, output_size: usize) -> Self {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        
+
         let mut weights = Vec::with_capacity(input_size);
         for _ in 0..input_size {
             let mut row = Vec::with_capacity(output_size);
@@ -405,7 +450,7 @@ impl LinearLayer {
             weights.push(row);
         }
         let biases = vec![0i16; output_size];
-        
+
         LinearLayer { weights, biases }
     }
 
@@ -435,32 +480,30 @@ static NNUE: OnceLock<NnueEvaluator> = OnceLock::new();
 /// when that's happening rather than silently playing on untrained
 /// weights with no explanation.
 pub fn nnue() -> &'static NnueEvaluator {
-    NNUE.get_or_init(|| {
-        match std::env::var("TAIKYOKU_NNUE_PATH") {
-            Ok(path) => match NnueEvaluator::load_from_file(&path) {
-                Ok(net) => {
-                    eprintln!("[nnue] loaded weights from {}", path);
-                    net
-                }
-                Err(e) => {
-                    eprintln!(
-                        "[nnue] WARNING: failed to load TAIKYOKU_NNUE_PATH={} ({}); \
+    NNUE.get_or_init(|| match std::env::var("TAIKYOKU_NNUE_PATH") {
+        Ok(path) => match NnueEvaluator::load_from_file(&path) {
+            Ok(net) => {
+                eprintln!("[nnue] loaded weights from {}", path);
+                net
+            }
+            Err(e) => {
+                eprintln!(
+                    "[nnue] WARNING: failed to load TAIKYOKU_NNUE_PATH={} ({}); \
                          falling back to RANDOM (untrained) weights -- evaluation \
                          quality will be effectively random until this is fixed",
-                        path, e
-                    );
-                    NnueEvaluator::new_random()
-                }
-            },
-            Err(_) => {
-                eprintln!(
-                    "[nnue] WARNING: TAIKYOKU_NNUE_PATH not set; using RANDOM \
-                     (untrained) weights -- evaluation quality will be effectively \
-                     random. Set TAIKYOKU_NNUE_PATH to a .nnue file exported by \
-                     training/export.py to use a trained network."
+                    path, e
                 );
                 NnueEvaluator::new_random()
             }
+        },
+        Err(_) => {
+            eprintln!(
+                "[nnue] WARNING: TAIKYOKU_NNUE_PATH not set; using RANDOM \
+                     (untrained) weights -- evaluation quality will be effectively \
+                     random. Set TAIKYOKU_NNUE_PATH to a .nnue file exported by \
+                     training/export.py to use a trained network."
+            );
+            NnueEvaluator::new_random()
         }
     })
 }
@@ -535,7 +578,11 @@ fn write_i16_vec<W: std::io::Write>(w: &mut W, v: &[i16]) -> std::io::Result<()>
     Ok(())
 }
 
-fn read_i16_matrix<R: std::io::Read>(r: &mut R, rows: usize, cols: usize) -> std::io::Result<Vec<Vec<i16>>> {
+fn read_i16_matrix<R: std::io::Read>(
+    r: &mut R,
+    rows: usize,
+    cols: usize,
+) -> std::io::Result<Vec<Vec<i16>>> {
     let mut out = Vec::with_capacity(rows);
     let mut buf = [0u8; 2];
     for _ in 0..rows {
@@ -631,11 +678,32 @@ impl NnueEvaluator {
         let output_biases = read_i16_vec(&mut r, 1)?;
 
         Ok(NnueEvaluator {
-            ft: FeatureTransformer { weights: ft_weights, biases: ft_biases },
-            l1: FactorizedLayer { w1: l1_w1, b1: l1_b1, w2: l1_w2, b2: l1_b2 },
-            l2: FactorizedLayer { w1: l2_w1, b1: l2_b1, w2: l2_w2, b2: l2_b2 },
-            l3: FactorizedLayer { w1: l3_w1, b1: l3_b1, w2: l3_w2, b2: l3_b2 },
-            output: LinearLayer { weights: output_weights, biases: output_biases },
+            ft: FeatureTransformer {
+                weights: ft_weights,
+                biases: ft_biases,
+            },
+            l1: FactorizedLayer {
+                w1: l1_w1,
+                b1: l1_b1,
+                w2: l1_w2,
+                b2: l1_b2,
+            },
+            l2: FactorizedLayer {
+                w1: l2_w1,
+                b1: l2_b1,
+                w2: l2_w2,
+                b2: l2_b2,
+            },
+            l3: FactorizedLayer {
+                w1: l3_w1,
+                b1: l3_b1,
+                w2: l3_w2,
+                b2: l3_b2,
+            },
+            output: LinearLayer {
+                weights: output_weights,
+                biases: output_biases,
+            },
         })
     }
 }
@@ -680,8 +748,12 @@ mod tests {
             // Prefer tactical moves so captures/igui/promotions exercise the
             // delta paths (including range-capture intermediates).
             let moves = board.legal_moves();
-            if moves.is_empty() { break; }
-            let best = moves.iter().enumerate()
+            if moves.is_empty() {
+                break;
+            }
+            let best = moves
+                .iter()
+                .enumerate()
                 .max_by_key(|(_, m)| {
                     let r = m.raw();
                     (r.captured_piece != 0) as i32 * 4
@@ -699,8 +771,16 @@ mod tests {
                 let mut fresh = Accumulator::new();
                 fresh.refresh(&board.inner, &nnue().ft);
                 if let Some(acc) = board.inner.nnue_acc.as_ref() {
-                    assert_eq!(acc.white, fresh.white, "acc after undo diverged at ply {}", ply);
-                    assert_eq!(acc.black, fresh.black, "acc after undo diverged at ply {}", ply);
+                    assert_eq!(
+                        acc.white, fresh.white,
+                        "acc after undo diverged at ply {}",
+                        ply
+                    );
+                    assert_eq!(
+                        acc.black, fresh.black,
+                        "acc after undo diverged at ply {}",
+                        ply
+                    );
                 }
                 assert_eq!(board.inner.nnue_acc.is_some(), snapshot_acc.is_some());
                 // re-apply to continue the walk
@@ -740,6 +820,10 @@ mod tests {
         acc.refresh(&board, &net.ft);
         let score = net.evaluate(&board, &acc);
         eprintln!("loaded {} OK, initial position score = {}", path, score);
-        assert!(score.abs() < 1_000_000, "score {} looks unreasonable", score);
+        assert!(
+            score.abs() < 1_000_000,
+            "score {} looks unreasonable",
+            score
+        );
     }
 }

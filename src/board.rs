@@ -1,7 +1,7 @@
-use crate::types::*;
-use crate::pieces;
 use crate::bitboard::Bitboard1296;
 use crate::eval::psqt;
+use crate::pieces;
+use crate::types::*;
 
 pub struct Board {
     pub cells: [Cell; NUM_SQUARES],
@@ -45,7 +45,7 @@ pub struct Board {
     cap_stack: Vec<(u16, Cell)>,
     // ── BITBOARD OCCUPANCY ────────────────────────────────────────
     // Occupancy per color: fast attack generation and check detection
-    pub occupancy: [Bitboard1296; 2],  // [0]=BLACK, [1]=WHITE
+    pub occupancy: [Bitboard1296; 2], // [0]=BLACK, [1]=WHITE
     pub all_occupancy: Bitboard1296,
 }
 
@@ -109,11 +109,19 @@ impl Board {
 /// to a full refresh when a royal anchor changed (all HalfKP features
 /// become invalid on an anchor change). No-op when the accumulator is not
 /// being maintained (NNUE backend off).
-fn nnue_apply_delta(board: &mut Board, removed: &[(u16, u16, u8)], added: &[(u16, u16, u8)],
-                    old_anchor_black: u16, old_anchor_white: u16) {
-    let mut acc = match board.nnue_acc.take() { Some(a) => a, None => return };
-    if board.king_square(BLACK) != old_anchor_black
-        || board.king_square(WHITE) != old_anchor_white {
+fn nnue_apply_delta(
+    board: &mut Board,
+    removed: &[(u16, u16, u8)],
+    added: &[(u16, u16, u8)],
+    old_anchor_black: u16,
+    old_anchor_white: u16,
+) {
+    let mut acc = match board.nnue_acc.take() {
+        Some(a) => a,
+        None => return,
+    };
+    if board.king_square(BLACK) != old_anchor_black || board.king_square(WHITE) != old_anchor_white
+    {
         acc.refresh(&*board, &crate::eval::nnue::nnue().ft);
     } else {
         let ft = &crate::eval::nnue::nnue().ft;
@@ -212,13 +220,19 @@ impl Board {
 
         // Update incremental material score
         let val = pieces::value(pt) as i32;
-        if color == BLACK { self.material_score += val; }
-        else { self.material_score -= val; }
+        if color == BLACK {
+            self.material_score += val;
+        } else {
+            self.material_score -= val;
+        }
 
         // Update incremental PSQT score
         let psq = psqt::psqt(pt, sq, color);
-        if color == BLACK { self.psqt_score += psq; }
-        else { self.psqt_score -= psq; }
+        if color == BLACK {
+            self.psqt_score += psq;
+        } else {
+            self.psqt_score -= psq;
+        }
 
         if pieces::is_royal(pt) {
             let ri = self.royal_count[c];
@@ -262,11 +276,14 @@ impl Board {
         let mut nnue_added: Vec<(u16, u16, u8)> = Vec::new();
 
         let mut undo = UndoInfo {
-            from_sq: m.from_sq, to_sq: m.to_sq,
-            from_cell, to_cell,
+            from_sq: m.from_sq,
+            to_sq: m.to_sq,
+            from_cell,
+            to_cell,
             side: self.side_to_move,
             move_number: self.move_number,
-            mid_sq: m.mid_sq, mid_cell: EMPTY_CELL,
+            mid_sq: m.mid_sq,
+            mid_cell: EMPTY_CELL,
             cap_base: self.cap_stack.len(),
             nnue_acc: nnue_undo,
             no_progress_plies: self.no_progress_plies,
@@ -298,18 +315,24 @@ impl Board {
                 let sq = (r * BOARD_SIZE as i32 + c) as u16;
                 let cap_cell = self.cells[sq as usize];
                 if cap_cell != EMPTY_CELL {
-                    self.hash ^= zobrist_piece_key(
-                        cell_piece(cap_cell), sq as usize, cell_color(cap_cell));
+                    self.hash ^=
+                        zobrist_piece_key(cell_piece(cap_cell), sq as usize, cell_color(cap_cell));
                     // Update incremental material score for captured piece
                     let cap_val = pieces::value(cell_piece(cap_cell)) as i32;
                     let cap_c = cell_color(cap_cell);
-                    if cap_c == BLACK { self.material_score -= cap_val; }
-                    else { self.material_score += cap_val; }
+                    if cap_c == BLACK {
+                        self.material_score -= cap_val;
+                    } else {
+                        self.material_score += cap_val;
+                    }
                     // Update incremental PSQT score
                     let cap_pt = cell_piece(cap_cell);
                     let cap_psq = psqt::psqt(cap_pt, sq as usize, cap_c);
-                    if cap_c == BLACK { self.psqt_score -= cap_psq; }
-                    else { self.psqt_score += cap_psq; }
+                    if cap_c == BLACK {
+                        self.psqt_score -= cap_psq;
+                    } else {
+                        self.psqt_score += cap_psq;
+                    }
                     self.remove_from_lists(sq as usize);
                     self.cells[sq as usize] = EMPTY_CELL;
                     self.cap_stack.push((sq, cap_cell));
@@ -327,23 +350,33 @@ impl Board {
             let msq = m.mid_sq as usize;
             undo.mid_cell = self.cells[msq];
             if undo.mid_cell != EMPTY_CELL {
-                self.hash ^= zobrist_piece_key(
-                    cell_piece(undo.mid_cell), msq, cell_color(undo.mid_cell));
+                self.hash ^=
+                    zobrist_piece_key(cell_piece(undo.mid_cell), msq, cell_color(undo.mid_cell));
                 // Update incremental material score for mid-captured piece
                 let mid_val = pieces::value(cell_piece(undo.mid_cell)) as i32;
                 let mid_c = cell_color(undo.mid_cell);
-                if mid_c == BLACK { self.material_score -= mid_val; }
-                else { self.material_score += mid_val; }
+                if mid_c == BLACK {
+                    self.material_score -= mid_val;
+                } else {
+                    self.material_score += mid_val;
+                }
                 // Update incremental PSQT score
                 let mid_pt = cell_piece(undo.mid_cell);
                 let mid_psq = psqt::psqt(mid_pt, msq, mid_c);
-                if mid_c == BLACK { self.psqt_score -= mid_psq; }
-                else { self.psqt_score += mid_psq; }
+                if mid_c == BLACK {
+                    self.psqt_score -= mid_psq;
+                } else {
+                    self.psqt_score += mid_psq;
+                }
             }
             self.remove_from_lists(msq);
             self.cells[msq] = EMPTY_CELL;
             if nnue_on && undo.mid_cell != EMPTY_CELL {
-                nnue_removed.push((m.mid_sq, cell_piece(undo.mid_cell), cell_color(undo.mid_cell)));
+                nnue_removed.push((
+                    m.mid_sq,
+                    cell_piece(undo.mid_cell),
+                    cell_color(undo.mid_cell),
+                ));
             }
         }
 
@@ -364,25 +397,38 @@ impl Board {
                     let old_val = pieces::value(pt) as i32;
                     let new_val = pieces::value(promo_pt) as i32;
                     let delta = new_val - old_val;
-                    if color == BLACK { self.material_score += delta; }
-                    else { self.material_score -= delta; }
+                    if color == BLACK {
+                        self.material_score += delta;
+                    } else {
+                        self.material_score -= delta;
+                    }
                     // Update incremental PSQT score for promotion
                     let old_psq = psqt::psqt(pt, from, color);
                     let new_psq = psqt::psqt(promo_pt, from, color);
                     let psq_delta = new_psq - old_psq;
-                    if color == BLACK { self.psqt_score += psq_delta; }
-                    else { self.psqt_score -= psq_delta; }
+                    if color == BLACK {
+                        self.psqt_score += psq_delta;
+                    } else {
+                        self.psqt_score -= psq_delta;
+                    }
                     let new_cell = make_cell(promo_pt, color);
                     self.cells[from] = new_cell;
                     self.hash ^= zobrist_piece_key(promo_pt, from, color);
                     self.update_royal_status(from, pt, promo_pt, c);
                 }
             }
-            nnue_apply_delta(self, &nnue_removed, &nnue_added,
-                             old_anchor_black, old_anchor_white);
+            nnue_apply_delta(
+                self,
+                &nnue_removed,
+                &nnue_added,
+                old_anchor_black,
+                old_anchor_white,
+            );
             self.side_to_move = 1 - self.side_to_move;
             self.hash ^= zobrist_side_key();
-            if self.side_to_move == BLACK { self.move_number += 1; }
+            if self.side_to_move == BLACK {
+                self.move_number += 1;
+            }
             self.history.push(undo);
             return;
         }
@@ -393,8 +439,11 @@ impl Board {
         self.remove_sq_from_piece_list(from, c);
         // Update incremental PSQT score for origin
         let from_psq = psqt::psqt(pt, from, color);
-        if color == BLACK { self.psqt_score -= from_psq; }
-        else { self.psqt_score += from_psq; }
+        if color == BLACK {
+            self.psqt_score -= from_psq;
+        } else {
+            self.psqt_score += from_psq;
+        }
         // Update bitboards for from-square
         self.occupancy[c].clear_usize(from);
         self.all_occupancy.clear_usize(from);
@@ -407,18 +456,23 @@ impl Board {
 
         // Capture at destination
         if to_cell != EMPTY_CELL {
-            self.hash ^= zobrist_piece_key(
-                cell_piece(to_cell), to, cell_color(to_cell));
+            self.hash ^= zobrist_piece_key(cell_piece(to_cell), to, cell_color(to_cell));
             // Update incremental material score for captured piece
             let cap_val = pieces::value(cell_piece(to_cell)) as i32;
             let cap_c = cell_color(to_cell);
-            if cap_c == BLACK { self.material_score -= cap_val; }
-            else { self.material_score += cap_val; }
+            if cap_c == BLACK {
+                self.material_score -= cap_val;
+            } else {
+                self.material_score += cap_val;
+            }
             // Update incremental PSQT score
             let cap_pt = cell_piece(to_cell);
             let cap_psq = psqt::psqt(cap_pt, to, cap_c);
-            if cap_c == BLACK { self.psqt_score -= cap_psq; }
-            else { self.psqt_score += cap_psq; }
+            if cap_c == BLACK {
+                self.psqt_score -= cap_psq;
+            } else {
+                self.psqt_score += cap_psq;
+            }
             self.remove_from_lists(to);
             // Bitboard cleanup for captured piece is handled in remove_from_lists
             if nnue_on {
@@ -437,14 +491,20 @@ impl Board {
             let old_val = pieces::value(pt) as i32;
             let new_val = pieces::value(final_pt) as i32;
             let delta = new_val - old_val;
-            if color == BLACK { self.material_score += delta; }
-            else { self.material_score -= delta; }
+            if color == BLACK {
+                self.material_score += delta;
+            } else {
+                self.material_score -= delta;
+            }
         }
 
         // Update incremental PSQT score for destination (accounting for promotion)
         let to_psq = psqt::psqt(final_pt, to, color);
-        if color == BLACK { self.psqt_score += to_psq; }
-        else { self.psqt_score -= to_psq; }
+        if color == BLACK {
+            self.psqt_score += to_psq;
+        } else {
+            self.psqt_score -= to_psq;
+        }
         if nnue_on {
             nnue_added.push((to as u16, final_pt, color));
         }
@@ -462,12 +522,19 @@ impl Board {
             self.royal_count[c] = ri + 1;
         }
 
-        nnue_apply_delta(self, &nnue_removed, &nnue_added,
-                         old_anchor_black, old_anchor_white);
+        nnue_apply_delta(
+            self,
+            &nnue_removed,
+            &nnue_added,
+            old_anchor_black,
+            old_anchor_white,
+        );
 
         self.side_to_move = 1 - self.side_to_move;
         self.hash ^= zobrist_side_key();
-        if self.side_to_move == BLACK { self.move_number += 1; }
+        if self.side_to_move == BLACK {
+            self.move_number += 1;
+        }
         self.history.push(undo);
     }
 
@@ -511,7 +578,9 @@ impl Board {
             // Update bitboards
             self.occupancy[dest_c].clear_usize(to);
             self.all_occupancy.clear_usize(to);
-            if pieces::is_royal(dest_pt) { self.remove_sq_from_royal_list(to, dest_c); }
+            if pieces::is_royal(dest_pt) {
+                self.remove_sq_from_royal_list(to, dest_c);
+            }
             self.cells[to] = EMPTY_CELL;
         }
 
@@ -557,7 +626,7 @@ impl Board {
                 self.royal_count[mid_c] += 1;
             }
         }
-       
+
         while self.cap_stack.len() > undo.cap_base {
             let (sq, cell) = self.cap_stack.pop().unwrap();
             let squ = sq as usize;
@@ -604,12 +673,18 @@ impl Board {
                 self.all_occupancy.set_usize(sq);
                 // Rebuild material score
                 let val = pieces::value(pt) as i32;
-                if color == BLACK { self.material_score += val; }
-                else { self.material_score -= val; }
+                if color == BLACK {
+                    self.material_score += val;
+                } else {
+                    self.material_score -= val;
+                }
                 // Rebuild PSQT score
                 let psq = psqt::psqt(pt, sq, color);
-                if color == BLACK { self.psqt_score += psq; }
-                else { self.psqt_score -= psq; }
+                if color == BLACK {
+                    self.psqt_score += psq;
+                } else {
+                    self.psqt_score -= psq;
+                }
                 if pieces::is_royal(pt) {
                     let ri = self.royal_count[c];
                     self.royal_list[c][ri] = sq as u16;
@@ -624,7 +699,9 @@ impl Board {
     // remove_from_lists: used by apply_move for captured pieces
     fn remove_from_lists(&mut self, sq: usize) {
         let cell = self.cells[sq];
-        if cell == EMPTY_CELL { return; }
+        if cell == EMPTY_CELL {
+            return;
+        }
         let pt = cell_piece(cell);
         let color = cell_color(cell) as usize;
         // Update bitboards BEFORE removing from list (we need cell info)
@@ -640,7 +717,9 @@ impl Board {
     fn remove_sq_from_piece_list(&mut self, sq: usize, color: usize) {
         let idx = self.piece_index[sq] as usize;
         let len = self.piece_list_len[color];
-        if idx >= len { return; }
+        if idx >= len {
+            return;
+        }
         let last_sq = self.piece_list[color][len - 1] as usize;
         self.piece_list[color][idx] = last_sq as u16;
         self.piece_index[last_sq] = idx as u16;
@@ -665,7 +744,9 @@ impl Board {
 
     fn add_sq_to_piece_list(&mut self, sq: usize, color: usize) {
         let idx = self.piece_list_len[color];
-        if idx >= MAX_PIECES_PER_SIDE { return; }
+        if idx >= MAX_PIECES_PER_SIDE {
+            return;
+        }
         self.piece_index[sq] = idx as u16;
         self.piece_list[color][idx] = sq as u16;
         self.piece_list_len[color] = idx + 1;
@@ -750,7 +831,9 @@ impl Board {
         self.no_progress_plies += 1;
         self.side_to_move = 1 - self.side_to_move;
         self.hash ^= zobrist_side_key();
-        if self.side_to_move == BLACK { self.move_number += 1; }
+        if self.side_to_move == BLACK {
+            self.move_number += 1;
+        }
         self.history.push(undo);
     }
 

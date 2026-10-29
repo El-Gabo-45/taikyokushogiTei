@@ -75,7 +75,11 @@ impl SharedBest {
     #[inline]
     pub fn snapshot(&self) -> (u32, i32, u32) {
         let depth = self.depth.load(Ordering::Acquire);
-        (depth, self.score.load(Ordering::Relaxed), self.packed.load(Ordering::Relaxed) as u32)
+        (
+            depth,
+            self.score.load(Ordering::Relaxed),
+            self.packed.load(Ordering::Relaxed) as u32,
+        )
     }
 }
 
@@ -92,8 +96,13 @@ impl Searcher {
     /// when a worker completed a deeper iteration. Workers share this
     /// searcher's transposition table ([`Searcher::share_tt`]) and the master's
     /// stop flag, and they unwind as soon as the master finishes.
-    pub fn search_threads(&mut self, board: &mut super::Board, depth: u32,
-                          time_limit_ms: u64, threads: usize) -> super::SearchResult {
+    pub fn search_threads(
+        &mut self,
+        board: &mut super::Board,
+        depth: u32,
+        time_limit_ms: u64,
+        threads: usize,
+    ) -> super::SearchResult {
         let threads = threads.clamp(1, super::params::MAX_THREADS);
         if threads == 1 {
             return self.search(board, depth, time_limit_ms);
@@ -115,12 +124,18 @@ impl Searcher {
                     // stop flag: it keeps going until the master (or the
                     // deadline) stops it, publishing every iteration it
                     // completes.
-                    worker.search_impl(&mut worker_board, depth, time_limit_ms, deadline,
-                                       stop, Some(shared));
+                    worker.search_impl(
+                        &mut worker_board,
+                        depth,
+                        time_limit_ms,
+                        deadline,
+                        stop,
+                        Some(shared),
+                    );
                 });
             }
-            let result = self.search_impl(board, depth, time_limit_ms, deadline, &stop,
-                                          Some(&shared));
+            let result =
+                self.search_impl(board, depth, time_limit_ms, deadline, &stop, Some(&shared));
             // Workers poll this flag on every clock check and unwind promptly.
             stop.store(true, Ordering::Relaxed);
             result
@@ -145,7 +160,10 @@ fn adopt_deeper_worker_result(
     let (depth, score, packed) = shared.snapshot();
     let total_nodes = shared.total_nodes().max(master.nodes);
     if depth <= master_depth || packed == 0 {
-        return super::SearchResult { nodes: total_nodes, ..master };
+        return super::SearchResult {
+            nodes: total_nodes,
+            ..master
+        };
     }
     match crate::movegen::generate_pseudo_legal_moves(board)
         .into_iter()
@@ -157,7 +175,10 @@ fn adopt_deeper_worker_result(
             nodes: total_nodes,
             time_ms: master.time_ms,
         },
-        None => super::SearchResult { nodes: total_nodes, ..master },
+        None => super::SearchResult {
+            nodes: total_nodes,
+            ..master
+        },
     }
 }
 
@@ -201,7 +222,10 @@ mod tests {
         let legal = crate::movegen::generate_pseudo_legal_moves(&board);
         let target = &legal[3];
         let master = SearchResult {
-            best_move: Some(legal[0].clone()), score: 10, nodes: 100, time_ms: 5,
+            best_move: Some(legal[0].clone()),
+            score: 10,
+            nodes: 100,
+            time_ms: 5,
         };
 
         // A worker that searched deeper wins, and its packed key resolves back
@@ -211,8 +235,10 @@ mod tests {
         let out = adopt_deeper_worker_result(&board, master.clone(), 3, &shared);
         assert_eq!(out.score, 4242);
         let m = out.best_move.expect("adopted move must exist");
-        assert_eq!((m.from_sq, m.to_sq, m.promotion),
-                   (target.from_sq, target.to_sq, target.promotion));
+        assert_eq!(
+            (m.from_sq, m.to_sq, m.promotion),
+            (target.from_sq, target.to_sq, target.promotion)
+        );
 
         // The same depth as the master does not count as "deeper".
         let shared = SharedBest::new();
@@ -237,9 +263,16 @@ mod tests {
         // exploration order and therefore which cutoffs occur. score and
         // best_move are identical — that's the real equivalence contract.
         let node_diff = (r1.nodes as i64).abs_diff(r2.nodes as i64);
-        assert!(node_diff < 1000, "node counts too far apart: {} vs {}", r1.nodes, r2.nodes);
-        assert_eq!(r1.best_move.as_ref().map(|m| m.to_string()),
-                   r2.best_move.as_ref().map(|m| m.to_string()));
+        assert!(
+            node_diff < 1000,
+            "node counts too far apart: {} vs {}",
+            r1.nodes,
+            r2.nodes
+        );
+        assert_eq!(
+            r1.best_move.as_ref().map(|m| m.to_string()),
+            r2.best_move.as_ref().map(|m| m.to_string())
+        );
     }
 
     #[test]
@@ -252,15 +285,21 @@ mod tests {
         let mut b = crate::Board::initial();
         let started = std::time::Instant::now();
         let r = b.search_with_threads(&mut s, 2, 0, 3);
-        assert!(started.elapsed() < std::time::Duration::from_secs(60),
-                "SMP search overran: {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "SMP search overran: {:?}",
+            started.elapsed()
+        );
         let m = r.best_move.expect("SMP search must return a move");
         assert!(r.nodes > 0, "master and workers must report their nodes");
         assert!(r.time_ms > 0, "the reported time must reflect real work");
         let legal = b.legal_moves();
-        assert!(legal.iter().any(|l| l.raw().from_sq == m.raw().from_sq
-            && l.raw().to_sq == m.raw().to_sq && l.raw().promotion == m.raw().promotion),
-            "SMP best move must be legal");
+        assert!(
+            legal.iter().any(|l| l.raw().from_sq == m.raw().from_sq
+                && l.raw().to_sq == m.raw().to_sq
+                && l.raw().promotion == m.raw().promotion),
+            "SMP best move must be legal"
+        );
         // The board must be untouched.
         assert_eq!(b.piece_count(crate::Color::Black), 402);
     }

@@ -8,8 +8,8 @@
 //   - per-run time distribution
 //
 // Run with: cargo run --release --example bench_depth1
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 const RUNS: usize = 2000;
 
@@ -93,10 +93,15 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
     let agg_nps = total_nodes as f64 / (total_us as f64 / 1_000_000.0);
 
     // Per-run stats
-    let mean_nps = if per_run_nps.is_empty() { 0.0 } else {
+    let mean_nps = if per_run_nps.is_empty() {
+        0.0
+    } else {
         per_run_nps.iter().sum::<f64>() / per_run_nps.len() as f64
     };
-    let min_nps = per_run_nps.iter().cloned().fold(f64::MAX, |a: f64, b| a.min(b));
+    let min_nps = per_run_nps
+        .iter()
+        .cloned()
+        .fold(f64::MAX, |a: f64, b| a.min(b));
     let max_nps = per_run_nps.iter().cloned().fold(0.0f64, |a, b| a.max(b));
     let mut sorted_nps = per_run_nps.clone();
     sorted_nps.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -104,13 +109,22 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
 
     // Stddev
     let variance = if per_run_nps.len() > 1 {
-        per_run_nps.iter().map(|v| (v - mean_nps).powi(2)).sum::<f64>() / (per_run_nps.len() - 1) as f64
-    } else { 0.0 };
+        per_run_nps
+            .iter()
+            .map(|v| (v - mean_nps).powi(2))
+            .sum::<f64>()
+            / (per_run_nps.len() - 1) as f64
+    } else {
+        0.0
+    };
     let stddev_nps = variance.sqrt();
 
     // Time stats
     let mean_us = per_run_us.iter().sum::<f64>() / per_run_us.len() as f64;
-    let min_us = per_run_us.iter().cloned().fold(f64::MAX, |a: f64, b| a.min(b));
+    let min_us = per_run_us
+        .iter()
+        .cloned()
+        .fold(f64::MAX, |a: f64, b| a.min(b));
     let max_us = per_run_us.iter().cloned().fold(0.0f64, |a, b| a.max(b));
     let mut sorted_us = per_run_us.clone();
     sorted_us.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -119,15 +133,28 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
     // Nodes consistency
     let nodes_set: std::collections::BTreeSet<u64> = nodes_per_run.into_iter().collect();
     let nodes_str = if nodes_set.len() <= 3 {
-        nodes_set.into_iter().map(|n| n.to_string()).collect::<Vec<_>>().join(" | ")
+        nodes_set
+            .into_iter()
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(" | ")
     } else {
         format!("{} distinct values", nodes_set.len())
     };
 
-    println!("  {} runs={}  total_nodes={}  total_time={:.1}ms", label, RUNS, total_nodes, total_us as f64 / 1000.0);
+    println!(
+        "  {} runs={}  total_nodes={}  total_time={:.1}ms",
+        label,
+        RUNS,
+        total_nodes,
+        total_us as f64 / 1000.0
+    );
     println!("    aggregate NPS: {:.0}", agg_nps);
     println!("    per-run NPS:   min={:.0}  median={:.0}  mean={:.0}  max={:.0}  stddev={:.0}  ({} samples)", min_nps, median_nps, mean_nps, max_nps, stddev_nps, per_run_nps.len());
-    println!("    per-run time:  min={:.1}us  median={:.1}us  mean={:.1}us  max={:.1}us", min_us, median_us, mean_us, max_us);
+    println!(
+        "    per-run time:  min={:.1}us  median={:.1}us  mean={:.1}us  max={:.1}us",
+        min_us, median_us, mean_us, max_us
+    );
     println!("    nodes/run:     {}", nodes_str);
     println!();
 }

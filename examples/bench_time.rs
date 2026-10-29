@@ -1,7 +1,7 @@
 // Verifies the engine respects the assigned time_limit_ms.
 // Run with: cargo run --release --example bench_time
-use taikyokushogi::Board;
 use std::time::Instant;
+use taikyokushogi::Board;
 
 fn run(depth: u32, limit_ms: u64, n_moves: usize) {
     let mut board = Board::initial();
@@ -13,7 +13,9 @@ fn run(depth: u32, limit_ms: u64, n_moves: usize) {
         let mt = Instant::now();
         let result = board.search(depth, limit_ms);
         let ms = mt.elapsed().as_secs_f64() * 1000.0;
-        if ms > max_move_ms { max_move_ms = ms; }
+        if ms > max_move_ms {
+            max_move_ms = ms;
+        }
         if let Some(mv) = result.best_move {
             board.apply(&mv);
             played += 1;

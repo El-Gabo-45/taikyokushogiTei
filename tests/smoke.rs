@@ -35,7 +35,10 @@ fn board_initial_is_well_formed() {
     let board = Board::initial();
     assert_eq!(board.side_to_move(), Color::Black);
     assert_eq!(board.move_number(), 1);
-    assert_eq!(board.piece_count(Color::Black), board.piece_count(Color::White));
+    assert_eq!(
+        board.piece_count(Color::Black),
+        board.piece_count(Color::White)
+    );
     assert!(board.piece_count(Color::Black) > 0);
     assert!(board.game_result().is_none());
 }

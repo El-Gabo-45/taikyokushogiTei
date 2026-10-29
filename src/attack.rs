@@ -18,9 +18,9 @@
 //! Reference: docx §5.3 "Bitboards y Estructuras de Datos Incrementales" —
 //! bitboard-based generation scales with the board perimeter, not the area.
 
-use crate::types::*;
-use crate::pieces;
 use crate::board::Board;
+use crate::pieces;
+use crate::types::*;
 use std::sync::OnceLock;
 
 const MAX_JUMP_DELTAS: usize = 32;
@@ -70,7 +70,9 @@ pub fn templates() -> &'static [[Template; 2]; 512] {
             let special = mv.hook.is_some()
                 || !mv.range_capture.is_empty()
                 || (mv.area >= 2 && !mv.jumps.is_empty()); // lion mid-capture
-            if special { continue; }
+            if special {
+                continue;
+            }
 
             for color in 0..2u8 {
                 let mut t = empty_template();
@@ -79,7 +81,9 @@ pub fn templates() -> &'static [[Template; 2]; 512] {
 
                 // Jumps.
                 for &(jdr, jdc) in &mv.jumps {
-                    if ti >= MAX_JUMP_DELTAS { break; }
+                    if ti >= MAX_JUMP_DELTAS {
+                        break;
+                    }
                     t.jumps[ti] = (jdr * flip, jdc * flip);
                     ti += 1;
                 }
@@ -98,10 +102,18 @@ pub fn templates() -> &'static [[Template; 2]; 512] {
                 if mv.area > 0 {
                     for dr in -2i8..=2 {
                         for dc in -2i8..=2 {
-                            if dr == 0 && dc == 0 { continue; }
-                            if dr.abs() > 1 && mv.area < 2 { continue; }
-                            if dc.abs() > 1 && mv.area < 2 { continue; }
-                            if ti >= MAX_JUMP_DELTAS { break; }
+                            if dr == 0 && dc == 0 {
+                                continue;
+                            }
+                            if dr.abs() > 1 && mv.area < 2 {
+                                continue;
+                            }
+                            if dc.abs() > 1 && mv.area < 2 {
+                                continue;
+                            }
+                            if ti >= MAX_JUMP_DELTAS {
+                                break;
+                            }
                             t.jumps[ti] = (dr, dc);
                             ti += 1;
                         }
@@ -113,8 +125,12 @@ pub fn templates() -> &'static [[Template; 2]; 512] {
                 // Slides.
                 let mut si = 0usize;
                 for &(dir, max_range) in &mv.slides {
-                    if max_range == 1 { continue; }
-                    if si >= MAX_SLIDES { break; }
+                    if max_range == 1 {
+                        continue;
+                    }
+                    if si >= MAX_SLIDES {
+                        break;
+                    }
                     t.slides[si] = (dir, max_range);
                     si += 1;
                 }
@@ -149,9 +165,13 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
 
     for i in 0..board.piece_list_len[c] {
         let sq = board.piece_list[c][i] as usize;
-        if sq == INVALID_SQ as usize { continue; }
+        if sq == INVALID_SQ as usize {
+            continue;
+        }
         let cell = board.cells[sq];
-        if cell == EMPTY_CELL { continue; }
+        if cell == EMPTY_CELL {
+            continue;
+        }
         let pt = cell_piece(cell);
         let start = moves.len();
         let tmpl = &t[(pt as usize).min(511)][color as usize];
@@ -181,7 +201,9 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
             let (dr, dc) = tmpl.jumps[j];
             let nr = sq_r + dr as i32;
             let nc = sq_c + dc as i32;
-            if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 { continue; }
+            if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
+                continue;
+            }
             let nsq = (nr as usize) * BOARD_SIZE + (nc as usize);
             let target = board.cells[nsq];
             if target != EMPTY_CELL && cell_color(target) != color {
@@ -211,8 +233,15 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
 }
 
 /// Generate hook-move captures (orthogonal or diagonal hook movers).
-fn gen_hook_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                     rt: &RayTable, moves: &mut Vec<crate::types::Move>) {
+fn gen_hook_captures(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<crate::types::Move>,
+) {
     let dirs: &[usize] = match mv.hook {
         Some(HookType::Orthogonal) => &[N, E, S, W],
         Some(HookType::Diagonal) => &[NE, SE, SW, NW],
@@ -231,7 +260,11 @@ fn gen_hook_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
             }
             let turn_dirs: &[usize] = match mv.hook {
                 Some(HookType::Orthogonal) => {
-                    if d == N || d == S { &HOOK_ORTHO_NS } else { &HOOK_ORTHO_EW }
+                    if d == N || d == S {
+                        &HOOK_ORTHO_NS
+                    } else {
+                        &HOOK_ORTHO_EW
+                    }
                 }
                 Some(HookType::Diagonal) => match d {
                     NE => &HOOK_TURN_NE,
@@ -246,11 +279,15 @@ fn gen_hook_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
                 let turn_ray = rt.ray_for_color(mid, td, color);
                 for &tsq in turn_ray {
                     let t = board.cells[tsq as usize];
-                    if t == EMPTY_CELL { continue; }
+                    if t == EMPTY_CELL {
+                        continue;
+                    }
                     if cell_color(t) != color {
                         push_move(moves, sq as u16, tsq, pt, color, t);
                         break;
-                    } else { break; }
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -262,15 +299,24 @@ fn gen_hook_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
 /// squares between from and to — previously this fast path left intermediate
 /// captures unapplied (the old Move had range_caps: None here), silently
 /// diverging from the generator's intent.
-fn gen_range_capture_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                              rt: &RayTable, moves: &mut Vec<crate::types::Move>) {
+fn gen_range_capture_captures(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    rt: &RayTable,
+    moves: &mut Vec<crate::types::Move>,
+) {
     let piece_rank = pieces::rank(pt);
     for &dir in &mv.range_capture {
         let ray = rt.ray_for_color(sq, dir as usize, color);
         let mut caps_value: i32 = 0;
         for &rsq in ray {
             let target = board.cells[rsq as usize];
-            if target == EMPTY_CELL { continue; }
+            if target == EMPTY_CELL {
+                continue;
+            }
             let t_pt = cell_piece(target);
             let t_rank = pieces::rank(t_pt);
             if t_rank > piece_rank {
@@ -281,7 +327,9 @@ fn gen_range_capture_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: 
                 m.caps_value = caps_value;
                 crate::movegen::push_move_raw(moves, m);
                 caps_value += pieces::value(t_pt) as i32;
-            } else { break; }
+            } else {
+                break;
+            }
         }
     }
 }
@@ -289,8 +337,14 @@ fn gen_range_capture_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: 
 /// Generate lion area captures — the radius-1 and radius-2 moves, including
 /// mid-captures (capture a piece on the way to a second target). This
 /// eliminates the slow fallback to movegen for lions.
-fn gen_lion_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement,
-                     moves: &mut Vec<crate::types::Move>) {
+fn gen_lion_captures(
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    mv: &Movement,
+    moves: &mut Vec<crate::types::Move>,
+) {
     let r = sq_row(sq) as i32;
     let c = sq_col(sq) as i32;
 
@@ -298,10 +352,14 @@ fn gen_lion_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
         let (dr1, dc1) = get_deltas(d1, color);
         let r1 = r + dr1;
         let c1 = c + dc1;
-        if r1 < 0 || r1 >= BOARD_SIZE as i32 || c1 < 0 || c1 >= BOARD_SIZE as i32 { continue; }
+        if r1 < 0 || r1 >= BOARD_SIZE as i32 || c1 < 0 || c1 >= BOARD_SIZE as i32 {
+            continue;
+        }
         let sq1 = r1 as usize * BOARD_SIZE + c1 as usize;
         let t1 = board.cells[sq1];
-        if t1 != EMPTY_CELL && cell_color(t1) == color { continue; }
+        if t1 != EMPTY_CELL && cell_color(t1) == color {
+            continue;
+        }
 
         // Direct capture at first step (if enemy).
         if t1 != EMPTY_CELL && cell_color(t1) != color {
@@ -313,11 +371,17 @@ fn gen_lion_captures(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement
                 let (dr2, dc2) = get_deltas(d2, color);
                 let r2 = r1 + dr2;
                 let c2 = c1 + dc2;
-                if r2 < 0 || r2 >= BOARD_SIZE as i32 || c2 < 0 || c2 >= BOARD_SIZE as i32 { continue; }
+                if r2 < 0 || r2 >= BOARD_SIZE as i32 || c2 < 0 || c2 >= BOARD_SIZE as i32 {
+                    continue;
+                }
                 let sq2 = r2 as usize * BOARD_SIZE + c2 as usize;
-                if sq2 == sq { continue; }
+                if sq2 == sq {
+                    continue;
+                }
                 let t2 = board.cells[sq2];
-                if t2 != EMPTY_CELL && cell_color(t2) == color { continue; }
+                if t2 != EMPTY_CELL && cell_color(t2) == color {
+                    continue;
+                }
 
                 // Mid-capture: capture t1 on the way to sq2.
                 if t1 != EMPTY_CELL && cell_color(t1) != color {
@@ -345,11 +409,22 @@ fn can_promote(pt: u16) -> bool {
 }
 
 #[inline]
-fn walk_ray_captures(board: &Board, rt: &RayTable,
-                     sq: usize, pt: u16, color: u8, dir: usize, max_range: u8,
-                     moves: &mut Vec<crate::types::Move>) {
+fn walk_ray_captures(
+    board: &Board,
+    rt: &RayTable,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    dir: usize,
+    max_range: u8,
+    moves: &mut Vec<crate::types::Move>,
+) {
     let ray = rt.ray_for_color(sq, dir, color);
-    let limit = if max_range == 0 { ray.len() } else { (max_range as usize).min(ray.len()) };
+    let limit = if max_range == 0 {
+        ray.len()
+    } else {
+        (max_range as usize).min(ray.len())
+    };
     for j in 0..limit {
         let rsq = ray[j] as usize;
         let target = board.cells[rsq];
@@ -370,8 +445,13 @@ fn walk_ray_captures(board: &Board, rt: &RayTable,
 /// Fast path for a single non-special piece. Generates jump/step/slide/area/
 /// igui moves into `moves` using the flat template `tmpl`.
 pub fn fast_piece(
-    board: &Board, sq: usize, pt: u16, color: u8,
-    tmpl: &Template, rt: &RayTable, moves: &mut Vec<crate::types::Move>,
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    tmpl: &Template,
+    rt: &RayTable,
+    moves: &mut Vec<crate::types::Move>,
 ) {
     let sq_r = sq_row(sq) as i32;
     let sq_c = sq_col(sq) as i32;
@@ -380,7 +460,9 @@ pub fn fast_piece(
         let (dr, dc) = tmpl.jumps[j];
         let nr = sq_r + dr as i32;
         let nc = sq_c + dc as i32;
-        if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 { continue; }
+        if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
+            continue;
+        }
         let nsq = (nr as usize) * BOARD_SIZE + (nc as usize);
         let target = board.cells[nsq];
         if target == EMPTY_CELL {
@@ -408,25 +490,48 @@ pub fn fast_piece(
 }
 
 #[inline]
-fn push_move(moves: &mut Vec<crate::types::Move>, from: u16, to: u16, pt: u16,
-             color: u8, target: Cell) {
+fn push_move(
+    moves: &mut Vec<crate::types::Move>,
+    from: u16,
+    to: u16,
+    pt: u16,
+    color: u8,
+    target: Cell,
+) {
     // Delegate to the shared move builder so promotion variants are
     // generated identically in the fast and slow paths.
     crate::movegen::add_move(moves, from, to, pt, color, target);
 }
 
 #[inline]
-fn push_move_igui(moves: &mut Vec<crate::types::Move>, from: u16, victim_sq: usize,
-                  _pt: u16, color: u8, target: Cell) {
+fn push_move_igui(
+    moves: &mut Vec<crate::types::Move>,
+    from: u16,
+    victim_sq: usize,
+    _pt: u16,
+    color: u8,
+    target: Cell,
+) {
     crate::movegen::add_igui_move(moves, from as usize, victim_sq, _pt, color, target);
 }
 
 #[inline]
-fn walk_ray(board: &Board, rt: &RayTable,
-            sq: usize, pt: u16, color: u8, dir: usize, max_range: u8,
-            moves: &mut Vec<crate::types::Move>) {
+fn walk_ray(
+    board: &Board,
+    rt: &RayTable,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    dir: usize,
+    max_range: u8,
+    moves: &mut Vec<crate::types::Move>,
+) {
     let ray = rt.ray_for_color(sq, dir, color);
-    let limit = if max_range == 0 { ray.len() } else { (max_range as usize).min(ray.len()) };
+    let limit = if max_range == 0 {
+        ray.len()
+    } else {
+        (max_range as usize).min(ray.len())
+    };
     for j in 0..limit {
         let rsq = ray[j] as usize;
         let target = board.cells[rsq];
@@ -444,11 +549,22 @@ fn walk_ray(board: &Board, rt: &RayTable,
 /// Like [`walk_ray`] but only emits non-capturing (quiet) moves: stops at the
 /// first occupied square of either color, never emits captures.
 #[inline]
-fn walk_ray_quiets(board: &Board, rt: &RayTable,
-                   sq: usize, pt: u16, color: u8, dir: usize, max_range: u8,
-                   moves: &mut Vec<crate::types::Move>) {
+fn walk_ray_quiets(
+    board: &Board,
+    rt: &RayTable,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    dir: usize,
+    max_range: u8,
+    moves: &mut Vec<crate::types::Move>,
+) {
     let ray = rt.ray_for_color(sq, dir, color);
-    let limit = if max_range == 0 { ray.len() } else { (max_range as usize).min(ray.len()) };
+    let limit = if max_range == 0 {
+        ray.len()
+    } else {
+        (max_range as usize).min(ray.len())
+    };
     for j in 0..limit {
         let rsq = ray[j] as usize;
         let target = board.cells[rsq];
@@ -467,8 +583,13 @@ fn walk_ray_quiets(board: &Board, rt: &RayTable,
 /// stage (Stage 2) so it does not regenerate captures already searched in
 /// Stage 1.
 pub fn fast_piece_quiets(
-    board: &Board, sq: usize, pt: u16, color: u8,
-    tmpl: &Template, rt: &RayTable, moves: &mut Vec<crate::types::Move>,
+    board: &Board,
+    sq: usize,
+    pt: u16,
+    color: u8,
+    tmpl: &Template,
+    rt: &RayTable,
+    moves: &mut Vec<crate::types::Move>,
 ) {
     let sq_r = sq_row(sq) as i32;
     let sq_c = sq_col(sq) as i32;
@@ -478,7 +599,9 @@ pub fn fast_piece_quiets(
         let (dr, dc) = tmpl.jumps[j];
         let nr = sq_r + dr as i32;
         let nc = sq_c + dc as i32;
-        if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 { continue; }
+        if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
+            continue;
+        }
         let nsq = (nr as usize) * BOARD_SIZE + (nc as usize);
         let target = board.cells[nsq];
         if target == EMPTY_CELL {

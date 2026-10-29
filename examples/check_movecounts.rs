@@ -14,4 +14,3 @@ fn main() {
         .count();
     println!("approx captures/promos (by notation) = {}", cap);
 }
-
