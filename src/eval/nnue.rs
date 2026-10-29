@@ -282,7 +282,7 @@ impl FeatureTransformer {
         };
         let mut output = Vec::with_capacity(FT_NEURONS);
         for n in 0..FT_NEURONS {
-            let val = (acc_ref[n] as i32) + (self.biases[n] as i32);
+            let val = acc_ref[n] + (self.biases[n] as i32);
             // Clipped ReLU: clamp to [0, 255] then quantize to i16
             let clamped = val.clamp(0, 255) as i16;
             output.push(clamped);

@@ -2444,7 +2444,7 @@ pub struct PieceStore {
 static STORE: OnceLock<PieceStore> = OnceLock::new();
 
 pub fn store() -> &'static PieceStore {
-    STORE.get_or_init(|| init_store())
+    STORE.get_or_init(init_store)
 }
 
 pub fn abbrev(pt: u16) -> &'static str {
@@ -3343,7 +3343,7 @@ fn init_store() -> PieceStore {
         abbrev_to_id.insert(def.abbrev.to_string(), id);
     }
 
-    for (_i, def) in PIECE_DEFS.iter().enumerate() {
+    for def in PIECE_DEFS.iter() {
         // Movement
         let mv = if let Some(manual) = manual_movement(def.abbrev) {
             manual

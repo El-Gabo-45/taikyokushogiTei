@@ -86,7 +86,7 @@ fn main() {
         // apply + undo (single move)
         let moves = board.legal_moves();
         if let Some(first_move) = moves.first() {
-            let fm = first_move.clone();
+            let fm = *first_move;
             bench_component("apply() + undo()", 500, || {
                 let mut b = Board::initial();
                 b.apply(&fm);

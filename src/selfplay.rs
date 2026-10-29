@@ -295,7 +295,7 @@ impl SelfPlayWorker {
     fn run(&mut self) {
         let total_games = self.config.num_games;
         let num_workers = self.config.num_workers.max(1);
-        let games_per_worker = (total_games + num_workers - 1) / num_workers;
+        let games_per_worker = total_games.div_ceil(num_workers);
         let my_start = self.id * games_per_worker;
         let my_end = std::cmp::min(my_start + games_per_worker, total_games);
         if my_start >= total_games {
@@ -331,27 +331,6 @@ impl SelfPlayWorker {
                 result_str
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_config_uses_full_games_and_fast_search() {
-        let cfg = SelfPlayConfig::default();
-        assert_eq!(cfg.max_moves, 0);
-        assert!(cfg.depth >= 2);
-        assert!(cfg.time_limit_ms > 0);
-    }
-
-    #[test]
-    fn stop_condition_respects_unbounded_mode() {
-        assert!(!should_stop_game(1000, 0, None));
-        assert!(should_stop_game(1000, 10, None));
-        assert!(should_stop_game(10, 10, None));
-        assert!(should_stop_game(5, 10, Some(GameResult::Draw)));
     }
 }
 
@@ -582,4 +561,25 @@ pub fn run_selfplay(config: Option<SelfPlayConfig>) {
     let mut coord = SelfPlayCoordinator::new(config);
     coord.start();
     coord.wait();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_uses_full_games_and_fast_search() {
+        let cfg = SelfPlayConfig::default();
+        assert_eq!(cfg.max_moves, 0);
+        assert!(cfg.depth >= 2);
+        assert!(cfg.time_limit_ms > 0);
+    }
+
+    #[test]
+    fn stop_condition_respects_unbounded_mode() {
+        assert!(!should_stop_game(1000, 0, None));
+        assert!(should_stop_game(1000, 10, None));
+        assert!(should_stop_game(10, 10, None));
+        assert!(should_stop_game(5, 10, Some(GameResult::Draw)));
+    }
 }

@@ -294,7 +294,7 @@ mod tests {
         let before = tt.size_mb();
         let actual = tt.resize_mb(8);
         assert!(
-            actual >= 4 && actual <= 8,
+            (4..=8).contains(&actual),
             "8 MiB request rounded to {} MiB",
             actual
         );

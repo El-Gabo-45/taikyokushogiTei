@@ -222,7 +222,7 @@ mod tests {
         let legal = crate::movegen::generate_pseudo_legal_moves(&board);
         let target = &legal[3];
         let master = SearchResult {
-            best_move: Some(legal[0].clone()),
+            best_move: Some(legal[0]),
             score: 10,
             nodes: 100,
             time_ms: 5,

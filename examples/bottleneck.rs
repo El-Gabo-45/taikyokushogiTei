@@ -38,7 +38,7 @@ fn main() {
         let b = Board::initial();
         let _ = b.material_score();
     });
-    let fm = moves[0].clone();
+    let fm = moves[0];
     bench("apply+undo", 100, || {
         let mut b = Board::initial();
         b.apply(&fm);

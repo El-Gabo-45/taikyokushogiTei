@@ -25,7 +25,7 @@ fn main() {
         t.elapsed().as_micros() as f64 / n as f64
     );
     // apply+undo timing
-    let m = moves[0].clone();
+    let m = moves[0];
     let t = Instant::now();
     let n = 500;
     let mut b = Board::initial();

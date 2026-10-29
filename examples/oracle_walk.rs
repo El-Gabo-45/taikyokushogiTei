@@ -35,7 +35,7 @@ fn main() {
         if moves.is_empty() {
             break;
         }
-        let m = moves[ply % moves.len()].clone();
+        let m = moves[ply % moves.len()];
         board.apply(&m);
         board.undo();
         let after = snap(&board);
@@ -57,7 +57,7 @@ fn main() {
             }
         }
         // advance the walk (with occasional deep unwind)
-        let m = moves[(ply * 7919 + 13) % moves.len()].clone();
+        let m = moves[(ply * 7919 + 13) % moves.len()];
         board.apply(&m);
         walk.push(m);
         if walk.len() >= 40 {

@@ -851,7 +851,7 @@ fn gen_range_capture(
                         m.caps_value = caps_value;
                         moves.push(m);
                     }
-                    caps_value += pieces::value(t_pt) as i32;
+                    caps_value += pieces::value(t_pt);
                 } else {
                     break;
                 }

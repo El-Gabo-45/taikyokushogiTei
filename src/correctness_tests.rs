@@ -97,7 +97,7 @@ fn apply_undo_restores_state() {
         if moves.is_empty() {
             break;
         }
-        let m = moves[rng.pick(moves.len())].clone();
+        let m = moves[rng.pick(moves.len())];
         board.apply(&m);
         board.undo();
         assert_eq!(
@@ -243,7 +243,7 @@ fn zobrist_transposition_independent_moves() {
         for m2 in &quiet_black[i + 1..] {
             let sqs = [m1.from_sq, m1.to_sq, m2.from_sq, m2.to_sq];
             if sqs.iter().collect::<std::collections::HashSet<_>>().len() == 4 {
-                found = Some((m1.clone(), m2.clone()));
+                found = Some((*m1, *m2));
                 break;
             }
         }
@@ -257,11 +257,10 @@ fn zobrist_transposition_independent_moves() {
     // a white quiet move w disjoint from all four squares
     b.apply_move(&m2);
     let wmvs = movegen::generate_legal_moves(&b);
-    let w = wmvs
+    let w = *wmvs
         .iter()
         .find(|m| quiet(m) && !used.contains(&m.from_sq) && !used.contains(&m.to_sq))
-        .expect("quiet white move exists")
-        .clone();
+        .expect("quiet white move exists");
     b.undo_move();
 
     // path A: m1, w, m2  — path B: m2, w, m1
@@ -386,11 +385,10 @@ fn area_mid_capture_removes_both_pieces() {
     b.rebuild_lists_pub();
 
     let moves = movegen::generate_pseudo_legal_moves(&b);
-    let mid = moves
+    let mid = *moves
         .iter()
         .find(|m| m.mid_piece != 0 && m.captured_piece != 0 && m.to_sq != m.from_sq)
-        .expect("expected a mid-capture move")
-        .clone();
+        .expect("expected a mid-capture move");
 
     let before = b.piece_count[0] + b.piece_count[1];
     b.apply_move(&mid);
@@ -629,7 +627,7 @@ fn bulk_unwind_restores_state() {
             if moves.is_empty() {
                 break;
             }
-            let m = moves[rng.pick(moves.len())].clone();
+            let m = moves[rng.pick(moves.len())];
             board.apply(&m);
             stack.push(m);
         }
@@ -680,14 +678,13 @@ fn legal_moves_have_no_duplicate_effects() {
 fn range_capture_empties_intermediates() {
     let mut board = Board::initial();
     let moves = board.legal_moves();
-    let rc = moves
+    let rc = *moves
         .iter()
         .find(|m| {
             let r = m.raw();
             r.range_cap && r.caps_value != 0
         })
-        .expect("initial position has range-capture moves")
-        .clone();
+        .expect("initial position has range-capture moves");
     let (from, to) = (rc.raw().from_sq as usize, rc.raw().to_sq as usize);
     let (fr, fc) = (from / 36, from % 36);
     let (tr, tc) = (to / 36, to % 36);

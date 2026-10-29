@@ -9,7 +9,7 @@
 use crate::types::*;
 
 /// Number of u64 words needed to represent 1,296 squares.
-pub const U64_COUNT: usize = (NUM_SQUARES + 63) / 64; // 21
+pub const U64_COUNT: usize = NUM_SQUARES.div_ceil(64); // 21
 
 /// A bitboard for the 36×36 board, stored as 21 consecutive u64 words.
 /// Total size: 168 bytes (3 cache lines).
@@ -511,8 +511,8 @@ impl LimitedRangeTable {
                 for max_dist in 1..=3 {
                     let mut bb = Bitboard1296::new();
                     for step in 1..=max_dist {
-                        let nr = r + dr * step as i32;
-                        let nc = c + dc * step as i32;
+                        let nr = r + dr * step;
+                        let nc = c + dc * step;
                         if nr >= 0 && nr < BOARD_SIZE as i32 && nc >= 0 && nc < BOARD_SIZE as i32 {
                             bb.set_usize((nr as usize) * BOARD_SIZE + (nc as usize));
                         }

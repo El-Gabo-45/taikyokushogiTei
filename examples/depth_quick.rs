@@ -36,7 +36,7 @@ fn main() {
     bench("material_score()", 500, || {
         let _ = board.material_score();
     });
-    let mv = board.legal_moves()[0].clone();
+    let mv = board.legal_moves()[0];
     {
         let mut b = Board::initial();
         // warmup + preallocate history capacity like a real search would

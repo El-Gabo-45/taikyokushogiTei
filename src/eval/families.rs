@@ -131,7 +131,7 @@ pub fn classify(piece_type: u16) -> Family {
 
     // Eagles: queen + significant jump capability.
     let queen = m.slides.iter().all(|&(_d, r)| r == 0) && m.slides.len() == 8;
-    if queen && m.jumps.len() >= 1 {
+    if queen && !m.jumps.is_empty() {
         return Family::Eagle;
     }
 

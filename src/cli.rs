@@ -146,7 +146,7 @@ fn parse_square(tok: &str) -> Option<(usize, usize)> {
     if let Some((r, c)) = tok.split_once(',') {
         let row: usize = r.trim().parse().ok()?;
         let col: usize = c.trim().parse().ok()?;
-        return if row >= 1 && row <= 36 && col >= 1 && col <= 36 {
+        return if (1..=36).contains(&row) && (1..=36).contains(&col) {
             Some((row - 1, col - 1))
         } else {
             None
@@ -155,7 +155,7 @@ fn parse_square(tok: &str) -> Option<(usize, usize)> {
     let mut chars = tok.chars();
     let file = parse_file(chars.next()?)?;
     let rank: usize = chars.as_str().parse().ok()?;
-    if rank >= 1 && rank <= 36 {
+    if (1..=36).contains(&rank) {
         Some((rank - 1, file))
     } else {
         None
@@ -218,7 +218,7 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
         for ch in body.chars() {
             if !cur.is_empty()
                 && parse_file(ch).is_some()
-                && cur.chars().last().map_or(false, |c| c.is_ascii_digit())
+                && cur.chars().last().is_some_and(|c| c.is_ascii_digit())
             {
                 segments.push(cur.clone());
                 cur.clear();
@@ -282,7 +282,7 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
             .ok_or_else(|| format!("`{}`: add `+` to promote, remove it to keep the piece", s));
     }
     // single variant (or promo-only): accept as-is
-    Ok(matching[0].clone())
+    Ok(*matching[0])
 }
 
 // ── Command execution ───────────────────────────────────────────

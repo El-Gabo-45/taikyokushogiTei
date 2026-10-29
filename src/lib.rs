@@ -533,7 +533,7 @@ impl Board {
         let to_sq = types::sq_index(to_row, to_col) as u16;
         let moves = movegen::generate_legal_moves(&self.inner);
         for m in &moves {
-            let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
+            let mid_match = mid_sq.is_none_or(|ms| m.mid_sq as usize == ms);
             if m.from_sq == from_sq && m.to_sq == to_sq && m.promotion == promotion && mid_match {
                 self.inner.apply_move(m);
                 return true;

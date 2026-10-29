@@ -326,7 +326,7 @@ fn gen_range_capture_captures(
                 m.range_cap = true;
                 m.caps_value = caps_value;
                 crate::movegen::push_move_raw(moves, m);
-                caps_value += pieces::value(t_pt) as i32;
+                caps_value += pieces::value(t_pt);
             } else {
                 break;
             }

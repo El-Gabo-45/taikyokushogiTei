@@ -219,7 +219,7 @@ impl Board {
         self.all_occupancy.set_usize(sq);
 
         // Update incremental material score
-        let val = pieces::value(pt) as i32;
+        let val = pieces::value(pt);
         if color == BLACK {
             self.material_score += val;
         } else {
@@ -318,7 +318,7 @@ impl Board {
                     self.hash ^=
                         zobrist_piece_key(cell_piece(cap_cell), sq as usize, cell_color(cap_cell));
                     // Update incremental material score for captured piece
-                    let cap_val = pieces::value(cell_piece(cap_cell)) as i32;
+                    let cap_val = pieces::value(cell_piece(cap_cell));
                     let cap_c = cell_color(cap_cell);
                     if cap_c == BLACK {
                         self.material_score -= cap_val;
@@ -353,7 +353,7 @@ impl Board {
                 self.hash ^=
                     zobrist_piece_key(cell_piece(undo.mid_cell), msq, cell_color(undo.mid_cell));
                 // Update incremental material score for mid-captured piece
-                let mid_val = pieces::value(cell_piece(undo.mid_cell)) as i32;
+                let mid_val = pieces::value(cell_piece(undo.mid_cell));
                 let mid_c = cell_color(undo.mid_cell);
                 if mid_c == BLACK {
                     self.material_score -= mid_val;
@@ -394,8 +394,8 @@ impl Board {
                     }
                     self.hash ^= zobrist_piece_key(pt, from, color);
                     // Update material score for promotion
-                    let old_val = pieces::value(pt) as i32;
-                    let new_val = pieces::value(promo_pt) as i32;
+                    let old_val = pieces::value(pt);
+                    let new_val = pieces::value(promo_pt);
                     let delta = new_val - old_val;
                     if color == BLACK {
                         self.material_score += delta;
@@ -458,7 +458,7 @@ impl Board {
         if to_cell != EMPTY_CELL {
             self.hash ^= zobrist_piece_key(cell_piece(to_cell), to, cell_color(to_cell));
             // Update incremental material score for captured piece
-            let cap_val = pieces::value(cell_piece(to_cell)) as i32;
+            let cap_val = pieces::value(cell_piece(to_cell));
             let cap_c = cell_color(to_cell);
             if cap_c == BLACK {
                 self.material_score -= cap_val;
@@ -488,8 +488,8 @@ impl Board {
 
         // Update material score for promotion (if applicable)
         if m.promotion && final_pt != pt {
-            let old_val = pieces::value(pt) as i32;
-            let new_val = pieces::value(final_pt) as i32;
+            let old_val = pieces::value(pt);
+            let new_val = pieces::value(final_pt);
             let delta = new_val - old_val;
             if color == BLACK {
                 self.material_score += delta;
@@ -672,7 +672,7 @@ impl Board {
                 self.occupancy[c].set_usize(sq);
                 self.all_occupancy.set_usize(sq);
                 // Rebuild material score
-                let val = pieces::value(pt) as i32;
+                let val = pieces::value(pt);
                 if color == BLACK {
                     self.material_score += val;
                 } else {

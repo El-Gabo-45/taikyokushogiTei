@@ -284,14 +284,14 @@ fn apply_move_to_board(
         // For igui moves, `mid_sq` identifies which adjacent victim is captured
         // when from == to. Without it, several igui moves collide on the same
         // coordinates and the wrong one may be applied.
-        let mid_match = mid_sq.map_or(true, |ms| raw.mid_sq as usize == ms);
+        let mid_match = mid_sq.is_none_or(|ms| raw.mid_sq as usize == ms);
         if raw.from_sq as usize == from_sq
             && raw.to_sq as usize == to_sq
             && mv.is_promotion() == promotion
             && mid_match
         {
             state.board.apply(mv);
-            state.record_move(&side, &piece, fr, fc, tr, tc, promotion);
+            state.record_move(side, &piece, fr, fc, tr, tc, promotion);
             if state.board.game_result().is_some() {
                 state.game_over = true;
             }
@@ -513,7 +513,7 @@ async fn post_ai_move(
     // Sanity check: la jugada de la IA debe ser para el lado que le toca mover.
     let stm = state.board.side_to_move();
     let piece_at_from = state.board.get(fr, fc);
-    let piece_color_ok = piece_at_from.map_or(false, |p| {
+    let piece_color_ok = piece_at_from.is_some_and(|p| {
         (stm == Color::Black && p.color == Color::Black)
             || (stm == Color::White && p.color == Color::White)
     });
@@ -546,7 +546,7 @@ async fn post_ai_move(
             last_move: None,
         });
     }
-    state.record_move(&side, &piece, fr, fc, tr, tc, promotion);
+    state.record_move(side, &piece, fr, fc, tr, tc, promotion);
     if state.board.game_result().is_some() {
         state.game_over = true;
     }

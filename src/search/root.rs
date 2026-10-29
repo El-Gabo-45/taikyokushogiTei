@@ -304,13 +304,13 @@ pub(crate) fn search_root_window(
             );
             if full > best_score {
                 best_score = full;
-                best_move = Some(m.clone());
+                best_move = Some(*m);
             }
             full
         } else {
             if score > best_score {
                 best_score = score;
-                best_move = Some(m.clone());
+                best_move = Some(*m);
             }
             score
         };
@@ -330,7 +330,7 @@ pub(crate) fn search_root_window(
         // all — a loss, SPEC §7.3 — so hand back the first move of the root
         // ordering together with the static score: the best guess available.
         if let Some(&i) = root.order.first() {
-            best_move = Some(root.moves[i as usize].clone());
+            best_move = Some(root.moves[i as usize]);
             best_score = evaluate(board);
         }
     }

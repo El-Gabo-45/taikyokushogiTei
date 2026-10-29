@@ -29,7 +29,7 @@ fn main() {
             break;
         }
         // Pick a deterministic rotating move so many distinct move types run.
-        let m = moves[trial % moves.len()].clone();
+        let m = moves[trial % moves.len()];
         board.apply(&m);
         stack.push(m);
 
