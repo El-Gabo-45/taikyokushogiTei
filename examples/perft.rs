@@ -27,7 +27,7 @@ fn main() {
     let n = perft(&mut board, depth);
     let ms = t.elapsed().as_millis() as u64;
     println!(
-        "perft({}) = {}   (reference perft(1)=488 perft(2)=237684)",
+        "perft({}) = {}   (reference perft(1)=512 perft(2)=260917)",
         depth, n
     );
     println!("elapsed: {}ms", ms);
