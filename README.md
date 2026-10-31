@@ -11,7 +11,7 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 
 The web GUI supports two piece-symbol modes: traditional Japanese kanji and English abbreviations.
 
-| Vista de toda la interfaz | Siglas en inglés | Kanji / Japonés |
+| Interface view | English names | Kanji / Japonese |
 |---------------------------|------------------|-----------------|
 | ![Interfaz completa](docs/screenshots/Screenshot_2026-10-31_14-30-08.png) | ![Siglas en inglés](docs/screenshots/Screenshot_2026-10-31_14-30-37.png) | ![Kanji / Japonés](docs/screenshots/Screenshot_2026-10-31_14-38-29.png) |
 
