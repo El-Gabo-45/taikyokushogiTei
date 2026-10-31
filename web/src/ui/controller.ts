@@ -181,6 +181,7 @@ export class Controller {
       hoverSq: this.hoverSq,
       lastFrom: this.state.lastMoveFrom,
       lastTo: this.state.lastMoveTo,
+      useKanji: this.state.settings.useKanji,
     });
   }
 }

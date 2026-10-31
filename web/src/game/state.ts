@@ -12,11 +12,13 @@ export type Mode = 'human_vs_random' | 'human_vs_ai' | 'random_vs_random' | 'ai_
 
 export type Listener = () => void;
 
-/** Runtime settings that affect AI auto-play behaviour. */
+/** Runtime settings that affect AI auto-play behaviour and board display. */
 export interface Settings {
   mode: Mode;
   humanColor: 0 | 1;
   aiDepth: number;
+  /** Show kanji (Japanese) piece symbols instead of English abbreviations. */
+  useKanji: boolean;
 }
 
 export class GameState {
@@ -25,7 +27,7 @@ export class GameState {
   legalMoves: MoveData[] = [];
   lastMoveFrom: Square | null = null;
   lastMoveTo: Square | null = null;
-  settings: Settings = { mode: 'human_vs_random', humanColor: 0, aiDepth: 2 };
+  settings: Settings = { mode: 'human_vs_random', humanColor: 0, aiDepth: 2, useKanji: true };
 
   private readonly listeners = new Set<Listener>();
   private aiPending = false;
@@ -62,6 +64,12 @@ export class GameState {
   async reset(): Promise<void> {
     await api.newGame();
     await this.init();
+  }
+
+  /** Toggle piece symbol mode between kanji and English abbreviations. */
+  toggleKanji(): void {
+    this.settings.useKanji = !this.settings.useKanji;
+    this.notify();
   }
 
   /** Undo the last move. */

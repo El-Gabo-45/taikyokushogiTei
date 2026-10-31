@@ -49,10 +49,11 @@ export interface RenderOptions {
   hoverSq:     [number, number] | null;
   lastFrom:    [number, number] | null;
   lastTo:      [number, number] | null;
+  useKanji:    boolean;
 }
 
 export function render(ctx: CanvasRenderingContext2D, opts: RenderOptions): void {
-  const { state, selectedSq, legalMoves, hoverSq, lastFrom, lastTo } = opts;
+  const { state, selectedSq, legalMoves, hoverSq, lastFrom, lastTo, useKanji } = opts;
 
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
@@ -136,12 +137,13 @@ export function render(ctx: CanvasRenderingContext2D, opts: RenderOptions): void
         ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
       }
 
-      // Kanji symbol (from the abbreviation returned by the API)
+      // Piece symbol: kanji or English abbreviation
+      const symbol = useKanji ? pieceKanji(piece.piece) : piece.piece;
       ctx.font = 'bold 9px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = piece.color === 0 ? BLACK_PIECE : WHITE_PIECE;
-      ctx.fillText(pieceKanji(piece.piece), x + CELL / 2, y + CELL / 2);
+      ctx.fillText(symbol, x + CELL / 2, y + CELL / 2);
 
       // White underline
       if (piece.color === 1) {

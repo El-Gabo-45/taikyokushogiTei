@@ -7,6 +7,16 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 - **209 initial piece types** with distinct movement patterns
 - **92 additional promoted forms** (301 movement classes in total)
 
+## Screenshots
+
+The web GUI supports two piece-symbol modes: traditional Japanese kanji and English abbreviations.
+
+| Kanji mode | English mode |
+|------------|--------------|
+| ![Kanji mode](docs/screenshots/kanji-mode.png) | ![English mode](docs/screenshots/english-mode.png) |
+
+Place your screenshots in `docs/screenshots/` (see `.gitkeep` for details).
+
 ## Rules Overview
 
 ### Objective

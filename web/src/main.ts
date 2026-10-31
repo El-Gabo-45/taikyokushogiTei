@@ -38,6 +38,14 @@ const sel = (id: string) => document.getElementById(id) as HTMLSelectElement;
 };
 
 let autoOn = false;
+
+/** Toggle piece symbol mode between kanji and English abbreviations. */
+(window as any).toggleKanji = () => {
+  state.toggleKanji();
+  const btn = document.getElementById('kanji-btn')!;
+  btn.textContent = state.settings.useKanji ? 'Kanji' : 'English';
+};
+
 (window as any).toggleAuto = () => {
   autoOn = !autoOn;
   const btn = document.getElementById('auto-btn')!;
