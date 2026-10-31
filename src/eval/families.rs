@@ -238,7 +238,7 @@ fn family_value_table() -> &'static [i32; 512] {
     })
 }
 
-/// Maximum valid piece type ID (0-based). Piece IDs are 1-based with
+/// Maximum valid piece type ID (inclusive). Piece IDs are 1-based with
 /// `0 = no piece`, so valid piece types are `1..=PIECE_TYPE_COUNT`.
 const PIECE_TYPE_COUNT: usize = 301;
 
@@ -252,7 +252,7 @@ const PIECE_TYPE_COUNT: usize = 301;
 #[inline]
 pub fn classify_fast(piece_type: u16) -> Family {
     let index = piece_type as usize;
-    if index >= PIECE_TYPE_COUNT {
+    if index > PIECE_TYPE_COUNT {
         return Family::Other;
     }
     family_table()[index]
@@ -268,7 +268,7 @@ pub fn classify_fast(piece_type: u16) -> Family {
 #[inline]
 pub fn family_value_fast(piece_type: u16) -> i32 {
     let index = piece_type as usize;
-    if index >= PIECE_TYPE_COUNT {
+    if index > PIECE_TYPE_COUNT {
         return 0;
     }
     family_value_table()[index]
@@ -283,7 +283,7 @@ mod tests {
     /// Verify that `classify_fast` matches `classify` for every valid piece type.
     #[test]
     fn test_fast_classification_matches_original() {
-        for piece_type in 0..PIECE_TYPE_COUNT as u16 {
+        for piece_type in 0..=PIECE_TYPE_COUNT as u16 {
             assert_eq!(
                 classify(piece_type),
                 classify_fast(piece_type),
@@ -296,7 +296,7 @@ mod tests {
     /// Verify that `family_value_fast` matches `family_value` for every valid piece type.
     #[test]
     fn test_fast_value_matches_original() {
-        for piece_type in 0..PIECE_TYPE_COUNT as u16 {
+        for piece_type in 0..=PIECE_TYPE_COUNT as u16 {
             assert_eq!(
                 family_value(piece_type),
                 family_value_fast(piece_type),
@@ -307,11 +307,12 @@ mod tests {
     }
 
     /// Out-of-range piece types must not panic or return stale data.
+    /// PIECE_TYPE_COUNT (301) is a valid piece type; 302 and above are not.
     #[test]
     fn test_fast_functions_reject_out_of_range() {
-        assert_eq!(classify_fast(PIECE_TYPE_COUNT as u16), Family::Other);
+        assert_eq!(classify_fast((PIECE_TYPE_COUNT + 1) as u16), Family::Other);
         assert_eq!(classify_fast(u16::MAX), Family::Other);
-        assert_eq!(family_value_fast(PIECE_TYPE_COUNT as u16), 0);
+        assert_eq!(family_value_fast((PIECE_TYPE_COUNT + 1) as u16), 0);
         assert_eq!(family_value_fast(u16::MAX), 0);
     }
 }
