@@ -11,11 +11,9 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 
 The web GUI supports two piece-symbol modes: traditional Japanese kanji and English abbreviations.
 
-| Kanji mode | English mode |
-|------------|--------------|
-| ![Kanji mode](docs/screenshots/kanji-mode.png) | ![English mode](docs/screenshots/english-mode.png) |
-
-Place your screenshots in `docs/screenshots/` (see `.gitkeep` for details).
+| Vista de toda la interfaz | Siglas en inglés | Kanji / Japonés |
+|---------------------------|------------------|-----------------|
+| ![Interfaz completa](docs/screenshots/Screenshot_2026-10-31_14-30-08.png) | ![Siglas en inglés](docs/screenshots/Screenshot_2026-10-31_14-30-37.png) | ![Kanji / Japonés](docs/screenshots/Screenshot_2026-10-31_14-38-29.png) |
 
 ## Rules Overview
 
@@ -246,14 +244,21 @@ cargo build --release
 
 ### Web GUI
 
-```bash
-# Rebuild the frontend (only needed after editing web/src)
-cd web && npm install && npm run build && cd ..
+The compiled frontend (`web/dist/`) is committed in the repository, so you can run the server immediately after `cargo build --release`:
 
+```bash
 # Start the HTTP server: REST API + static web frontend
 cargo run --release --bin taikyokushogi-server
 # Then open http://localhost:8000 in your browser
 ```
+
+If you modify `web/src/` and need to rebuild the frontend:
+
+```bash
+cd web && npm install && npm run build && cd ..
+```
+
+> **Note:** `web/dist/` is tracked in git (`!web/dist/` in `.gitignore`). If you clone and the directory is missing, run `cd web && npm install && npm run build` before starting the server.
 
 ### Web GUI Features
 

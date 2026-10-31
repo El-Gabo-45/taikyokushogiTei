@@ -2,7 +2,10 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
-dist/
+# web/dist is committed — it contains the compiled frontend that
+# the server serves at runtime. Remove this line only if you want
+# to require `npm install && npm run build` after every clone.
+!web/dist/
 build/
 .eggs/
 *.log
