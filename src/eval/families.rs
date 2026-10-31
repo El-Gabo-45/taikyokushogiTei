@@ -238,20 +238,80 @@ fn family_value_table() -> &'static [i32; 512] {
     })
 }
 
+/// Maximum valid piece type ID (0-based). Piece IDs are 1-based with
+/// `0 = no piece`, so valid piece types are `1..=PIECE_TYPE_COUNT`.
+const PIECE_TYPE_COUNT: usize = 301;
+
 /// Fast classify via precomputed table — O(1) lookup.
 ///
 /// Use this in hot paths like `evaluate()` instead of `classify()`.
 /// The table is built once on first call (lazy init via `OnceLock`).
+///
+/// Returns `Family::Other` for out-of-range piece types instead of
+/// silently clamping to the last table entry.
 #[inline]
 pub fn classify_fast(piece_type: u16) -> Family {
-    family_table()[(piece_type as usize).min(511)]
+    let index = piece_type as usize;
+    if index >= PIECE_TYPE_COUNT {
+        return Family::Other;
+    }
+    family_table()[index]
 }
 
 /// Fast family_value via precomputed table — O(1) lookup.
 ///
 /// Use this in hot paths like `evaluate()` instead of `family_value()`.
 /// The table is built once on first call (lazy init via `OnceLock`).
+///
+/// Returns `0` for out-of-range piece types instead of silently
+/// clamping to the last table entry.
 #[inline]
 pub fn family_value_fast(piece_type: u16) -> i32 {
-    family_value_table()[(piece_type as usize).min(511)]
+    let index = piece_type as usize;
+    if index >= PIECE_TYPE_COUNT {
+        return 0;
+    }
+    family_value_table()[index]
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify that `classify_fast` matches `classify` for every valid piece type.
+    #[test]
+    fn test_fast_classification_matches_original() {
+        for piece_type in 0..PIECE_TYPE_COUNT as u16 {
+            assert_eq!(
+                classify(piece_type),
+                classify_fast(piece_type),
+                "Mismatch for piece_type {}",
+                piece_type
+            );
+        }
+    }
+
+    /// Verify that `family_value_fast` matches `family_value` for every valid piece type.
+    #[test]
+    fn test_fast_value_matches_original() {
+        for piece_type in 0..PIECE_TYPE_COUNT as u16 {
+            assert_eq!(
+                family_value(piece_type),
+                family_value_fast(piece_type),
+                "Mismatch for piece_type {}",
+                piece_type
+            );
+        }
+    }
+
+    /// Out-of-range piece types must not panic or return stale data.
+    #[test]
+    fn test_fast_functions_reject_out_of_range() {
+        assert_eq!(classify_fast(PIECE_TYPE_COUNT as u16), Family::Other);
+        assert_eq!(classify_fast(u16::MAX), Family::Other);
+        assert_eq!(family_value_fast(PIECE_TYPE_COUNT as u16), 0);
+        assert_eq!(family_value_fast(u16::MAX), 0);
+    }
 }
