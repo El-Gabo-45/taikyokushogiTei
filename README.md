@@ -596,7 +596,7 @@ println!("{}: value={} area={} igui={}",
 
 ## Credits and copyright
 
-This is a *fork* of **[taikyokushogi](https://github.com/jh85/taikyokushogi)**, a complete engine for Taikyoku Shogi originally developed by **[jh85](https://github.com/jh85)**.
+This was a *fork* of **[taikyokushogi](https://github.com/jh85/taikyokushogi)**, a complete engine for Taikyoku Shogi originally developed by **[jh85](https://github.com/jh85)** due to the differences I decided to make this project independent but I'm really grateful with the creator and recommend take a see I. he's project.
 
 The original base code is released under the [MIT License](LICENSE). We thank the original author for his excellent work on the optimization and logic of the 36×36 board in Rust.
 
