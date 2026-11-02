@@ -150,24 +150,18 @@ pub fn classify(piece_type: u16) -> Family {
     }
 
     // Standards: B + R combination (a rook + bishop base).
-    let has_b = m
-        .slides
-        .iter()
-        .any(|&(d, _)| {
-            matches!(
-                d as usize,
-                crate::types::NE | crate::types::SE | crate::types::SW | crate::types::NW
-            )
-        });
-    let has_r = m
-        .slides
-        .iter()
-        .any(|&(d, _)| {
-            matches!(
-                d as usize,
-                crate::types::N | crate::types::S | crate::types::E | crate::types::W
-            )
-        });
+    let has_b = m.slides.iter().any(|&(d, _)| {
+        matches!(
+            d as usize,
+            crate::types::NE | crate::types::SE | crate::types::SW | crate::types::NW
+        )
+    });
+    let has_r = m.slides.iter().any(|&(d, _)| {
+        matches!(
+            d as usize,
+            crate::types::N | crate::types::S | crate::types::E | crate::types::W
+        )
+    });
     if has_b && has_r {
         return Family::Standard;
     }

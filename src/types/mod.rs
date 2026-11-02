@@ -17,8 +17,8 @@ pub use self::tables::*;
 
 mod cell;
 mod constants;
-mod mv;
 mod movement;
+mod mv;
 mod square;
 mod tables;
 

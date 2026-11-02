@@ -82,7 +82,7 @@ jobs:
           key: ${{ runner.os }}-cargo-target-release-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release binaries
-        run: cargo build --release --all-targets
+        run: cargo build --release --bins
 
   web-build:
     name: Web (Vite) production build
