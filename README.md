@@ -57,7 +57,7 @@ Range-capturing pieces — Great General, Vice General, Flying General,
 Angle General, Fierce Dragon and Flying Crocodile (the only six pieces with
 `range_capture` rays) — fly over pieces along a line and capture every
 occupied square up to their landing square, **but only pieces of strictly
-lower rank**. The engine models five tiers (`RANK_*` in `src/types.rs`);
+lower rank**. The engine models five tiers (`RANK_*` in `src/types/constants.rs`);
 a piece can range-capture everything in the tiers *below* its own:
 
 1. King, Crown Prince (`RANK_ROYAL`) — can never be range-captured
@@ -526,6 +526,36 @@ for deep search, so NNUE remains experimental; it also needs a trained
 The full PyTorch training pipeline — generating data with `selfplay`,
 feature extraction, training, and exporting `.nnue` files — lives in
 [training/](training/README.md).
+
+## Module Structure
+
+The crate's internal code is split into module trees by concern. Internal
+modules are **not** `pub` — external users only see the public API in
+`lib.rs` (`Board`, `Move`, `Square`, `Piece`, `Color`, `GameResult`,
+`PieceInfo`, `SearchResult`).
+
+| Directory | Responsibility |
+|-----------|---------------|
+| `src/lib.rs` | Public API facade: thin wrappers over internal types |
+| `src/board/` | Board state, `apply`/`undo`, incremental scores, `game_result()` |
+| `src/movegen/` | Move generation: sliding, jumping, range capture, igui, promotion |
+| `src/types/` | Constants, cell encoding, square math, `Move`/`UndoInfo`, tables |
+| `src/eval/` | Hand-crafted evaluator + NNUE evaluator |
+| `src/search/` | PVS, Lazy SMP, transposition table, heuristics, ordering |
+| `src/attack.rs` | Bitboard attack generation |
+| `src/bitboard.rs` | 36×36 wide bitboards (21 u64 words) |
+| `src/pieces.rs` | 301 piece definitions, Betza parser, promotions, setup |
+| `src/tsfen.rs` | TSFEN position encoding/decoding |
+| `src/elo.rs` | Engine-vs-engine matches, Elo + 95% CI, SPRT |
+| `src/selfplay.rs` | Self-play game generation for NNUE training |
+| `src/python.rs` | PyO3 Python bindings (feature-gated) |
+| `src/main.rs` | axum HTTP server + web GUI (port 8000) |
+| `src/cli.rs` | Interactive CLI REPL + one-shot commands |
+| `src/debug_cli.rs` | Minimal one-shot search harness |
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full module
+dependency diagram, crate boundary rules, design rationale, and stability
+policy.
 
 ## Using as a Rust Crate
 

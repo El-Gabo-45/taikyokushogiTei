@@ -22,7 +22,6 @@
 #![allow(dead_code)] // utility/debug API kept intentionally
 use crate::pieces;
 use crate::types::*;
-use crate::types::{E, N, NE, NW, S, SE, SW, W};
 use std::sync::OnceLock;
 
 /// Symbolic family of a piece type.  Pieces can belong to multiple families
@@ -154,11 +153,21 @@ pub fn classify(piece_type: u16) -> Family {
     let has_b = m
         .slides
         .iter()
-        .any(|&(d, _)| matches!(d as usize, NE | SE | SW | NW));
+        .any(|&(d, _)| {
+            matches!(
+                d as usize,
+                crate::types::NE | crate::types::SE | crate::types::SW | crate::types::NW
+            )
+        });
     let has_r = m
         .slides
         .iter()
-        .any(|&(d, _)| matches!(d as usize, N | S | E | W));
+        .any(|&(d, _)| {
+            matches!(
+                d as usize,
+                crate::types::N | crate::types::S | crate::types::E | crate::types::W
+            )
+        });
     if has_b && has_r {
         return Family::Standard;
     }

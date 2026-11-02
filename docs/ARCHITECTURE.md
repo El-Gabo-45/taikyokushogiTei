@@ -1,13 +1,83 @@
 # Architecture — quick overview
 
-Module responsibilities:
+## Module dependency diagram
 
-- `src/board.rs`: board representation, rules, `apply`/`undo`, the
+```text
+                    ┌─────────────────────────────┐
+                    │     PUBLIC API (lib.rs)     │
+                    │  Board, Move, Square, Piece │
+                    │  Color, GameResult, etc.    │
+                    └───────────┬─────────────────┘
+                                │ (re-exports / thin wrappers)
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+┌───────▼───────┐    ┌────────▼────────┐    ┌────────▼─────────┐
+│   board/      │    │   movegen/      │    │    types/        │
+│   core.rs     │    │   core.rs       │    │  constants.rs    │
+│   mod.rs      │    │   mod.rs        │    │  cell.rs         │
+└───────┬───────┘    └───────┬─────────┘    │  square.rs       │
+        │                   │               │  mv.rs             │
+        │                   │               │  movement.rs       │
+        │                   │               │  tables.rs         │
+        │                   │               │  mod.rs            │
+        │                   │               └────────┬──────────┘
+        │                   │                        │
+        │        ┌──────────┴──────────┐             │
+        │        │   attack.rs         │             │
+        │        │   bitboard.rs       │             │
+        │        │   pieces.rs         │             │
+        │        │   tsfen.rs          │             │
+        └────────┴──────────┬──────────┴─────────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+┌──────▼──────┐   ┌──────▼──────┐   ┌──────▼──────┐
+│   eval/     │   │   search/   │   │   elo.rs      │
+│   mod.rs    │   │   mod.rs    │   │   selfplay.rs │
+│   families  │   │   pvs.rs    │   │   cli.rs      │
+│   psqt.rs   │   │   root.rs   │   │   main.rs     │
+│   zones.rs  │   │   smp.rs    │   │   python.rs   │
+│   nnue.rs   │   │   tt.rs     │   │   debugging/  │
+└─────────────┘   └─────────────┘   └───────────────┘
+```
+
+### Crate boundary rules
+
+| Layer | Visibility | Can depend on |
+|-------|-----------|---------------|
+| `lib.rs` public items | `pub` (external users) | Anything in `crate` |
+| `board/`, `movegen/`, `types/`, `eval/`, `search/` | `mod` (crate-internal) | Other internal modules via `crate::` |
+| Examples, tests, binaries | External to `crate` | Only `taikyokushogi` public API |
+
+No internal module is `pub`, so external crates **cannot** depend on
+`crate::board::Board`, `crate::movegen`, or `crate::types` directly.
+All external access goes through the public facade in `lib.rs`.
+
+- `src/board/`: board representation, rules, `apply`/`undo`, the
   incrementally-maintained material/PSQT scores and NNUE accumulator, and
   `game_result()` (royal-capture wins, both-sides-lost / 500-move draws).
-- `src/movegen.rs`: legal move generation. There is **no check filtering**:
+  - `core.rs` — `Board` struct, `Clone`, `new()`, `setup_initial()`,
+    `place_piece()`, `at()`, `clone_without_history()`
+  - `mod.rs` — re-exports `Board` as `crate::board::Board`
+- `src/movegen/`: legal move generation. There is **no check filtering**:
   the variant has no check rule, so `generate_legal_moves` never rejects a
   move for leaving a royal piece en prise.
+  - `core.rs` — all move generation logic: sliding, jumping, range capture,
+    igui, promotion, dedup
+  - `mod.rs` — re-exports everything from `core`
+- `src/types/`: core types and precomputed tables.
+  - `constants.rs` — board dimensions (36×36), colors, direction constants,
+    piece ranks (`RANK_*`), draw threshold
+  - `cell.rs` — `Cell` encoding, `EMPTY_CELL`, `INVALID_SQ`, `make_cell`,
+    `cell_piece`, `cell_color`, `sq_index`
+  - `square.rs` — `sq_row`, `sq_col`, `step_sq`, `get_deltas`, precomputed
+    row/column lookup tables
+  - `mv.rs` — internal `Move` struct and `UndoInfo`
+  - `movement.rs` — `Movement` struct and `HookType` enum
+  - `tables.rs` — precomputed ray table, Zobrist hash keys, promotion-zone
+    and farthest-rank lookup tables
+  - `mod.rs` — re-exports from all submodules so `use crate::types::*`
+    continues to work
 - `src/search/`: search algorithms.
   - `mod.rs` — iterative deepening + aspiration windows; the `search` and
     `search_threads` (Lazy SMP) entry points; hash-size configuration.
@@ -68,3 +138,61 @@ Integration notes:
   bit-reproducible.
 - Main binaries: `taikyokushogi-server`, `taikyokushogi-cli`, `debug-cli`
   and `selfplay`.
+
+## Modularization notes (v0.1.0)
+
+The following internal modules were split from single large files into
+module trees to improve maintainability and testability:
+
+| Before | After | Rationale |
+|--------|-------|-----------|
+| `src/types.rs` | `src/types/{constants,cell,square,mv,movement,tables}.rs` | Separate constants, cell encoding, square math, move struct, movement rules, and precomputed tables |
+| `src/board.rs` | `src/board/{core,mod}.rs` | `Board` struct in `core.rs`; `mod.rs` re-exports for `crate::board::Board` |
+| `src/movegen.rs` | `src/movegen/{core,mod}.rs` | Move generation logic in `core.rs`; `mod.rs` re-exports |
+
+No public API changed — all user-facing types and functions remain
+identical. Internal code accesses `crate::board::Board`, `crate::movegen`,
+and `crate::types` via `crate::` paths (visible within the crate only).
+
+## Design rationale
+
+### Why modularize?
+
+The original codebase had three "god files" (`types.rs`, `board.rs`,
+`movegen.rs`) totaling >10,000 lines that mixed unrelated concerns:
+constants, cell encoding, piece movement, board state, move generation,
+and precomputed tables. Splitting them into module trees:
+
+- **Improves stability**: changes to one concern (e.g., cell encoding)
+  cannot accidentally break unrelated code (e.g., move generation)
+- **Improves testability**: each submodule can be unit-tested in
+  isolation without loading the entire board/movegen graph
+- **Improves navigability**: new contributors can find code by concern
+  rather than scrolling through multi-thousand-line files
+
+### Why no public exposure of internal modules?
+
+`board/`, `movegen/`, and `types/` are deliberately `mod` (private) rather
+than `pub mod`. This gives the maintainers freedom to refactor internals
+without breaking external users. The public API in `lib.rs` is the
+contract; everything else is implementation detail.
+
+### Why `panic = "abort"` in release?
+
+The release profile uses `panic = "abort"` to minimize binary size and
+maximize search speed. As a side effect, external integration tests in
+`tests/` cannot link against the crate. All testing therefore lives
+inside the crate (`src/correctness_tests.rs`, per-module `#[cfg(test)]`,
+and doc-tests) and runs with `cargo test`.
+
+## Stability policy
+
+| Aspect | Stability | Notes |
+|--------|-----------|-------|
+| Public API (`lib.rs` items) | **Stable** | Breaking changes require a minor version bump |
+| Internal modules (`board/`, `movegen/`, `types/`, etc.) | **Unstable** | May change between any releases |
+| `Cargo.toml` features | **Stable** | `cpu`, `nnue`, `gpu-*`, `pyo3` semantics preserved |
+| CLI flags and REPL commands | **Stable** | Documented in `cli.rs` and `--help` |
+| TSFEN format | **Stable** | Round-trip guaranteed for all legal positions |
+| `.nnue` file format | **Stable** | Defined in `src/eval/nnue.rs` serialization docs |
+| `.bin` training sample format | **Stable** | 2612 bytes, little-endian, matches `training/dataset.py` |
