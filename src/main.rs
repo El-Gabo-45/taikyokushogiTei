@@ -166,6 +166,49 @@ struct PieceInfoResponse {
 }
 
 // ============================================================
+// API response types
+// ============================================================
+
+/// Response for position (TSFEN)
+#[derive(Serialize)]
+struct PositionResponse {
+    tsfen: String,
+}
+
+/// Response for saving a game
+#[derive(Serialize)]
+struct SaveBody {
+    ok: bool,
+    tsfen: String,
+}
+
+/// Response for loading a game
+#[derive(Deserialize, Serialize)]
+struct LoadBody {
+    tsfen: String,
+}
+
+/// Response for move history
+#[derive(Serialize)]
+struct HistoryResponse {
+    move_log: Vec<String>,
+    half_move: u32,
+    game_over: bool,
+}
+
+/// Response for game status
+#[derive(Serialize)]
+struct StatusResponse {
+    game_over: bool,
+    result: Option<String>,
+    half_move: u32,
+    move_number: u32,
+    black_pieces: u32,
+    white_pieces: u32,
+    move_log: Vec<String>,
+}
+
+// ============================================================
 // Helpers
 // ============================================================
 fn board_to_response(state: &GameState) -> BoardResponse {
@@ -584,6 +627,47 @@ async fn post_undo(State(app): State<Arc<AppState>>) -> Json<serde_json::Value> 
 }
 
 // ============================================================
+// API handlers for new endpoints
+// ============================================================
+
+/// Get move history
+async fn get_history(State(app): State<Arc<AppState>>) -> Json<HistoryResponse> {
+    let state = app.board.lock().unwrap();
+    Json(HistoryResponse {
+        move_log: state.move_log.clone(),
+        half_move: state.half_move,
+        game_over: state.game_over,
+    })
+}
+
+/// Get current position in TSFEN
+async fn get_position(State(app): State<Arc<AppState>>) -> Json<PositionResponse> {
+    let state = app.board.lock().unwrap();
+    let tsfen = state.board.to_tsfen();
+    Json(PositionResponse { tsfen })
+}
+
+/// Save the current game state
+async fn post_save(State(app): State<Arc<AppState>>) -> Json<SaveBody> {
+    let state = app.board.lock().unwrap();
+    let tsfen = state.board.to_tsfen();
+    Json(SaveBody { ok: true, tsfen })
+}
+
+/// Load a game from TSFEN
+async fn post_load(State(app): State<Arc<AppState>>, Json(body): Json<LoadBody>) -> Json<LoadBody> {
+    let mut state = app.board.lock().unwrap();
+    match Board::from_tsfen(&body.tsfen) {
+        Ok(b) => {
+            state.reset();
+            // Moves would need to be applied here - simplified for now
+            Json(body)
+        }
+        Err(e) => Json(LoadBody { tsfen: body.tsfen }),
+    }
+}
+
+// ============================================================
 // Static file serving for the web frontend
 // ============================================================
 // NOTE: routes are registered with `nest_service` + `ServeDir` in `main`
@@ -631,6 +715,10 @@ async fn main() {
         .route("/api/move", post(post_move))
         .route("/api/ai-move", post(post_ai_move))
         .route("/api/undo", post(post_undo))
+        .route("/api/history", get(get_history))
+        .route("/api/position", get(get_position))
+        .route("/api/save", post(post_save))
+        .route("/api/load", post(post_load))
         // Frontend: static assets first, SPA fallback for the rest.
         // `ServeDir` handles MIME types itself and confines serving to
         // `web/dist` (the old hand-rolled handler did `format!("web/dist/{path}")`

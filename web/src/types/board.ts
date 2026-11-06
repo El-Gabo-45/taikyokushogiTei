@@ -32,6 +32,27 @@ export interface MoveData {
   mid_sq?: number | null;
 }
 
+export interface PieceInfoResponse {
+  abbrev: string;
+  name: string;
+  value: number;
+  promotes_to: string | null;
+  slide_directions: number;
+  jump_destinations: number;
+  specials: string[];
+}
+
+/** A legal destination for a selected piece */
+export interface MoveData {
+  to: [number, number];
+  promotion: boolean;
+  is_igui: boolean;
+  captured: string | null;
+  /** Intermediate square for igui captures (INVALID_SQ → omitted/null). Distinguishes
+   *  multiple captures from the same from/to squares. */
+  mid_sq?: number | null;
+}
+
 export interface MoveResponse {
   ok: boolean;
   error?: string;

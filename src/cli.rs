@@ -502,6 +502,9 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         "help" | "?" => {
             print_help();
         }
+        "version" => {
+            println!("taikyokushogi-cli version {}", env!("CARGO_PKG_VERSION"));
+        }
         "quit" | "exit" => {
             return false;
         }
@@ -1106,6 +1109,8 @@ struct CliArgs {
     threads: Option<usize>,
     hash_mb: Option<usize>,
     position: Option<String>,
+    /// Print version and exit
+    version: bool,
     go: bool,
     perft: Option<u32>,
     help: bool,
