@@ -118,6 +118,7 @@ taikyokushogi-cli [OPTIONS] [COMMANDS...]
       --go               run one search, print `bestmove ...`, exit
       --perft <N>        print perft(N) for the position, exit
   -h, --help             show this help
+      --version          print engine version and exit
 ```
 
 Remaining arguments are interactive commands and `&&` chains them; with no
@@ -149,7 +150,7 @@ arguments the CLI reads commands from stdin (REPL). Examples:
 | `match <G> <dA> <dB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]` | match between two configs + **Elo estimate** |
 | `sprt <elo0> <elo1> [G] [dA] [dB] [MS] [threadsA N] [threadsB N]` | SPRT test between two configs |
 | `setoption depth <N> \| movetime <MS> \| threads <N> \| hash <MiB> \| nnue <on\|off>` | engine options |
-| `about`, `help`, `quit` | info, help, exit |
+| `about`, `help`, `version`, `quit` | info, help, engine version, exit |
 
 Notes on behavior (so the docs match the engine):
 
@@ -273,10 +274,22 @@ cd web && npm install && npm run build && cd ..
 
 ### REST API
 
-The server exposes a small JSON REST API — `/api/state`, `/api/moves`,
-`/api/piece-info/{abbrev}`, `/api/new-game`, `/api/move`, `/api/ai-move`,
-`/api/undo` — consumed by the frontend in `web/src/api/client.ts`.
+The server exposes a JSON REST API — consumed by the frontend in `web/src/api/client.ts`.
 See `src/main.rs` for the route handlers.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/state` | GET | Full board state (cells, side to move, piece counts, result, move log, game over) |
+| `/api/moves` | GET | Legal moves from a square (`?r=<row>&c=<col>`) |
+| `/api/piece-info/{abbrev}` | GET | Piece metadata (name, value, slide/jump directions, promotions, etc.) |
+| `/api/new-game` | POST | Reset to the initial position |
+| `/api/move` | POST | Apply a human move (`from`, `to`, `promotion`, `mid_sq`) |
+| `/api/ai-move` | POST | Ask the AI to generate and apply a move (`depth`, `time_limit`) |
+| `/api/undo` | POST | Undo the last move |
+| `/api/history` | GET | Move history (`move_log`, `half_move`, `game_over`) |
+| `/api/position` | GET | Current position in TSFEN format (`tsfen`) |
+| `/api/save` | POST | Save the current game state (`{ ok: true, tsfen }`) |
+| `/api/load` | POST | Load a game from TSFEN (`{ tsfen }`) |
 
 ### Command-Line Tools
 
