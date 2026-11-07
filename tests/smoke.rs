@@ -82,8 +82,8 @@ fn apply_by_coord_out_of_bounds_returns_false_no_panic() {
         (100, 100, 101, 101),
     ] {
         assert!(
-            !board.apply_by_coord(fr, fc, tr, tc, false, None),
-            "apply_by_coord({fr},{fc}->{tr},{tc}) must return false"
+            board.apply_by_coord(fr, fc, tr, tc, false, None).is_err(),
+            "apply_by_coord({fr},{fc}->{tr},{tc}) must return an error"
         );
     }
     assert_eq!(board.side_to_move(), Color::Black);
@@ -124,7 +124,7 @@ fn apply_by_coord_mid_sq_rejects_mismatch() {
     );
     board.undo();
     assert!(
-        !board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
+        board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
         "mid_sq=Some(500) must not match a normal move"
     );
     assert_eq!(board.side_to_move(), Color::Black);

@@ -132,11 +132,13 @@ impl Color {
         self as u8
     }
 
-    pub(crate) fn from_raw(v: u8) -> Self {
-        if v == 0 {
-            Color::Black
-        } else {
-            Color::White
+    /// Convert a raw `u8` (0 = Black, 1 = White) to a `Color`.
+    /// Returns `None` for any other value.
+    pub fn from_raw(v: u8) -> Option<Self> {
+        match v {
+            0 => Some(Color::Black),
+            1 => Some(Color::White),
+            _ => None,
         }
     }
 }
@@ -250,7 +252,7 @@ impl std::fmt::Display for Piece {
 ///
 /// `types::Move` is `Copy` (all fields are primitives), so this wrapper is
 /// `Copy` too — no spurious clones when moving `Move` values around.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Move {
     inner: types::Move,
 }
@@ -304,6 +306,92 @@ impl std::fmt::Display for Move {
         }
         Ok(())
     }
+}
+
+/// Error returned when applying a move fails.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveError {
+    /// The coordinates are outside the 36x36 board.
+    OutOfBounds,
+    /// No legal move matches the given coordinates and options.
+    Illegal,
+    /// More than one legal move matches (ambiguous — e.g. an igui and a
+    /// normal move to the same square). Disambiguate with `is_igui`.
+    Ambiguous,
+}
+
+impl std::fmt::Display for MoveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            MoveError::OutOfBounds => write!(f, "coordinates out of bounds"),
+            MoveError::Illegal => write!(f, "illegal move"),
+            MoveError::Ambiguous => write!(f, "ambiguous move — multiple legal moves match"),
+        }
+    }
+}
+
+impl std::error::Error for MoveError {}
+
+impl std::str::FromStr for Move {
+    type Err = MoveError;
+
+    /// Parse a move from a string like `"f19f20"`, `"f19f20+"`, or
+    /// `"c5c5"` (igui). Returns [`MoveError::Illegal`] on failure.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        if s.len() < 4 {
+            return Err(MoveError::Illegal);
+        }
+        let promotion = s.ends_with('+');
+        let core = if promotion { &s[..s.len() - 1] } else { s };
+        let is_igui = core.contains('=');
+        let parts: Vec<&str> = if is_igui {
+            core.split('=').collect()
+        } else if core.len() >= 4 {
+            vec![&core[..2], &core[2..4]]
+        } else {
+            return Err(MoveError::Illegal);
+        };
+        if parts.len() != 2 {
+            return Err(MoveError::Illegal);
+        }
+        let from_sq = parse_square(parts[0]).ok_or(MoveError::Illegal)?;
+        let to_sq = parse_square(parts[1]).ok_or(MoveError::Illegal)?;
+        Ok(Move {
+            inner: types::Move {
+                from_sq: from_sq.index() as u16,
+                to_sq: to_sq.index() as u16,
+                promotion,
+                captured_piece: 0,
+                captured_color: 0,
+                is_igui,
+                mid_sq: types::INVALID_SQ,
+                mid_piece: 0,
+                mid_color: 0,
+                range_cap: false,
+                caps_value: 0,
+            },
+        })
+    }
+}
+
+/// Parse a two-character square like `"f19"` into a [`Square`].
+fn parse_square(s: &str) -> Option<Square> {
+    if s.len() < 2 {
+        return None;
+    }
+    let col_char = s.chars().next()?;
+    let row_str = &s[1..];
+    let row: usize = row_str.parse().ok()?;
+    let col = match col_char {
+        'a'..='z' => col_char as usize - 'a' as usize,
+        'A'..='J' => 26 + (col_char as usize - 'A' as usize),
+        _ => return None,
+    };
+    if row >= BOARD_SIZE || col >= BOARD_SIZE {
+        return None;
+    }
+    Some(Square::new(row, col))
 }
 
 /// Result of a search.
@@ -437,6 +525,7 @@ impl Board {
     /// Whose turn is it?
     pub fn side_to_move(&self) -> Color {
         Color::from_raw(self.inner.side_to_move)
+            .expect("invalid side_to_move value (must be 0 or 1)")
     }
 
     /// Current full-move number (starts at 1, increments after White moves).
@@ -451,8 +540,11 @@ impl Board {
         self.inner.no_progress_plies
     }
 
-    /// Get the piece at `(row, col)`, or `None` if empty.
+    /// Get the piece at `(row, col)`, or `None` if empty or out of bounds.
     pub fn get(&self, row: usize, col: usize) -> Option<Piece> {
+        if row >= types::BOARD_SIZE || col >= types::BOARD_SIZE {
+            return None;
+        }
         let sq = types::sq_index(row, col);
         let cell = self.inner.cells[sq];
         if cell == types::EMPTY_CELL {
@@ -460,7 +552,8 @@ impl Board {
         } else {
             Some(Piece {
                 type_id: types::cell_piece(cell),
-                color: Color::from_raw(types::cell_color(cell)),
+                color: Color::from_raw(types::cell_color(cell))
+                    .expect("invalid cell color value (must be 0 or 1)"),
             })
         }
     }
@@ -499,16 +592,47 @@ impl Board {
     }
 
     /// Apply a move to the board.
+    ///
+    /// # Safety
+    /// The caller must ensure `mv` is a legal move in the current position.
+    /// Applying a move from a different position or an already-applied move
+    /// can corrupt board state. Use [`Board::apply_legal`] for checked
+    /// application.
     pub fn apply(&mut self, mv: &Move) {
         self.inner.apply_move(&mv.inner);
     }
 
-    /// Apply a move specified by coordinates. Returns `true` if a matching legal
-    /// move was found and applied, `false` otherwise.
+    /// Apply a move only if it is legal in the current position.
+    ///
+    /// Returns `Ok(())` if the move was applied, or [`MoveError::Illegal`]
+    /// if no matching legal move exists. This is safer than [`Board::apply`]
+    /// because it validates the move against the current position before
+    /// applying it.
+    pub fn apply_legal(&mut self, mv: &Move) -> Result<(), MoveError> {
+        let moves = movegen::generate_legal_moves(&self.inner);
+        for legal in &moves {
+            if legal.from_sq == mv.inner.from_sq
+                && legal.to_sq == mv.inner.to_sq
+                && legal.promotion == mv.inner.promotion
+                && legal.is_igui == mv.inner.is_igui
+            {
+                self.inner.apply_move(legal);
+                return Ok(());
+            }
+        }
+        Err(MoveError::Illegal)
+    }
+
+    /// Apply a move specified by coordinates.
+    ///
+    /// Returns `Ok(())` if a matching legal move was found and applied,
+    /// or a [`MoveError`] if the coordinates are out of bounds, no legal
+    /// move matches, or the match is ambiguous (e.g. an igui and a normal
+    /// move to the same square).
     ///
     /// ```rust,no_run
     /// let mut board = taikyokushogi::Board::initial();
-    /// board.apply_by_coord(25, 0, 24, 0, false, None); // move pawn forward
+    /// board.apply_by_coord(25, 0, 24, 0, false, None).unwrap(); // move pawn forward
     /// ```
     pub fn apply_by_coord(
         &mut self,
@@ -518,7 +642,7 @@ impl Board {
         to_col: usize,
         promotion: bool,
         mid_sq: Option<usize>,
-    ) -> bool {
+    ) -> Result<(), MoveError> {
         // Validate coordinates before any indexing — out-of-range coordinates
         // would otherwise panic on array access.
         if from_row >= types::BOARD_SIZE
@@ -526,20 +650,29 @@ impl Board {
             || to_row >= types::BOARD_SIZE
             || to_col >= types::BOARD_SIZE
         {
-            return false;
+            return Err(MoveError::OutOfBounds);
         }
 
         let from_sq = types::sq_index(from_row, from_col) as u16;
         let to_sq = types::sq_index(to_row, to_col) as u16;
         let moves = movegen::generate_legal_moves(&self.inner);
+        let mut found: Option<&types::Move> = None;
         for m in &moves {
-            let mid_match = mid_sq.is_none_or(|ms| m.mid_sq as usize == ms);
+            let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
             if m.from_sq == from_sq && m.to_sq == to_sq && m.promotion == promotion && mid_match {
-                self.inner.apply_move(m);
-                return true;
+                if found.is_some() {
+                    return Err(MoveError::Ambiguous);
+                }
+                found = Some(m);
             }
         }
-        false
+        match found {
+            Some(m) => {
+                self.inner.apply_move(m);
+                Ok(())
+            }
+            None => Err(MoveError::Illegal),
+        }
     }
 
     /// Undo the last move. Returns `false` if there is nothing to undo.

@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
-use taikyokushogi::{Board, Color, GameResult};
+use taikyokushogi::{Board, Color, GameResult, MoveError};
 
 // ============================================================
 // State
@@ -576,18 +576,33 @@ async fn post_ai_move(
         "White"
     };
 
-    // Apply the move using apply_by_coord; chequeamos el resultado para no
-    // registrar una jugada que ya no es legal en el estado actual.
-    if !state
-        .board
-        .apply_by_coord(fr, fc, tr, tc, promotion, mid_sq)
-    {
-        return Json(MoveResponse {
-            ok: false,
-            error: Some("AI move no longer legal".into()),
-            board: Some(board_to_response(&state)),
-            last_move: None,
-        });
+    // Apply the move using apply_by_coord
+    match state.board.apply_by_coord(fr, fc, tr, tc, promotion, mid_sq) {
+        Ok(()) => {}
+        Err(MoveError::OutOfBounds) => {
+            return Json(MoveResponse {
+                ok: false,
+                error: Some("AI move coordinates out of bounds".into()),
+                board: Some(board_to_response(&state)),
+                last_move: None,
+            });
+        }
+        Err(MoveError::Illegal) => {
+            return Json(MoveResponse {
+                ok: false,
+                error: Some("AI move no longer legal".into()),
+                board: Some(board_to_response(&state)),
+                last_move: None,
+            });
+        }
+        Err(MoveError::Ambiguous) => {
+            return Json(MoveResponse {
+                ok: false,
+                error: Some("AI move ambiguous — multiple legal moves match".into()),
+                board: Some(board_to_response(&state)),
+                last_move: None,
+            });
+        }
     }
     state.record_move(side, &piece, fr, fc, tr, tc, promotion);
     if state.board.game_result().is_some() {

@@ -10,7 +10,7 @@ use super::cell::*;
 ///
 /// The public API wraps this in [`crate::Move`] which adds convenience
 /// accessors and hides internal fields.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Move {
     pub from_sq: u16,
     pub to_sq: u16,

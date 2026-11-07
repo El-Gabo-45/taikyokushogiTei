@@ -117,11 +117,19 @@ impl PyBoard {
         to_r: usize,
         to_c: usize,
         promotion: bool,
+        mid_sq: Option<usize>,
+        is_igui: bool,
     ) -> bool {
         let from_sq = sq_index(from_r, from_c) as u16;
         let to_sq = sq_index(to_r, to_c) as u16;
         for m in &movegen::generate_legal_moves(&self.inner) {
-            if m.from_sq == from_sq && m.to_sq == to_sq && m.promotion == promotion {
+            let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
+            if m.from_sq == from_sq
+                && m.to_sq == to_sq
+                && m.promotion == promotion
+                && m.is_igui == is_igui
+                && mid_match
+            {
                 self.inner.apply_move(m);
                 return true;
             }
@@ -214,10 +222,13 @@ impl PyBoard {
 
     fn search_py(
         &mut self,
+        py: Python,
         depth: u32,
         time_limit_ms: u64,
     ) -> (Option<(usize, usize, usize, usize, bool)>, i32, u64, u64) {
-        let result = search::search(&mut self.inner, depth, time_limit_ms);
+        let result = py.allow_threads(|| {
+            search::search(&mut self.inner, depth, time_limit_ms)
+        });
         let mv = result.best_move.map(|m| {
             (
                 m.from_sq as usize / BOARD_SIZE,
@@ -243,10 +254,10 @@ fn piece_name_py(abbrev: &str) -> String {
 }
 
 #[pyfunction]
-fn piece_value_py(abbrev: &str) -> i32 {
+fn piece_value_py(abbrev: &str) -> PyResult<i32> {
     pieces::find_by_abbrev(abbrev)
         .map(|pt| pieces::value(pt))
-        .unwrap_or(1000)
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("unknown piece: {abbrev}")))
 }
 
 #[pyfunction]
@@ -306,7 +317,5 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BOARD_SIZE", BOARD_SIZE)?;
     m.add("BLACK", BLACK)?;
     m.add("WHITE", WHITE)?;
-    // Aliases so web_gui.py works with both old and new function names
-    m.add_function(pyo3::wrap_pyfunction!(piece_name_py, m)?)?;
     Ok(())
 }

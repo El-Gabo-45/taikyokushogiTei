@@ -502,8 +502,8 @@ mod tests {
             // to catch: out-of-range coordinates must be rejected before any
             // indexing occurs.
             assert!(
-                !board.apply_by_coord(fr, fc, tr, tc, false, None),
-                "apply_by_coord({fr},{fc}->{tr},{tc}) must return false"
+                board.apply_by_coord(fr, fc, tr, tc, false, None).is_err(),
+                "apply_by_coord({fr},{fc}->{tr},{tc}) must return an error"
             );
         }
         assert_eq!(board.side_to_move(), crate::Color::Black);
@@ -521,7 +521,7 @@ mod tests {
         let tr = m.inner.to_sq as usize / types::BOARD_SIZE;
         let tc = m.inner.to_sq as usize % types::BOARD_SIZE;
         assert!(
-            board.apply_by_coord(fr, fc, tr, tc, false, None),
+            board.apply_by_coord(fr, fc, tr, tc, false, None).is_ok(),
             "first legal move from initial position must be accepted"
         );
         assert_eq!(board.side_to_move(), crate::Color::White);
@@ -540,12 +540,12 @@ mod tests {
         let tr = m.inner.to_sq as usize / types::BOARD_SIZE;
         let tc = m.inner.to_sq as usize % types::BOARD_SIZE;
         assert!(
-            board.apply_by_coord(fr, fc, tr, tc, false, None),
+            board.apply_by_coord(fr, fc, tr, tc, false, None).is_ok(),
             "mid_sq=None must match a normal move"
         );
         board.undo();
         assert!(
-            !board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
+            board.apply_by_coord(fr, fc, tr, tc, false, Some(500)).is_err(),
             "mid_sq=Some(500) must not match a normal move (mid_sq=NONE)"
         );
         assert_eq!(board.side_to_move(), crate::Color::Black);
