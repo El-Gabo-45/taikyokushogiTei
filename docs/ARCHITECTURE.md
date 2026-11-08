@@ -37,7 +37,7 @@
 │   families  │   │   pvs.rs    │   │   cli.rs      │
 │   psqt.rs   │   │   root.rs   │   │   main.rs     │
 │   zones.rs  │   │   smp.rs    │   │   python.rs   │
-│   nnue.rs   │   │   tt.rs     │   │   debugging/  │
+│   nnue/     │   │   tt.rs     │   │   debugging/  │
 └─────────────┘   └─────────────┘   └───────────────┘
 ```
 
@@ -92,45 +92,47 @@ All external access goes through the public facade in `lib.rs`.
     `qsearch.rs` — capture-only quiescence; `params.rs` — every tunable
     constant, including `DEFAULT_THREADS = 1` and `MAX_THREADS = 64`.
 - `src/eval/`: evaluators — hand-crafted (`families.rs`, `psqt.rs`,
-  `zones.rs`) and `nnue.rs` (HalfKP-style NNUE). Selected at **runtime**
-  via `set_use_nnue(bool)`; the NNUE module compiles unconditionally (the
-  `nnue` cargo feature only pulls optional dependencies and is not needed
-  to use it).
+  `zones.rs`) and `nnue/` (NNUE "S", see `docs/NNUE.md`). A network is
+  attached to a `Board` at **runtime** with `set_network(Some(Arc<Network>))`;
+  there is no global backend switch and no cargo feature involved.
 - `src/cli.rs` → bin `taikyokushogi-cli`: user-facing REPL plus argv flags
   (`--depth`, `--movetime`, `--threads`, `--hash`, `--position`, `--go`,
   `--perft`, `--help`) and `&&`-chained one-shot commands.
-- `src/main.rs` → bin `taikyokushogi-server`: axum HTTP server, REST API,
+- `src/main.rs` → bin `taikyokushogi-server` (feature `server`): thin
+  launcher; the axum router, handlers and JSON types live in
+  `src/server/{mod,handlers,types}.rs` inside the library so integration
+  tests can drive the whole API in-process. Serves the REST API and the
   static web GUI (port 8000).
 - `src/elo.rs`: engine-vs-engine matches, Elo + 95% CI, SPRT
-  (`EngineConfig { depth, time_ms, nnue, threads }` per side).
+  (`EngineConfig { depth, time_ms, net, threads }` per side; `net` is an
+  optional `Arc<Network>`).
 - `src/selfplay.rs` + `src/selfplay_main.rs` → bin `selfplay`: self-play
   game generation for the NNUE training pipeline.
 - `src/debug_cli.rs` → bin `debug-cli`: minimal one-shot search harness
   (`debug-cli <depth> <time_ms> [--debug]`).
-- `training/`: PyTorch pipeline to train and export `.nnue` files.
+- `training/`: PyTorch pipeline to train and export `.tkn` networks.
 - `web/`: TypeScript + Vite frontend and REST client
   (`web/src/api/client.ts`).
 
-Tests: `src/correctness_tests.rs` plus per-module unit tests and
-doc-tests — all run with plain `cargo test`. There is deliberately **no
-`tests/` directory**: the release profile uses `panic = "abort"`, which
-external integration-test targets cannot link against.
+Tests: `src/correctness_tests.rs` plus per-module unit tests, doc-tests and
+the integration suites in `tests/`: `smoke.rs` (engine) and `server_api.rs`
+(full HTTP router in-process, `cargo test --features server --test
+server_api`) — all run with plain `cargo test`.
 
-Typical NNUE workflow:
+Typical NNUE workflow (details and quality gates in `docs/NNUE.md`):
 
-1. Run `selfplay` to produce `.bin` samples in `training_data/`.
-2. Parse them with `training/dataset.py` (HalfKP feature extraction lives
-   in `training/features.py`).
-3. Train the network using `training/train.py`.
-4. Export weights using `training/export.py` to a `.nnue` file.
-5. Load the `.nnue` at runtime via the `TAIKYOKU_NNUE_PATH` environment
-   variable and call `taikyokushogi::set_use_nnue(true)` (or the CLI's
-   `setoption nnue on`).
+1. `selfplay … --out data --opening-plies 8` writes `TKD1` samples.
+2. `training/check_label_units.py` (unit gate) and
+   `training/calibrate_buckets.py` (output-bucket thresholds).
+3. `training/train.py` trains and exports a `TKN1` v2 file.
+4. `nnue dump-positions` + `training/parity_gate.py` prove Rust == Python.
+5. `Network::load(path)` and `board.set_network(Some(net))` (CLI: `--net PATH`).
 
 Integration notes:
 
-- NNUE features use a HalfKP-style encoding; the accumulator is maintained
-  incrementally in `Board::apply_move` and restored in O(1) on undo.
+- NNUE features are (piece class, square) with no king anchor; the accumulator
+  is maintained incrementally in `Board::apply_move` and restored from a fixed
+  ring of snapshots on undo.
 - Lazy SMP is **opt-in per call** (CLI `--threads` / `setoption threads` /
   `go threads` / `threadsA`/`threadsB` in `selfplay|match|sprt` /
   `Board::search_threads`), defaults to 1 worker, and is capped at 64;
@@ -191,8 +193,8 @@ and doc-tests) and runs with `cargo test`.
 |--------|-----------|-------|
 | Public API (`lib.rs` items) | **Stable** | Breaking changes require a minor version bump |
 | Internal modules (`board/`, `movegen/`, `types/`, etc.) | **Unstable** | May change between any releases |
-| `Cargo.toml` features | **Stable** | `cpu`, `nnue`, `gpu-*`, `pyo3` semantics preserved |
+| `Cargo.toml` features | **Stable** | `cpu`, `gpu-*`, `pyo3` semantics preserved (the unused `nnue` feature was removed) |
 | CLI flags and REPL commands | **Stable** | Documented in `cli.rs` and `--help` |
 | TSFEN format | **Stable** | Round-trip guaranteed for all legal positions |
-| `.nnue` file format | **Stable** | Defined in `src/eval/nnue.rs` serialization docs |
-| `.bin` training sample format | **Stable** | 2612 bytes, little-endian, matches `training/dataset.py` |
+| `.tkn` network file format | **Stable** | TKN1 v2, defined in `src/eval/nnue/format.rs` and `docs/NNUE.md` |
+| `.bin` training sample format | **Stable** | `TKD1` v1, sparse records, matches `training/dataset.py` |

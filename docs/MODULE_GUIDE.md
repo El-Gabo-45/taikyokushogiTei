@@ -32,7 +32,7 @@ src/
 
 | File | Contents |
 |------|----------|
-| `core.rs` | `Board` struct (~50 fields), `Clone`, `new()`, `setup_initial()`, `place_piece()`, `at()`, `clone_without_history()`, `apply_move()`, `undo_move()`, `null_move()`, `undo_null_move()`, `king_square()`, `game_result()`, `display()`, bitboard occupancy maintenance, NNUE accumulator updates |
+| `core.rs` | `Board` struct (~50 fields), `Clone`, `new()`, `setup_initial()`, `place_piece()`, `at()`, `clone_without_history()`, `apply_move()`, `undo_move()`, `null_move()`, `undo_null_move()`, `king_square()`, `game_result()`, `display()`, bitboard occupancy maintenance, `set_network()`, NNUE accumulator updates |
 | `mod.rs` | Re-exports `Board` as `crate::board::Board` |
 
 ### When to touch `board/`
@@ -67,17 +67,17 @@ prise.
 
 | File | Contents |
 |------|----------|
-| `mod.rs` | `evaluate()` entry point, `set_use_nnue()`/`using_nnue()`, `material_score()`, `MATE_SCORE`, king safety |
+| `mod.rs` | `evaluate()` entry point (uses the NNUE network attached to the board, if any), `material_score()`, `MATE_SCORE`, king safety |
 | `families.rs` | `Family` enum, `classify()`, `classify_fast()`, `family_value()`, `family_value_fast()`, precomputed tables |
 | `psqt.rs` | Piece-Square Tables, `psqt()`, `psqt_score()`, `psqt_delta()`, precomputed PSQT table |
 | `zones.rs` | `Zone` enum, `zone_score()`, `zone_family_bonus()` |
-| `nnue.rs` | NNUE evaluator, `Accumulator`, HalfKP features, serialization format |
+| `nnue/` | NNUE "S" evaluator: `mod.rs` (`Network`, `Accumulator`, forward), `arch.rs` (single source of truth), `classes.rs` (piece classes), `format.rs` (TKN1 v2), `dump.rs` (parity dumps) |
 
 ### When to touch `eval/`
 
 - Changing the hand-crafted eval formula → `mod.rs` / `families.rs` / `zones.rs`
 - Changing PSQT values → `psqt.rs`
-- Working on NNUE → `nnue.rs`
+- Working on NNUE → `nnue/` (see `docs/NNUE.md`)
 
 ## `src/search/` — Search algorithms
 
@@ -169,7 +169,7 @@ implementation details.
 | Internal module file layout | Unstable | Any release |
 | Internal struct fields | Unstable | Any release |
 | TSFEN format | Stable | No |
-| `.nnue` file format | Stable | No |
+| `.tkn` (TKN1 v2) network format | Stable | No |
 | `.bin` training sample format | Stable | No |
 | CLI flags / REPL commands | Stable | Only with minor version bump |
 
