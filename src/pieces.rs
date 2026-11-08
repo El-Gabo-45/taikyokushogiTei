@@ -2479,6 +2479,14 @@ pub fn is_royal(pt: u16) -> bool {
     rank(pt) == RANK_ROYAL
 }
 
+/// Betza movement notation for a piece type, when the database defines one.
+pub fn betza(pt: u16) -> Option<&'static str> {
+    if pt == 0 || pt as usize > PIECE_DEFS.len() {
+        return None;
+    }
+    PIECE_DEFS[pt as usize - 1].betza
+}
+
 pub fn promotes_to(pt: u16) -> Option<u16> {
     let s = store();
     if pt == 0 || pt as usize > s.count {

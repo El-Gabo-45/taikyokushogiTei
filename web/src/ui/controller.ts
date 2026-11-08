@@ -1,30 +1,28 @@
 /**
  * Input controller.
  *
- * Translates mouse events on the canvas into game actions and
- * triggers re-renders when the game state changes.
+ * Translates mouse events on the canvas into game actions, triggers
+ * re-renders when the game state changes, and offers a modal dialog when
+ * one destination square has several legal moves (promotion / igui).
  */
 
 import type { GameState } from '../game/state';
-import { render, CANVAS_W, CANVAS_H, CELL, COORD, BOARD } from './renderer';
+import type { MoveData, Square } from '../types/board';
+import { fromViewSquare } from '../game/view';
+import { layoutFor, render } from './renderer';
+import { openChoiceModal } from './modal';
 
 export class Controller {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly state: GameState;
-  private hoverSq: [number, number] | null = null;
+  private hoverSq: Square | null = null;
   private rafId = 0;
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    ctx: CanvasRenderingContext2D,
-    state: GameState,
-  ) {
+  constructor(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, state: GameState) {
     this.canvas = canvas;
     this.ctx = ctx;
     this.state = state;
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
 
     this.bindEvents();
     state.subscribe(() => this.scheduleDraw());
@@ -34,12 +32,13 @@ export class Controller {
   // Mouse helpers
   // ---------------------------------------------------------------
 
-  /** Convert a canvas-relative pixel coordinate to (row, col). */
-  private pixelToSquare(px: number, py: number): [number, number] | null {
-    const c = Math.floor((px - COORD) / CELL);
-    const r = Math.floor((py - COORD) / CELL);
-    if (r < 0 || r >= BOARD || c < 0 || c >= BOARD) return null;
-    return [r, c];
+  /** Convert a canvas-relative pixel coordinate to a board (row, col). */
+  private pixelToSquare(px: number, py: number): Square | null {
+    const { cell, coord } = layoutFor(this.state.settings.zoom);
+    const vc = Math.floor((px - coord) / cell);
+    const vr = Math.floor((py - coord) / cell);
+    if (vr < 0 || vr >= 36 || vc < 0 || vc >= 36) return null;
+    return fromViewSquare([vr, vc], this.state.settings.flip);
   }
 
   /** Get mouse position relative to the canvas, accounting for CSS scaling. */
@@ -60,7 +59,7 @@ export class Controller {
   private bindEvents(): void {
     this.canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     this.canvas.addEventListener('mouseleave', () => this.onMouseLeave());
-    this.canvas.addEventListener('click', (e) => this.onClick(e));
+    this.canvas.addEventListener('click', (e) => void this.onClick(e));
   }
 
   private onMouseMove(e: MouseEvent): void {
@@ -70,12 +69,24 @@ export class Controller {
     if (sq) {
       if (!this.hoverSq || this.hoverSq[0] !== sq[0] || this.hoverSq[1] !== sq[1]) {
         this.hoverSq = sq;
+        this.canvas.style.cursor = this.cursorFor(sq);
         this.scheduleDraw();
       }
     } else if (this.hoverSq) {
       this.hoverSq = null;
+      this.canvas.style.cursor = 'default';
       this.scheduleDraw();
     }
+  }
+
+  private cursorFor([r, c]: Square): string {
+    const board = this.state.board;
+    if (!board) return 'default';
+    if (this.state.selectedSq) {
+      if (this.state.legalMoves.some((m) => m.to[0] === r && m.to[1] === c)) return 'pointer';
+    }
+    const cell = board.board[r]?.[c];
+    return cell ? 'pointer' : 'default';
   }
 
   private onMouseLeave(): void {
@@ -85,7 +96,7 @@ export class Controller {
     }
   }
 
-  private onClick(e: MouseEvent): void {
+  private async onClick(e: MouseEvent): Promise<void> {
     const { px, py } = this.mousePos(e);
     const sq = this.pixelToSquare(px, py);
     if (!sq) return;
@@ -94,42 +105,69 @@ export class Controller {
     const board = this.state.board;
     if (!board) return;
 
-    // If a piece is selected and we click a legal target → play
+    // If a piece is selected and we click a legal target → play.
     if (this.state.selectedSq) {
-      const matches = this.state.legalMoves.filter(
-        m => m.to[0] === r && m.to[1] === c,
-      );
-      if (matches.length === 0) {
-        // Clicked an empty/illegal square: clear selection
+      const matches = this.state.legalMoves.filter((m) => m.to[0] === r && m.to[1] === c);
+      if (matches.length > 0) {
+        await this.handleTarget(matches);
+        return;
+      }
+      // Clicked a different own piece: switch selection.
+      const clicked = board.board[r]?.[c] ?? null;
+      if (clicked && clicked.color === board.side_to_move && !board.game_over) {
         this.state.clearSelection();
+        await this.state.select(r, c);
+        void this.state.inspect(r, c);
         return;
       }
-      if (matches.length === 1) {
-        const target = matches[0];
-        if (!board.game_over) {
-          const [fr, fc] = this.state.selectedSq;
-          this.state.play(fr, fc, r, c, target.promotion, target.mid_sq ?? null);
-        }
-        return;
-      }
-      // Multiple legal moves land on the same square (different promotion or
-      // igui mid_sq). Ask the user to disambiguate before playing.
-      const target = this.disambiguateMove(matches);
-      if (!target) return; // user cancelled
-      if (!board.game_over) {
-        const [fr, fc] = this.state.selectedSq;
-        this.state.play(fr, fc, r, c, target.promotion, target.mid_sq ?? null);
-      }
+      // Clicked elsewhere: drop selection but inspect the piece if any.
+      this.state.clearSelection();
+      if (clicked) void this.state.inspect(r, c);
+      else this.state.clearInspection();
       return;
     }
 
-    // Otherwise try selecting a piece
-    const cell = board.board[r][c];
-    if (cell && cell.color === board.side_to_move) {
-      this.state.select(r, c);
-    } else {
-      this.state.clearSelection();
+    // No selection: select own piece, inspect any piece.
+    const cell = board.board[r]?.[c] ?? null;
+    if (!cell) {
+      this.state.clearInspection();
+      return;
     }
+    if (cell.color === board.side_to_move && !board.game_over) {
+      await this.state.select(r, c);
+    }
+    void this.state.inspect(r, c);
+  }
+
+  /** Apply a move—asking the user only when several moves are possible. */
+  private async handleTarget(matches: MoveData[]): Promise<void> {
+    const board = this.state.board;
+    if (!board || !this.state.selectedSq) return;
+    const [fr, fc] = this.state.selectedSq;
+
+    let target: MoveData | null = matches[0];
+    if (matches.length > 1) {
+      const choices = matches.map((m, i) => ({
+        label: describeMove(m, i),
+        detail: [
+          m.promotion ? 'promotes' : null,
+          m.is_igui ? 'igui (capture in place)' : null,
+          m.captured ? `captures ${m.captured}` : null,
+          m.mid_sq != null ? `mid_sq=${m.mid_sq}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        value: m,
+      }));
+      target = await openChoiceModal(
+        'Choose a move',
+        `${matches.length} legal moves reach this square.`,
+        choices,
+      );
+    }
+    if (!target) return;
+
+    await this.state.play(fr, fc, target.to[0], target.to[1], target.promotion, target.mid_sq ?? null);
   }
 
   // ---------------------------------------------------------------
@@ -144,44 +182,33 @@ export class Controller {
     });
   }
 
-  /** When several legal moves share the same destination (different promotion
-   *  or igui mid_sq), ask the user to pick one. Returns null on cancel. */
-  private disambiguateMove(matches: import('../types/board').MoveData[]):
-    | import('../types/board').MoveData
-    | null {
-    // Build a short description for each option.
-    const options = matches.map((m, i) => {
-      const promo = m.promotion ? ' (promoción)' : '';
-      const igui = m.is_igui ? ' [igui]' : '';
-      const mid = m.mid_sq != null ? ` mid_sq=${m.mid_sq}` : '';
-      return `${i + 1}. Mover a (${m.to[0]},${m.to[1]})${promo}${igui}${mid}`;
-    });
-    const prompt =
-      'Varios movimientos llegan a esa casilla. Elige uno:\n' +
-      options.join('\n') +
-      '\n\nEscribe el número o pulsa Cancelar para abortar.';
-    const answer = window.prompt(prompt);
-    if (answer === null) return null;
-    const idx = parseInt(answer.trim(), 10) - 1;
-    if (Number.isNaN(idx) || idx < 0 || idx >= matches.length) {
-      window.alert('Opción inválida. Movimiento cancelado.');
-      return null;
-    }
-    return matches[idx];
-  }
-
   private draw(): void {
     const board = this.state.board;
     if (!board) return;
 
+    const { width } = layoutFor(this.state.settings.zoom);
+    if (this.canvas.width !== width || this.canvas.height !== width) {
+      this.canvas.width = width;
+      this.canvas.height = width;
+    }
+
     render(this.ctx, {
       state: board,
       selectedSq: this.state.selectedSq,
+      inspectSq: this.state.inspection?.square ?? null,
       legalMoves: this.state.legalMoves,
       hoverSq: this.hoverSq,
       lastFrom: this.state.lastMoveFrom,
       lastTo: this.state.lastMoveTo,
       useKanji: this.state.settings.useKanji,
+      flip: this.state.settings.flip,
+      zoom: this.state.settings.zoom,
     });
   }
+}
+
+function describeMove(m: MoveData, index: number): string {
+  const dest = `(${m.to[0]}, ${m.to[1]})`;
+  const suffix = m.promotion ? ' +' : '';
+  return `${index + 1}. Move to ${dest}${suffix}`;
 }

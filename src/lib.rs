@@ -97,6 +97,8 @@ mod bitboard;
 mod debugging;
 pub mod elo;
 pub mod selfplay;
+#[cfg(feature = "server")]
+pub mod server;
 mod tsfen;
 
 #[cfg(feature = "python")]
@@ -111,6 +113,9 @@ pub const BOARD_SIZE: usize = types::BOARD_SIZE;
 
 /// Number of squares (1,296).
 pub const NUM_SQUARES: usize = types::NUM_SQUARES;
+
+/// Crate version, exposed through the REST API (`/api/health`, `/api/engine-info`).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Side / player color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -418,6 +423,10 @@ pub struct PieceInfo {
     pub area_steps: u8,
     pub has_range_capture: bool,
     pub has_igui: bool,
+    /// Whether capturing this piece ends the game (King, Crown Prince, …).
+    pub is_royal: bool,
+    /// Betza movement notation, when the piece database defines one.
+    pub betza: Option<&'static str>,
 }
 
 /// Look up information about a piece type by abbreviation.
@@ -429,9 +438,14 @@ pub struct PieceInfo {
 /// ```
 pub fn piece_info(abbrev: &str) -> Option<PieceInfo> {
     let pt = pieces::find_by_abbrev(abbrev)?;
+    Some(piece_info_by_id(pt))
+}
+
+/// Look up information about a piece type by its numeric ID (1-based).
+pub fn piece_info_by_id(pt: u16) -> PieceInfo {
     let mv = pieces::movement(pt);
     let promo = pieces::promotes_to(pt).map(pieces::abbrev);
-    Some(PieceInfo {
+    PieceInfo {
         abbrev: pieces::abbrev(pt),
         name: pieces::name(pt),
         value: pieces::value(pt),
@@ -442,7 +456,22 @@ pub fn piece_info(abbrev: &str) -> Option<PieceInfo> {
         area_steps: mv.area,
         has_range_capture: !mv.range_capture.is_empty(),
         has_igui: mv.igui,
-    })
+        is_royal: pieces::is_royal(pt),
+        betza: pieces::betza(pt),
+    }
+}
+
+/// Every defined piece type, in ID order (used by `GET /api/pieces`).
+///
+/// ```rust
+/// let all = taikyokushogi::all_pieces();
+/// assert_eq!(all.len(), taikyokushogi::num_piece_types());
+/// assert!(all.iter().any(|p| p.abbrev == "K" && p.is_royal));
+/// ```
+pub fn all_pieces() -> Vec<PieceInfo> {
+    (1..=pieces::num_piece_types() as u16)
+        .map(piece_info_by_id)
+        .collect()
 }
 
 /// Total number of defined piece types (base + promoted).

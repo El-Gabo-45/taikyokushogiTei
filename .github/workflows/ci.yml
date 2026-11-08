@@ -40,19 +40,22 @@ jobs:
         run: cargo fmt --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --all-targets --features server
 
       - name: Compile all targets
-        run: cargo check --all-targets
+        run: cargo check --all-targets --features server
 
       - name: Run library unit tests
-        run: cargo test --lib
+        run: cargo test --features server --lib
 
       - name: Run documentation tests
-        run: cargo test --doc
+        run: cargo test --features server --doc
 
       - name: Run integration smoke tests
         run: cargo test --test smoke
+
+      - name: Run HTTP API integration tests
+        run: cargo test --features server --test server_api
 
   build:
     name: Release build
@@ -82,7 +85,7 @@ jobs:
           key: ${{ runner.os }}-cargo-target-release-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release binaries
-        run: cargo build --release --bins
+        run: cargo build --release --bins --features server
 
   web-build:
     name: Web (Vite) production build
@@ -102,6 +105,43 @@ jobs:
         run: npm ci
         working-directory: ./web
 
+      - name: Web unit tests (vitest)
+        run: npm test
+        working-directory: ./web
+
       - name: Vite production build
         run: npm run build
         working-directory: ./web
+  nnue-python:
+    name: NNUE Python pipeline and parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies (CPU torch)
+        run: pip install numpy torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+
+      - name: Build the nnue tool
+        run: cargo build --release --bin nnue
+
+      - name: Python pipeline tests (includes the Rust/Python architecture hash check)
+        run: NNUE_BIN=target/release/nnue python -m unittest training/test_pipeline.py -v
+
+      - name: Parity gate on a random network (normal and thinned positions)
+        run: |
+          target/release/nnue random-net /tmp/ci.tkn --seed 3
+          target/release/nnue dump-positions --net /tmp/ci.tkn --n 500 --seed 1 --out /tmp/p1.jsonl
+          target/release/nnue dump-positions --net /tmp/ci.tkn --n 500 --seed 2 --thin --out /tmp/p2.jsonl
+          python training/parity_gate.py --net /tmp/ci.tkn --positions /tmp/p1.jsonl
+          python training/parity_gate.py --net /tmp/ci.tkn --positions /tmp/p2.jsonl

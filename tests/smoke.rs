@@ -197,3 +197,61 @@ fn search_does_not_mutate_board() {
     assert_eq!(board.side_to_move(), before);
 }
 use taikyokushogi::piece_info;
+
+// ── Piece database enumeration (used by GET /api/pieces) ─────────────
+
+#[test]
+fn all_pieces_matches_num_piece_types() {
+    let all = taikyokushogi::all_pieces();
+    assert_eq!(all.len(), taikyokushogi::num_piece_types());
+    assert_eq!(all.len(), 301);
+
+    let unique: std::collections::HashSet<&str> = all.iter().map(|p| p.abbrev).collect();
+    assert_eq!(
+        unique.len(),
+        all.len(),
+        "piece abbreviations must be unique"
+    );
+
+    assert!(all.iter().filter(|p| p.is_royal).count() >= 2);
+    assert!(
+        all.iter().filter(|p| p.betza.is_some()).count() > 100,
+        "most pieces carry Betza movement notation"
+    );
+    assert!(all.iter().all(|p| !p.name.is_empty()));
+}
+
+#[test]
+fn piece_info_by_id_matches_abbrev_lookup() {
+    for id in [1u16, 2, 150, 300, 301] {
+        let by_id = taikyokushogi::piece_info_by_id(id);
+        let by_abbrev = piece_info(by_id.abbrev).expect("abbrev must resolve");
+        assert_eq!(by_abbrev.name, by_id.name, "id {id}");
+        assert_eq!(by_abbrev.value, by_id.value, "id {id}");
+        assert_eq!(by_abbrev.is_royal, by_id.is_royal, "id {id}");
+        assert_eq!(by_abbrev.betza, by_id.betza, "id {id}");
+        assert_eq!(
+            by_abbrev.slide_directions, by_id.slide_directions,
+            "id {id}"
+        );
+    }
+}
+
+#[test]
+fn king_piece_info_has_royal_flag_and_betza() {
+    let king = piece_info("K").expect("K exists");
+    assert!(king.is_royal);
+    assert_eq!(king.name, "King");
+    assert_eq!(king.betza, Some("Q2"));
+    // The same entry appears in the full enumeration served by /api/pieces.
+    let all = taikyokushogi::all_pieces();
+    let from_list = all.iter().find(|p| p.abbrev == "K").expect("K in list");
+    assert_eq!(from_list.name, "King");
+    assert!(from_list.is_royal);
+    assert_eq!(from_list.betza, king.betza);
+}
+
+#[test]
+fn version_constant_matches_package() {
+    assert_eq!(taikyokushogi::VERSION, env!("CARGO_PKG_VERSION"));
+}

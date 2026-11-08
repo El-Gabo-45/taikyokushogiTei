@@ -239,17 +239,20 @@ Elo math follows the standard logistic model (`expected_score`,
 git clone https://github.com/El-Gabo-45/taikyokushogiTei.git
 cd taikyokushogiTei
 
-# Build the engine, server, CLI tools and examples in release mode
+# Build the engine, CLI tools and examples in release mode
 cargo build --release
+
+# The HTTP server lives behind the `server` feature:
+cargo build --release --features server --bin taikyokushogi-server
 ```
 
 ### Web GUI
 
-The compiled frontend (`web/dist/`) is committed in the repository, so you can run the server immediately after `cargo build --release`:
+The compiled frontend (`web/dist/`) is committed in the repository, so you can run the server immediately after building:
 
 ```bash
 # Start the HTTP server: REST API + static web frontend
-cargo run --release --bin taikyokushogi-server
+cargo run --release --features server --bin taikyokushogi-server
 # Then open http://localhost:8000 in your browser
 ```
 
@@ -264,38 +267,58 @@ cd web && npm install && npm run build && cd ..
 ### Web GUI Features
 
 - **Game modes**: Human vs Random, Human vs AI, Random vs Random, AI vs AI
-- Play as **Black or White**; pick the AI strength (Random, D1, D2, D3)
+- Play as **Black or White**; pick the AI strength (Random, D1–D3)
 - Click a piece to see its legal moves highlighted on the board
-  (green = move, red = capture)
-- Hover and last-move highlights, board coordinates, kanji piece glyphs
-- Sidebar shows the side to move, move number, piece counts, material
-  score, status and the full move log
-- **New Game** / **Undo** buttons and an **Auto** play toggle
+  (green = move, red = capture); a modal disambiguates promotion/igui moves
+- **Piece Inspector**: click any piece to see its name, value, promotion,
+  Betza notation, slides/jumps, area and range-capture capabilities
+- **Engine panel**: version, evaluation backend, hash size, piece database
+  size, and telemetry (depth, score, nodes, time) of the last search
+- **Analysis mode** (`Analyze`): run a search without moving, then inspect
+  the best move and score
+- **Material balance chart** with the full score history
+- **TSFEN panel**: export, copy, download and load positions
+- **Flip board**, **zoom slider**, kanji/English glyphs, last-move and hover
+  highlights, responsive layout, keyboard shortcuts (N/U/A/K/F/±/Space)
+- **New Game**, **Undo** (multi-ply via API), **Auto** play and **AI Move**
 
 ### REST API
 
-The server exposes a JSON REST API — consumed by the frontend in `web/src/api/client.ts`.
-See `src/main.rs` for the route handlers.
+The server exposes a JSON REST API — consumed by the frontend in
+`web/src/api/client.ts`. The handlers live in `src/server/handlers.rs`
+(the module is part of the library so `tests/server_api.rs` can exercise the
+whole router in-process).
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/state` | GET | Full board state (cells, side to move, piece counts, result, move log, game over) |
+| `/api/health` | GET | Liveness, engine version, board size, piece-type count |
+| `/api/state` | GET | Full board state + TSFEN, eval score, material, version counter |
+| `/api/status` | GET | Compact summary (result, ply count, piece counts, TSFEN) |
+| `/api/history` | GET | Move log + score history |
 | `/api/moves` | GET | Legal moves from a square (`?r=<row>&c=<col>`) |
-| `/api/piece-info/{abbrev}` | GET | Piece metadata (name, value, slide/jump directions, promotions, etc.) |
+| `/api/legal-moves` | GET | Every legal move of the side to move (with origins) |
+| `/api/engine-info` | GET | Version, backend, hash size, threads, search techniques |
+| `/api/evaluate` | GET | Static evaluation and material balance |
+| `/api/pieces` | GET | Full piece database (301 movement classes) |
+| `/api/piece-info/{abbrev}` | GET | Piece metadata incl. Betza and royal flag (404 if unknown) |
+| `/api/position` | GET/POST | Read/set the position in TSFEN format |
 | `/api/new-game` | POST | Reset to the initial position |
 | `/api/move` | POST | Apply a human move (`from`, `to`, `promotion`, `mid_sq`) |
-| `/api/ai-move` | POST | Ask the AI to generate and apply a move (`depth`, `time_limit`) |
-| `/api/undo` | POST | Undo the last move |
-| `/api/history` | GET | Move history (`move_log`, `half_move`, `game_over`) |
-| `/api/position` | GET | Current position in TSFEN format (`tsfen`) |
-| `/api/save` | POST | Save the current game state (`{ ok: true, tsfen }`) |
-| `/api/load` | POST | Load a game from TSFEN (`{ tsfen }`) |
+| `/api/ai-move` | POST | Search and apply a move; returns `search` telemetry |
+| `/api/search` | POST | Analysis-only search; never mutates the board |
+| `/api/undo` | POST | Undo N plies (`{"plies": 2}`, default 1) |
+| `/api/save` | GET/POST | Serialize the position to TSFEN |
+| `/api/load` | POST | Load a position from TSFEN |
+
+Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
+`400` for invalid coordinates/TSFEN, `404` for unknown pieces/endpoints and
+`409` when a move conflicts with the current game state.
 
 ### Command-Line Tools
 
 | Binary | Purpose |
 |---|---|
-| `taikyokushogi-server` | HTTP server + web GUI (REST API in `src/main.rs`) |
+| `taikyokushogi-server` | HTTP server + web GUI (REST API in `src/server/`; build with `--features server`) |
 | `taikyokushogi-cli` | Full user-facing CLI: REPL + argv flags (see the CLI section) |
 | `debug-cli` | Minimal CLI search harness: best move, score, nodes, time |
 | `selfplay` | Self-play training-data generator for the NNUE pipeline |
@@ -328,18 +351,18 @@ All examples run with `cargo run --release --example <name>`:
 | `stress_undo` | Apply/undo stress test (checks the board state round-trips) |
 | `bench`, `bench_deep`, `bench_depth1`, `bench_midgame`, `bench_thorough`, `bench_time` | Additional benchmarks |
 | `export_piece_metadata` | Writes `training/piece_metadata.json` for the NNUE pipeline |
-| `toggle_nnue` | Runtime NNUE on/off smoke test |
+| `toggle_nnue` | Attach/detach an NNUE network on a board (smoke test) |
 | `play` | Minimal command-line game loop |
 | `check_db` | Self-play SQLite database sanity checks |
 | `match_race` | Head-to-head Elo/SPRT matches between two configs |
 | `perft`, `perft_breakdown` | Perft counts / perft(1) breakdown by piece type |
 | `oracle_walk` | Random-walk invariant oracle (apply/undo round-trip checks) |
-| `nnue_speed` | NNUE from-scratch vs incremental-accumulator speed |
+| `nnue_speed` | NNUE incremental `evaluate()` vs full refresh speed |
 | `depth_quick`, `depth_time` | Midgame depth sweep with a 2 s budget / untimed depths 1–5 from the start position |
 
 Examples that take arguments: `bench_fixed <depths...>`, `perft [depth]`,
 `match_race [games] [depthA] [depthB] [time_ms] [opening_plies]
-[nnueA|nnueB|sprt=elo0:elo1]`; the rest run as-is.
+[netA=PATH|netB=PATH|sprt=elo0:elo1]`; the rest run as-is.
 
 ```bash
 cargo run --release --example bench_fixed 4 5 6   # fixed-depth search at depths 4, 5, 6
@@ -353,11 +376,15 @@ cargo run --release --example bench_nps           # full benchmark report
 taikyokushogiTei/
   src/
     lib.rs              # Public crate API (Board, Move, PieceInfo, search, TSFEN, elo, ...)
-    main.rs             # HTTP server + REST API + static web GUI   (bin: taikyokushogi-server)
+    main.rs             # Thin launcher for the HTTP server        (bin: taikyokushogi-server)
+    server/
+      mod.rs            #   AppState/GameState, router, static serving
+      handlers.rs       #   REST handlers + status codes
+      types.rs          #   JSON request/response types
     cli.rs              # Full user-facing CLI: REPL + argv flags   (bin: taikyokushogi-cli)
     debug_cli.rs        # Minimal CLI search harness                (bin: debug-cli)
     selfplay_main.rs    # Self-play entry point                     (bin: selfplay)
-    selfplay.rs         # Self-play logic + TrainingSample binary format
+    selfplay.rs         # Self-play logic + TKD1 training-sample format
     elo.rs              # Match / SPRT / Elo estimation (EngineConfig, threads A/B)
     types.rs            # Core types, constants, ray tables
     pieces.rs           # 301 piece types, Betza notation parser, initial setup ranks
@@ -383,7 +410,7 @@ taikyokushogiTei/
       families.rs       # Piece-family material values
       psqt.rs           # Piece-square tables
       zones.rs          # Threat zones and king-safety heuristics
-      nnue.rs           # NNUE (HalfKP-style) neural evaluator + .nnue loader
+      nnue/             # NNUE "S" evaluator, TKN1 loader, tools (see docs/NNUE.md)
     debugging/          # Search/eval introspection utilities
   examples/             # Benchmarks, smoke tests and tooling (see examples/README.md)
   docs/                 # ARCHITECTURE.md
@@ -415,8 +442,8 @@ cd taikyokushogiTei
 cargo build --release
 ```
 
-NNUE needs **no feature flag**: the evaluator is always compiled and is
-toggled at runtime (`set_use_nnue(true)` + `TAIKYOKU_NNUE_PATH`). Optional
+NNUE needs **no feature flag**: the evaluator is always compiled and a
+network is attached to a board at runtime (`board.set_network(Some(net))`). Optional
 features are described under [Cargo Features](#cargo-features) below — note
 that the GPU features currently have no consuming code.
 
@@ -432,7 +459,7 @@ RUSTFLAGS='--cfg feature="python"' maturin build --release --cargo-extra-args "-
 Run the HTTP server (REST API + static frontend):
 
 ```bash
-cargo run --release --bin taikyokushogi-server
+cargo run --release --features server --bin taikyokushogi-server
 # open http://localhost:8000
 ```
 
@@ -518,27 +545,30 @@ W/L/D counts.
 
 ## Neural Evaluation (NNUE)
 
-An experimental neural-network evaluator (`src/eval/nnue.rs`,
-HalfKP-style features) can be enabled at runtime with
-`taikyokushogi::set_use_nnue(true)`; the weights are loaded from the path
-in the `TAIKYOKU_NNUE_PATH` environment variable. Run the `toggle_nnue`
-example for a smoke test.
+A neural evaluator (NNUE, architecture "S": piece classes × squares, no king
+anchor, 180° rotation for White, pairwise 256 → 16 → 32 → 1 per output bucket)
+replaces the hand-crafted score when a network is attached to a board:
 
-The accumulator is now maintained **incrementally** by `Board::apply_move`
-(O(FT_NEURONS) deltas per moved/captured piece, full refresh only when a
-royal anchor changes) and restored in O(1) on undo, so per-evaluate cost no
-longer includes the O(pieces × FT_NEURONS) rebuild (the historical
-~1.8 s/evaluate). The remaining per-call cost is the network forward pass
-itself — milliseconds-scale (≈3 ms/evaluate was measured on this machine
-with the current dense layers; verify on yours with the `nnue_speed`
-example). That is fine for validation and training pipelines but too slow
-for deep search, so NNUE remains experimental; it also needs a trained
-`.nnue` file — the repository ships none (train one via
-[training/](training/README.md)).
+```rust
+use std::sync::Arc;
+let net = Arc::new(taikyokushogi::Network::load("nets/tk.tkn")?);
+let mut board = taikyokushogi::Board::initial();
+board.set_network(Some(net));      // evaluate() and search() now use it
+```
 
-The full PyTorch training pipeline — generating data with `selfplay`,
-feature extraction, training, and exporting `.nnue` files — lives in
-[training/](training/README.md).
+The network is a value (`Arc<Network>`), not a global, so different boards
+and match sides can use different networks. Loading never falls back to random
+weights: any problem is an error. CLI: `--net PATH` / `setoption net <path|none>`.
+
+The accumulator is maintained incrementally by `Board::apply_move` with no
+king anchor (no move forces a full refresh) and restored from a fixed ring of
+snapshots on undo. Measured on one core in a release build: about 1 µs per
+`evaluate()`, 60 µs for a full refresh. **No strength gain has been
+demonstrated**; `nets/experimental-v1.tkn` is only there to try the pipeline
+(see `nets/README.md`). Train a real one with the
+workflow in [docs/NNUE.md](docs/NNUE.md) (`make nnue-data`, `nnue-train`, …)
+and measure it with `match_race … sprt=0:10`. Tools: `cargo run --release
+--bin nnue -- <classes|gen-classes|info|verify|random-net|dump-positions|bench>`.
 
 ## Module Structure
 
@@ -617,17 +647,14 @@ println!("{}: value={} area={} igui={}",
          info.name, info.value, info.area_steps, info.has_igui);
 
 // Switch between the hand-crafted and the NNUE evaluator
-// (requires a trained .nnue file — see training/README.md)
-// taikyokushogi::set_use_nnue(true);
+// (requires a trained .tkn file — see docs/NNUE.md)
+// board.set_network(Some(std::sync::Arc::new(taikyokushogi::Network::load("nets/tk.tkn")?)));
 ```
 
 ## Cargo Features
 
 - `cpu` (default) — the pure-CPU build (no alternative backend is compiled
   in today; the flag is a namespace for future ones).
-- `nnue` — pulls the optional `burn` + `ndarray` crates. **Not required to
-  use NNUE**: `src/eval/nnue.rs` compiles unconditionally and the backend
-  is switched at runtime (see [Neural Evaluation](#neural-evaluation-nnue)).
 - `gpu-cuda`, `gpu-metal`, `gpu-wgpu`, `gpu-vulkan` — enable the optional
   GPU crates (`burn`/`wgpu`). No code in this tree consumes them yet, so
   these features currently change nothing at runtime.

@@ -22,7 +22,7 @@
       "type": "lldb",
       "request": "launch",
       "cargo": {
-        "args": ["build", "--bin", "taikyokushogi-server"],
+        "args": ["build", "--bin", "taikyokushogi-server", "--features", "server"],
         "filter": {
           "kind": "bin",
           "name": "taikyokushogi-server"

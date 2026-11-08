@@ -1,103 +1,173 @@
-/** HTTP client for the Taikyoku Shogi engine API.
- * All methods return fresh data from the Rust backend.
+/**
+ * HTTP client for the Taikyoku Shogi engine API.
+ *
+ * Every method returns fresh data from the Rust backend. Errors carry the
+ * HTTP status and the server's JSON `error` message when available, so the
+ * UI can show *why* something failed (illegal move, unknown piece, 409…).
  */
 
-import type { BoardState, MoveResponse, MoveData, PieceInfoResponse } from '../types/board';
+import type {
+  BoardState,
+  EngineInfo,
+  EvalInfo,
+  HealthInfo,
+  HistoryInfo,
+  LegalMovesResponse,
+  MoveData,
+  MoveResponse,
+  PieceInfo,
+  PieceListResponse,
+  PositionInfo,
+  SaveInfo,
+  SearchResponse,
+  SearchStats,
+  StatusInfo,
+  UndoResponse,
+} from '../types/board';
 
 const BASE = '';
 
-// HTTP helpers
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error(`GET ${path}: ${res.status}`);
-  return res.json();
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
 }
 
-async function post<T>(path: string, body?: unknown): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}) },
+    ...init,
   });
-  if (!res.ok) throw new Error(`POST ${path}: ${res.status}`);
-  return res.json();
+
+  let payload: unknown = null;
+  const text = await res.text();
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      // Non-JSON response (e.g. proxy error page).
+      payload = null;
+    }
+  }
+
+  if (!res.ok) {
+    const message =
+      (payload as { error?: string } | null)?.error ??
+      `HTTP ${res.status} ${res.statusText} (${path})`;
+    throw new ApiError(message, res.status);
+  }
+  return payload as T;
 }
 
-/** Fetch the full board state */
+const get = <T>(path: string) => request<T>(path);
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+
+// ── Game state ─────────────────────────────────────────────────────
+
+/** Fetch the full board state. */
 export function fetchState(): Promise<BoardState> {
   return get<BoardState>('/api/state');
 }
 
-/** Fetch legal moves from a specific square */
-export function fetchMoves(r: number, c: number) {
-  return get<{ moves: MoveData[]; from: [number, number] }>(
-    `/api/moves?r=${r}&c=${c}`,
-  );
+/** Compact status summary. */
+export function fetchStatus(): Promise<StatusInfo> {
+  return get<StatusInfo>('/api/status');
 }
 
-/** Fetch all legal moves (from any square) */
-export function fetchLegalMoves() {
-  return get<{ moves: MoveData[]; from: [number, number] }>('/api/legal-moves');
+/** Move log + score history. */
+export function fetchHistory(): Promise<HistoryInfo> {
+  return get<HistoryInfo>('/api/history');
 }
 
-/** Apply a human move */
+/** Legal moves for the piece on `(r, c)`. */
+export function fetchMoves(r: number, c: number): Promise<{ moves: MoveData[]; from: [number, number] }> {
+  return get(`/api/moves?r=${r}&c=${c}`);
+}
+
+/** Every legal move of the side to move. */
+export function fetchLegalMoves(): Promise<LegalMovesResponse> {
+  return get<LegalMovesResponse>('/api/legal-moves');
+}
+
+/** Start a new game. */
+export function newGame(): Promise<{ ok: boolean; version: number }> {
+  return post('/api/new-game');
+}
+
+/** Apply a human move. */
 export function sendMove(
   from: [number, number],
   to: [number, number],
   promotion = false,
   mid_sq?: number | null,
 ): Promise<MoveResponse> {
-  return post<MoveResponse>('/api/move', { from, to, promotion, mid_sq });
+  return post<MoveResponse>('/api/move', { from, to, promotion, mid_sq: mid_sq ?? null });
 }
 
-/** Ask the AI to generate and apply a move */
-export function sendAiMove(depth = 0, timeLimit = 30_000): Promise<MoveResponse> {
+/** Ask the AI to search and apply a move. `depth = 0` means random. */
+export function sendAiMove(depth = 2, timeLimit = 30_000): Promise<MoveResponse> {
   return post<MoveResponse>('/api/ai-move', { depth, time_limit: timeLimit });
 }
 
-/** Start a new game */
-export function newGame(): Promise<{ ok: boolean }> {
-  return post('/api/new-game');
+/** Analysis search — does not mutate the board. */
+export function analyze(depth = 2, timeLimit = 10_000): Promise<SearchResponse> {
+  return post<SearchResponse>('/api/search', { depth, time_limit: timeLimit });
 }
 
-/** Undo the last move */
-export function undo(): Promise<{ ok: boolean; error?: string }> {
-  return post('/api/undo');
+/** Undo the last `plies` moves (default 1). */
+export function undo(plies = 1): Promise<UndoResponse> {
+  return post<UndoResponse>('/api/undo', { plies });
 }
 
-/** Fetch the move history */
-export function fetchHistory() {
-  return get<{ move_log: string[]; half_move: number; game_over: boolean }>('/api/history');
+// ── Position / persistence ────────────────────────────────────────
+
+export function fetchPosition(): Promise<PositionInfo> {
+  return get<PositionInfo>('/api/position');
 }
 
-/** Get the position in TSFEN format */
-export function fetchPosition() {
-  return get<{ tsfen: string; side_to_move: number; move_number: number }>('/api/position');
+/** Install a position from TSFEN. */
+export function setPosition(tsfen: string): Promise<BoardState> {
+  return post<BoardState>('/api/position', { tsfen });
 }
 
-/** Set the position from TSFEN */
-export function setPosition(tsfen: string): Promise<{ ok: boolean; tsfen: string; error?: string }> {
-  return post<{ ok: boolean; tsfen: string; error?: string }>('/api/position', { tsfen });
+export function saveGame(): Promise<SaveInfo> {
+  return get<SaveInfo>('/api/save');
 }
 
-/** Get piece information */
-export function pieceInfo(abbrev: string): Promise<PieceInfoResponse> {
-  return get<PieceInfoResponse>(`/api/piece-info/${abbrev}`);
+export function loadGame(tsfen: string): Promise<BoardState> {
+  return post<BoardState>('/api/load', { tsfen });
 }
 
-/** Save the current game state */
-export function saveGame(): Promise<{ ok: boolean; tsfen: string }> {
-  return get<{ ok: boolean; tsfen: string }>('/api/save');
+// ── Engine information ────────────────────────────────────────────
+
+/** Piece database entry by abbreviation; throws `ApiError` 404 when unknown. */
+export function pieceInfo(abbrev: string): Promise<PieceInfo> {
+  return get<PieceInfo>(`/api/piece-info/${encodeURIComponent(abbrev)}`);
 }
 
-/** Load a game from TSFEN */
-export function loadGame(tsfen: string): Promise<{ ok: boolean; tsfen: string }> {
-  return post<{ ok: boolean; tsfen: string }>('/api/load', { tsfen });
+/** Full piece database (301 movement classes). */
+export function fetchPieces(): Promise<PieceListResponse> {
+  return get<PieceListResponse>('/api/pieces');
 }
 
-/** Get game status */
-export function getStatus(): Promise<{ game_over: boolean; result: string | null; half_move: number; move_number: number; black_pieces: number; white_pieces: number; move_log: string[] }> {
-  return get<{ game_over: boolean; result: string | null; half_move: number; move_number: number; black_pieces: number; white_pieces: number; move_log: string[] }>('/api/status');
+/** Engine metadata: sizes, backend, hash size, search techniques. */
+export function fetchEngineInfo(): Promise<EngineInfo> {
+  return get<EngineInfo>('/api/engine-info');
 }
+
+/** Static evaluation and material balance. */
+export function fetchEval(): Promise<EvalInfo> {
+  return get<EvalInfo>('/api/evaluate');
+}
+
+/** Liveness probe / server discovery. */
+export function health(): Promise<HealthInfo> {
+  return get<HealthInfo>('/api/health');
+}
+
+export type { SearchStats };

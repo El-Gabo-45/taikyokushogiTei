@@ -3,129 +3,342 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Taikyoku Shogi</title>
+    <title>Taikyoku Shogi — Engine Web GUI</title>
     <style>
+      :root {
+        --bg: #1a1a2e;
+        --bg-panel: #16213e;
+        --bg-deep: #0a0a1a;
+        --border: #0f3460;
+        --accent: #e94560;
+        --accent-2: #4a90d9;
+        --text: #e0e0e0;
+        --muted: #8a8fa8;
+        --ok: #5cb85c;
+        --warn: #e8b84a;
+        --err: #d9534f;
+      }
       * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
       body {
         font-family: 'Segoe UI', system-ui, sans-serif;
-        background: #1a1a2e;
-        color: #e0e0e0;
-        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
         overflow: hidden;
       }
+      .app { display: flex; flex-direction: column; height: 100vh; }
       .header {
-        background: #16213e;
-        padding: 8px 16px;
+        background: var(--bg-panel);
+        padding: 8px 14px;
         display: flex;
         align-items: center;
         gap: 12px;
-        border-bottom: 2px solid #0f3460;
+        border-bottom: 2px solid var(--border);
         flex-wrap: wrap;
+        row-gap: 6px;
       }
-      .header h1 { font-size: 16px; color: #e94560; white-space: nowrap; }
+      .header h1 { font-size: 16px; color: var(--accent); white-space: nowrap; letter-spacing: .4px; }
+      .header h1 small { color: var(--muted); font-size: 10px; font-weight: 400; margin-left: 6px; }
       .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-      .controls select, .controls button {
-        padding: 3px 8px;
+      .controls label { font-size: 11px; color: var(--muted); }
+      .controls select, .controls button, .panel button {
+        padding: 4px 9px;
         border-radius: 4px;
-        border: 1px solid #0f3460;
-        background: #1a1a2e;
-        color: #e0e0e0;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        color: var(--text);
         font-size: 11px;
         cursor: pointer;
+        transition: background .12s ease, border-color .12s ease;
       }
-      .controls button { background: #0f3460; }
-      .controls button:hover { background: #e94560; }
-      .controls label { font-size: 11px; color: #aaa; }
-      .status-bar { font-size: 11px; color: #aaa; margin-left: auto; text-align: right; }
+      .controls button, .panel button { background: #13294b; }
+      .controls button:hover, .panel button:hover { background: var(--accent); border-color: var(--accent); }
+      .controls button:disabled, .panel button:disabled { opacity: .45; cursor: not-allowed; background: #13294b; }
+      .controls button.active { background: var(--accent); border-color: var(--accent); }
+      .zoom { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+      .zoom input { width: 90px; accent-color: var(--accent); }
+      .status-bar {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      #busy { color: var(--warn); min-width: 0; }
       .main {
+        flex: 1;
         display: flex;
         gap: 10px;
-        padding: 8px;
-        height: calc(100vh - 44px);
+        padding: 10px;
+        min-height: 0;
         justify-content: center;
       }
       .board-wrap {
+        flex: 0 1 auto;
         overflow: auto;
-        border: 2px solid #0f3460;
-        background: #0a0a1a;
+        border: 2px solid var(--border);
+        background: var(--bg-deep);
+        border-radius: 4px;
+        min-width: 0;
       }
       .board-wrap canvas { display: block; }
       .sidebar {
-        width: 240px;
+        width: 310px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
         flex-shrink: 0;
+        overflow-y: auto;
+        padding-right: 2px;
       }
       .panel {
-        background: #16213e;
-        border: 1px solid #0f3460;
+        background: var(--bg-panel);
+        border: 1px solid var(--border);
         border-radius: 6px;
-        padding: 8px;
+        padding: 8px 10px;
+        flex-shrink: 0;
       }
-      .panel h3 { font-size: 11px; color: #e94560; margin-bottom: 4px; }
-      .info-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
-      .info-row .label { color: #888; }
+      .panel h3 {
+        font-size: 10px;
+        letter-spacing: .8px;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 5px;
+      }
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 11px;
+        padding: 2px 0;
+        border-bottom: 1px solid rgba(255,255,255,.03);
+      }
+      .info-row:last-child { border-bottom: 0; }
+      .info-row .label { color: var(--muted); }
+      .info-row .value { font-variant-numeric: tabular-nums; text-align: right; }
+      .status-msg { font-size: 11px; margin-top: 5px; min-height: 14px; word-break: break-word; }
+      .status-msg.info { color: var(--accent-2); }
+      .status-msg.success { color: var(--ok); }
+      .status-msg.error { color: var(--err); }
+      .engine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
+      .engine-grid .info-row { font-size: 10px; }
+      .engine-note { font-size: 9px; color: var(--muted); margin-top: 5px; }
+      #score-chart {
+        width: 100%;
+        height: 64px;
+        display: block;
+        background: var(--bg-deep);
+        border: 1px solid rgba(255,255,255,.05);
+        border-radius: 4px;
+      }
       .move-log {
-        flex: 1;
+        max-height: 170px;
         overflow-y: auto;
         font-size: 10px;
-        font-family: monospace;
+        font-family: ui-monospace, monospace;
+        background: var(--bg-deep);
+        border-radius: 4px;
+        padding: 3px 0;
       }
-      .move-log .entry { padding: 1px 4px; border-bottom: 1px solid #0a0a1a; }
-      .move-log .entry:nth-child(odd) { background: rgba(255,255,255,0.02); }
-      #status-msg { color: #e94560; font-weight: bold; }
+      .move-log .entry { padding: 1px 6px; border-bottom: 1px solid rgba(255,255,255,.03); }
+      .move-log .entry:nth-child(odd) { background: rgba(255,255,255,.02); }
+      .move-log .entry:last-child { color: var(--warn); }
+      .move-log .entry.empty { color: var(--muted); font-style: italic; }
+      .piece-tags { font-size: 10px; color: var(--accent-2); margin-top: 4px; }
+      .hint { font-size: 9px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+      .tsfen-box {
+        width: 100%;
+        height: 54px;
+        resize: vertical;
+        background: var(--bg-deep);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-family: ui-monospace, monospace;
+        font-size: 9px;
+        padding: 5px;
+        margin-bottom: 5px;
+      }
+      .button-row { display: flex; gap: 5px; flex-wrap: wrap; }
+      .shortcuts { font-size: 9px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+      .shortcuts kbd {
+        background: var(--bg-deep);
+        border: 1px solid var(--border);
+        border-radius: 3px;
+        padding: 0 3px;
+        font-family: inherit;
+      }
+      /* Modal */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(6, 8, 20, .7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .modal-box {
+        background: var(--bg-panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        width: min(380px, 92vw);
+        box-shadow: 0 18px 50px rgba(0,0,0,.5);
+      }
+      .modal-box h2 { font-size: 14px; color: var(--accent); margin-bottom: 4px; }
+      .modal-description { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+      .modal-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+      .modal-option {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        text-align: left;
+        padding: 8px 10px;
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+      .modal-option:hover, .modal-option:focus { border-color: var(--accent); outline: none; }
+      .modal-option-detail { font-size: 10px; color: var(--muted); }
+      .modal-cancel {
+        width: 100%;
+        padding: 6px;
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .modal-cancel:hover { color: var(--text); border-color: var(--accent); }
+      @media (max-width: 900px) {
+        .main { flex-direction: column; align-items: stretch; overflow-y: auto; }
+        .sidebar { width: 100%; overflow: visible; }
+        .board-wrap { align-self: center; }
+      }
     </style>
   </head>
   <body>
-    <div class="header">
-      <h1>Taikyoku Shogi</h1>
-      <div class="controls">
-        <label>Mode:</label>
-        <select id="mode-select">
-          <option value="human_vs_random">Human vs Random</option>
-          <option value="human_vs_ai">Human vs AI</option>
-          <option value="random_vs_random">Random vs Random</option>
-          <option value="ai_vs_ai">AI vs AI</option>
-        </select>
-        <label>Play as:</label>
-        <select id="color-select">
-          <option value="0">Black</option>
-          <option value="1">White</option>
-        </select>
-        <label>AI:</label>
-        <select id="ai-depth">
-          <option value="0">Random</option>
-          <option value="1">D1</option>
-          <option value="2" selected>D2</option>
-          <option value="3">D3</option>
-        </select>
-        <button onclick="newGame()">New Game</button>
-        <button onclick="undoMove()">Undo</button>
-        <button id="auto-btn" onclick="toggleAuto()">Auto</button>
-        <button id="kanji-btn" onclick="toggleKanji()">Kanji</button>
-      </div>
-      <div class="status-bar" id="status">Loading...</div>
-    </div>
-    <div class="main">
-      <div class="board-wrap">
-        <canvas id="board-canvas"></canvas>
-      </div>
-      <div class="sidebar">
-        <div class="panel" style="flex-shrink:0;">
-          <h3>Info</h3>
-          <div class="info-row"><span class="label">Turn:</span><span id="info-turn">Black</span></div>
-          <div class="info-row"><span class="label">Move:</span><span id="info-move">1</span></div>
-          <div class="info-row"><span class="label">Black:</span><span id="info-black">402</span></div>
-          <div class="info-row"><span class="label">White:</span><span id="info-white">402</span></div>
-          <div class="info-row"><span class="label">Score:</span><span id="info-score">0</span></div>
-          <div class="info-row"><span class="label" id="status-msg">-</span></div>
+    <div class="app">
+      <header class="header">
+        <h1>Taikyoku Shogi <small>36×36 · 804 pieces</small></h1>
+        <div class="controls">
+          <label for="mode-select">Mode</label>
+          <select id="mode-select">
+            <option value="human_vs_random">Human vs Random</option>
+            <option value="human_vs_ai" selected>Human vs AI</option>
+            <option value="random_vs_random">Random vs Random</option>
+            <option value="ai_vs_ai">AI vs AI</option>
+          </select>
+          <label for="color-select">Play as</label>
+          <select id="color-select">
+            <option value="0">Black</option>
+            <option value="1">White</option>
+          </select>
+          <label for="ai-depth">AI</label>
+          <select id="ai-depth">
+            <option value="0">Random</option>
+            <option value="1">D1</option>
+            <option value="2" selected>D2</option>
+            <option value="3">D3</option>
+          </select>
+          <button id="btn-new" title="New game (N)">New Game</button>
+          <button id="btn-undo" title="Undo (U)">Undo</button>
+          <button id="btn-auto" title="Auto-play (A)">Auto</button>
+          <button id="btn-ai-move" title="Ask the AI to move (Space)">AI Move</button>
+          <button id="btn-analyze" title="Analyze without moving">Analyze</button>
+          <button id="btn-kanji" title="Kanji / English (K)">Kanji</button>
+          <button id="btn-flip" title="Flip board (F)">Flip</button>
+          <span class="zoom">
+            <label for="zoom-range">Zoom</label>
+            <input id="zoom-range" type="range" min="70" max="180" step="5" value="100" />
+            <span id="zoom-label">100%</span>
+          </span>
         </div>
-        <div class="panel" style="flex:1; display:flex; flex-direction:column; min-height:0;">
-          <h3>Move Log</h3>
-          <div class="move-log" id="move-log"></div>
+        <div class="status-bar">
+          <span id="busy"></span>
+          <span id="status">Loading…</span>
         </div>
-      </div>
+      </header>
+
+      <main class="main">
+        <div class="board-wrap">
+          <canvas id="board-canvas"></canvas>
+        </div>
+
+        <aside class="sidebar">
+          <section class="panel">
+            <h3>Position</h3>
+            <div class="info-row"><span class="label">Turn</span><span class="value" id="info-turn">Black</span></div>
+            <div class="info-row"><span class="label">Move</span><span class="value" id="info-move">1</span></div>
+            <div class="info-row"><span class="label">Pieces</span><span class="value"><span id="info-black">402</span> / <span id="info-white">402</span></span></div>
+            <div class="info-row"><span class="label">Material (B)</span><span class="value" id="info-score">0</span></div>
+            <div class="info-row"><span class="label">Eval (STM)</span><span class="value" id="info-eval">0</span></div>
+            <div class="info-row"><span class="label">No-progress</span><span class="value" id="info-progress">0 / 1000</span></div>
+            <div id="status-msg" class="status-msg info">—</div>
+          </section>
+
+          <section class="panel">
+            <h3>Engine</h3>
+            <div class="engine-grid">
+              <div class="info-row"><span class="label">Version</span><span class="value" id="engine-version">—</span></div>
+              <div class="info-row"><span class="label">Backend</span><span class="value" id="engine-backend">—</span></div>
+              <div class="info-row"><span class="label">Hash</span><span class="value" id="engine-hash">—</span></div>
+              <div class="info-row"><span class="label">Piece DB</span><span class="value" id="engine-pieces">—</span></div>
+              <div class="info-row"><span class="label">Techniques</span><span class="value" id="engine-techniques">—</span></div>
+            </div>
+            <div class="engine-grid" style="margin-top:6px; border-top:1px solid rgba(255,255,255,.06); padding-top:5px;">
+              <div class="info-row"><span class="label">Depth</span><span class="value" id="search-depth">—</span></div>
+              <div class="info-row"><span class="label">Score</span><span class="value" id="search-score">—</span></div>
+              <div class="info-row"><span class="label">Nodes</span><span class="value" id="search-nodes">—</span></div>
+              <div class="info-row"><span class="label">Time</span><span class="value" id="search-time">—</span></div>
+            </div>
+            <div class="engine-note">Last search telemetry reported by the Rust engine.</div>
+          </section>
+
+          <section class="panel">
+            <h3>Piece Inspector <span id="inspect-title" style="color:var(--muted);text-transform:none;letter-spacing:0">—</span></h3>
+            <div class="info-row"><span class="label">Name</span><span class="value" id="inspect-name">Click a piece</span></div>
+            <div class="info-row"><span class="label">Abbrev</span><span class="value" id="inspect-abbrev">—</span></div>
+            <div class="info-row"><span class="label">Value</span><span class="value" id="inspect-value">—</span></div>
+            <div class="info-row"><span class="label">Promotion</span><span class="value" id="inspect-promotes">—</span></div>
+            <div class="info-row"><span class="label">Betza</span><span class="value" id="inspect-betza">—</span></div>
+            <div id="inspect-tags" class="piece-tags"></div>
+            <div id="inspect-hint" class="hint">Hover/click any piece to inspect its movement data.</div>
+          </section>
+
+          <section class="panel">
+            <h3>Material Balance</h3>
+            <canvas id="score-chart"></canvas>
+          </section>
+
+          <section class="panel">
+            <h3>Move Log</h3>
+            <div class="move-log" id="move-log"></div>
+          </section>
+
+          <section class="panel">
+            <h3>TSFEN · Save / Load</h3>
+            <textarea id="tsfen-box" class="tsfen-box" spellcheck="false" placeholder="Paste a TSFEN string to load a position…"></textarea>
+            <div class="button-row">
+              <button id="btn-save">Export</button>
+              <button id="btn-copy">Copy</button>
+              <button id="btn-download">Download</button>
+              <button id="btn-load">Load</button>
+            </div>
+            <div class="shortcuts">
+              <kbd>N</kbd> new · <kbd>U</kbd> undo · <kbd>A</kbd> auto · <kbd>K</kbd> kanji ·
+              <kbd>F</kbd> flip · <kbd>Space</kbd> AI move · <kbd>+</kbd>/<kbd>−</kbd> zoom
+            </div>
+          </section>
+        </aside>
+      </main>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

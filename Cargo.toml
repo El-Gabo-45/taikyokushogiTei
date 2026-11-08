@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.82"
 description = "Taikyoku Shogi engine — the largest known shogi variant (36x36 board, 804 pieces, 209 initial piece types / 301 movement classes)"
-license = "MIT"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/El-Gabo-45/taikyokushogiTei"
 readme = "README.md"
 keywords = ["shogi", "taikyoku", "board-game", "chess-variant", "game-engine"]
@@ -21,6 +21,10 @@ crate-type = ["lib", "cdylib"]
 name = "taikyokushogi-server"
 path = "src/main.rs"
 required-features = ["server"]
+
+[[bin]]
+name = "nnue"
+path = "src/nnue_main.rs"
 
 [[bin]]
 name = "debug-cli"
@@ -49,11 +53,17 @@ ndarray = { version = "0.16", optional = true }
 axum = { version = "0.7", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", features = ["full"], optional = true }
 tower-http = { version = "0.5", features = ["cors", "fs"], optional = true }
 crossbeam = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 wgpu = { version = "22", features = ["vulkan-portability"], optional = true }
+
+[dev-dependencies]
+# Used by tests/server_api.rs to drive the axum router in-process (no TCP).
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
 
 # NOTE: The previous list of hard deps (lz4, xxhash-rust, memmap2, bincode,
 # bytemuck, dashmap, parking_lot, portable-atomic, rayon, half) had zero uses in src/,

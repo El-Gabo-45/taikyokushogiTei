@@ -1,5 +1,2 @@
-torch>=1.13.0
+torch>=2.0
 numpy>=1.24
-tqdm
-torchvision
-scipy
