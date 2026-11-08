@@ -32,7 +32,7 @@
 //!   setoption movetime <MS>    engine time budget per move (0 = no limit)
 //!   setoption threads <N>      Lazy SMP workers (1..=64, default 1)
 //!   setoption hash <MiB>       transposition table size in MiB
-//!   setoption nnue <on|off>    switch evaluation backend
+//!   setoption net <path|none>  load an NNUE network (or go back to hand-crafted)
 //!   fen                        print the current TSFEN
 //!   history                    list the moves played in this session
 //!   hint                       search and print the best move (= `go`)
@@ -72,10 +72,12 @@ enum EngineSide {
     Both,
 }
 
+#[derive(Clone)]
 struct Options {
     depth: u32,
     movetime: u64,
-    nnue: bool,
+    /// NNUE network used by the engine (`None` = hand-crafted evaluator).
+    net: Option<std::sync::Arc<taikyokushogi::Network>>,
     engine_side: EngineSide,
     /// Lazy SMP workers used by `go` / the engine's own turns (1 = plain
     /// single-threaded search).
@@ -92,7 +94,7 @@ impl Options {
         Options {
             depth: 3,
             movetime: 0,
-            nnue: false,
+            net: None,
             engine_side: EngineSide::None,
             threads: taikyokushogi::search::DEFAULT_THREADS,
             cfg,
@@ -330,7 +332,7 @@ fn engine_turn(board: &mut Board, opt: &Options) -> Option<String> {
     if !engine_moves {
         return None;
     }
-    taikyokushogi::set_use_nnue(opt.nnue);
+    board.set_network(opt.net.clone());
     let mut searcher = opt.searcher();
     let r = board.search_with(&mut searcher, opt.depth, opt.movetime);
     match r.best_move {
@@ -479,11 +481,11 @@ fn status(board: &Board, opt: &Options) {
             .map_or("ongoing".to_string(), |r| r.to_string())
     );
     println!(
-        "engine:       depth {} movetime {}ms threads {} nnue {} hash {}MiB plays {:?}",
+        "engine:       depth {} movetime {}ms threads {} net {} hash {}MiB plays {:?}",
         opt.depth,
         opt.movetime,
         opt.threads,
-        if opt.nnue { "on" } else { "off" },
+        if opt.net.is_some() { "on" } else { "off" },
         taikyokushogi::search::hash_mb(),
         opt.engine_side
     );
@@ -603,7 +605,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             println!("{}", board.to_tsfen());
         }
         "hint" => {
-            taikyokushogi::set_use_nnue(opt.nnue);
+            board.set_network(opt.net.clone());
             cmd_go(board, opt);
         }
         "history" => {
@@ -654,13 +656,13 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 a: EngineConfig {
                     depth,
                     time_ms: movetime,
-                    nnue: false,
+                    net: None,
                     threads: kw.threads_a,
                 },
                 b: EngineConfig {
                     depth,
                     time_ms: movetime,
-                    nnue: false,
+                    net: None,
                     threads: kw.threads_b,
                 },
                 max_plies,
@@ -688,13 +690,13 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 a: EngineConfig {
                     depth: da,
                     time_ms: movetime,
-                    nnue: false,
+                    net: None,
                     threads: kw.threads_a,
                 },
                 b: EngineConfig {
                     depth: db,
                     time_ms: movetime,
-                    nnue: false,
+                    net: None,
                     threads: kw.threads_b,
                 },
                 max_plies,
@@ -723,13 +725,13 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 a: EngineConfig {
                     depth: da,
                     time_ms: movetime,
-                    nnue: false,
+                    net: None,
                     threads: kw.threads_a,
                 },
                 b: EngineConfig {
                     depth: db,
                     time_ms: movetime,
-                    nnue: false,
+                    net: None,
                     threads: kw.threads_b,
                 },
                 max_plies,
@@ -754,8 +756,8 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 taikyokushogi::num_piece_types()
             );
             println!(
-                "  evaluator: {} (setoption nnue on|off)",
-                if taikyokushogi::using_nnue() {
+                "  evaluator: {} (setoption net <path|none>)",
+                if opt.net.is_some() {
                     "NNUE"
                 } else {
                     "hand-crafted"
@@ -779,14 +781,14 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     other => println!("warning: ignored `{}`", other),
                 }
             }
-            taikyokushogi::set_use_nnue(opt.nnue);
+            board.set_network(opt.net.clone());
             cmd_go(
                 board,
                 &Options {
                     depth: d,
                     movetime: t,
                     threads: th,
-                    ..*opt
+                    ..opt.clone()
                 },
             );
         }
@@ -854,7 +856,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         }
         "setoption" => {
             if rest.len() < 2 {
-                println!("error: `setoption depth <N>` | `setoption movetime <MS>` | `setoption threads <N>` | `setoption hash <MiB>` | `setoption nnue <on|off>`");
+                println!("error: `setoption depth <N>` | `setoption movetime <MS>` | `setoption threads <N>` | `setoption hash <MiB>` | `setoption net <path|none>`");
                 return true;
             }
             let key = rest[0].to_ascii_lowercase();
@@ -893,14 +895,22 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     }
                     Err(_) => println!("error: bad hash size"),
                 },
-                "nnue" => {
-                    opt.nnue = matches!(val.as_str(), "on" | "true" | "1");
-                    taikyokushogi::set_use_nnue(opt.nnue);
-                    println!("nnue = {}", if opt.nnue { "on" } else { "off" });
-                    if opt.nnue && std::env::var_os("TAIKYOKU_NNUE_PATH").is_none() {
-                        println!(
-                            "warning: TAIKYOKU_NNUE_PATH not set — using random untrained weights"
-                        );
+                "net" => {
+                    // Keep the original spelling of the path (case matters).
+                    let path = rest[1];
+                    if matches!(val.as_str(), "none" | "off" | "classic") {
+                        opt.net = None;
+                        board.set_network(None);
+                        println!("net = none (hand-crafted evaluator)");
+                    } else {
+                        match taikyokushogi::Network::load(path) {
+                            Ok(n) => {
+                                opt.net = Some(std::sync::Arc::new(n));
+                                board.set_network(opt.net.clone());
+                                println!("net = {}", path);
+                            }
+                            Err(e) => println!("error: cannot load `{}`: {}", path, e),
+                        }
                     }
                 }
                 other => println!("error: unknown option `{}`", other),
@@ -944,7 +954,7 @@ fn print_help() {
   setoption movetime <MS>     presupuesto de tiempo por jugada (0 = sin límite)
   setoption threads <N>       hilos Lazy SMP (1..=64, por defecto 1)
   setoption hash <MiB>        tamaño de la tabla de transposiciones
-  setoption nnue <on|off>     cambiar evaluador (NNUE requiere TAIKYOKU_NNUE_PATH)
+  setoption net <ruta|none>   cargar una red NNUE (o volver al evaluador clásico)
   about                       versión e info del motor
   quit | exit                 salir
 
@@ -1025,6 +1035,15 @@ fn main() {
     if let Some(mb) = args.hash_mb {
         println!("hash = {}MiB", taikyokushogi::set_hash_mb(mb));
     }
+    if let Some(path) = &args.net {
+        match taikyokushogi::Network::load(path) {
+            Ok(n) => opt.net = Some(std::sync::Arc::new(n)),
+            Err(e) => {
+                eprintln!("error: cannot load network `{}`: {}", path, e);
+                std::process::exit(2);
+            }
+        }
+    }
     if let Some(d) = args.depth {
         opt.depth = d;
     }
@@ -1078,7 +1097,7 @@ fn main() {
         return;
     }
     if args.go {
-        taikyokushogi::set_use_nnue(opt.nnue);
+        board.set_network(opt.net.clone());
         cmd_go(&mut board, &opt);
         return;
     }
@@ -1108,6 +1127,8 @@ struct CliArgs {
     movetime: Option<u64>,
     threads: Option<usize>,
     hash_mb: Option<usize>,
+    /// NNUE network file (`--net PATH`).
+    net: Option<String>,
     position: Option<String>,
     /// Print version and exit
     version: bool,
@@ -1216,6 +1237,9 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                     return Err("`--threads` must be at least 1".to_string());
                 }
                 out.threads = Some(n);
+            }
+            "--net" => {
+                out.net = Some(take_value(&mut i, &tok)?);
             }
             "--hash" => {
                 let v = take_value(&mut i, &tok)?;

@@ -450,19 +450,8 @@ pub fn num_piece_types() -> usize {
     pieces::num_piece_types()
 }
 
-/// Switch the evaluation backend between the hand-crafted evaluator
-/// (default) and the NNUE network. See eval::set_use_nnue for details.
-/// The NNUE network is loaded from the path in the TAIKYOKU_NNUE_PATH
-/// environment variable (see eval::nnue::nnue()) the first time it's
-/// used; set that env var before calling this with `true`.
-pub fn set_use_nnue(enabled: bool) {
-    eval::set_use_nnue(enabled);
-}
-
-/// Whether the NNUE evaluation backend is currently active.
-pub fn using_nnue() -> bool {
-    eval::using_nnue()
-}
+pub use eval::nnue;
+pub use eval::nnue::{Network, NnueError};
 
 /// Resize the transposition table to `mb` MiB (see `search::set_hash_mb`).
 /// Returns the size actually allocated, which is rounded down to a
@@ -477,13 +466,8 @@ pub fn hash_mb() -> usize {
 }
 
 /// Whether the given piece_type ID is a royal piece (King, Crown Prince,
-/// or any other piece type whose capture ends the game). Exposed
-/// specifically so external tooling (the NNUE training pipeline in
-/// training/) can determine which squares count as "the king" for
-/// HalfKP-style feature indexing without needing access to a live
-/// Board's internal royal_list -- the training data format
-/// (TrainingSample in selfplay.rs) only stores piece_type per square, not
-/// royal-list membership directly.
+/// or any other piece type whose capture ends the game). Exposed for
+/// external tooling that has to tell royals apart from other pieces.
 pub fn is_royal_piece_type(piece_type: u16) -> bool {
     pieces::is_royal(piece_type)
 }
@@ -570,8 +554,35 @@ impl Board {
     }
 
     /// Evaluate the position from the side to move's perspective.
+    ///
+    /// Uses the attached NNUE network if there is one
+    /// ([`Board::set_network`]), the hand-crafted evaluator otherwise.
     pub fn evaluate(&self) -> i32 {
         eval::evaluate(&self.inner)
+    }
+
+    /// Attach an NNUE network to this board, or detach it with `None`.
+    ///
+    /// The network is shared (`Arc`), so one loaded [`Network`] can serve any
+    /// number of boards and threads, and two boards in the same process can
+    /// use different networks. `apply`/`undo` keep the accumulator in sync.
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use taikyokushogi::{Board, Network};
+    ///
+    /// let net = Arc::new(Network::load("nets/tk-net1.tkn").expect("valid network"));
+    /// let mut board = Board::initial();
+    /// board.set_network(Some(net));
+    /// let r = board.search(3, 0);
+    /// ```
+    pub fn set_network(&mut self, net: Option<std::sync::Arc<Network>>) {
+        self.inner.set_network(net);
+    }
+
+    /// The attached NNUE network, if any.
+    pub fn network(&self) -> Option<&std::sync::Arc<Network>> {
+        self.inner.network()
     }
 
     /// Check if the game is over.

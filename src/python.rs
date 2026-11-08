@@ -6,6 +6,34 @@ use pyo3::types::{PyDict, PyList, PyTuple};
 use crate::types::*;
 use crate::{board, eval, movegen, pieces, search};
 
+/// A loaded NNUE network (TKN1 file). Load it once and share it between
+/// boards: `board.set_network(net)`.
+#[pyclass]
+#[derive(Clone)]
+pub struct PyNetwork {
+    inner: std::sync::Arc<crate::Network>,
+}
+
+#[pymethods]
+impl PyNetwork {
+    /// Load a network file; raises `ValueError` with the reason on any problem
+    /// (it never falls back to random weights).
+    #[staticmethod]
+    fn load(path: &str) -> PyResult<Self> {
+        crate::Network::load(path)
+            .map(|n| PyNetwork {
+                inner: std::sync::Arc::new(n),
+            })
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    }
+
+    /// Number of piece classes of the network.
+    #[getter]
+    fn num_classes(&self) -> usize {
+        self.inner.num_classes()
+    }
+}
+
 #[pyclass]
 #[derive(Clone)]
 pub struct PyBoard {
@@ -23,6 +51,18 @@ impl PyBoard {
 
     fn setup_initial(&mut self) {
         self.inner.setup_initial();
+    }
+
+    /// Attach an NNUE network (`PyNetwork`) or detach it with `None`.
+    /// `evaluate`/`search` then use it instead of the hand-crafted evaluator.
+    #[pyo3(signature = (network=None))]
+    fn set_network(&mut self, network: Option<PyRef<'_, PyNetwork>>) {
+        self.inner.set_network(network.map(|n| n.inner.clone()));
+    }
+
+    /// Whether an NNUE network is attached.
+    fn has_network(&self) -> bool {
+        self.inner.network().is_some()
     }
 
     fn at(&self, row: usize, col: usize) -> Option<(String, u8)> {
@@ -226,9 +266,7 @@ impl PyBoard {
         depth: u32,
         time_limit_ms: u64,
     ) -> (Option<(usize, usize, usize, usize, bool)>, i32, u64, u64) {
-        let result = py.allow_threads(|| {
-            search::search(&mut self.inner, depth, time_limit_ms)
-        });
+        let result = py.allow_threads(|| search::search(&mut self.inner, depth, time_limit_ms));
         let mv = result.best_move.map(|m| {
             (
                 m.from_sq as usize / BOARD_SIZE,
@@ -310,6 +348,7 @@ fn piece_info_py(py: Python, abbrev: &str) -> PyResult<PyObject> {
 /// Register all Python-visible items on the module.
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBoard>()?;
+    m.add_class::<PyNetwork>()?;
     m.add_function(pyo3::wrap_pyfunction!(piece_name_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(piece_value_py, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(piece_promotes_to_py, m)?)?;

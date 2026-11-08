@@ -5,6 +5,9 @@
 //! - **Zones** — positional bonuses based on board geography.
 //! - **King safety** — royal piece protection.
 //! - **Material** — family-weighted material count.
+//! - **NNUE** — optional neural evaluator attached to a board (see
+//!   [`nnue`] and `docs/NNUE.md`); when present it replaces the
+//!   hand-crafted score for non-terminal positions.
 //!
 //! # Performance: Incremental Material Score
 //!
@@ -25,26 +28,6 @@ use crate::board::Board;
 use crate::types::*;
 
 pub const MATE_SCORE: i32 = 1_000_000;
-
-// ── Evaluation backend selection ────────────────────────────────
-// Lets callers (e.g. a match runner comparing hand-crafted eval vs NNUE
-// strength) switch backends at runtime without recompiling. Defaults to
-// the hand-crafted evaluator, so existing behavior is unchanged unless
-// something explicitly opts into NNUE.
-use std::sync::atomic::{AtomicBool, Ordering};
-static USE_NNUE: AtomicBool = AtomicBool::new(false);
-
-/// Switch the global evaluation backend. When `true`, `evaluate()` uses
-/// the NNUE network (see nnue::nnue_evaluate_from_scratch); when `false`
-/// (the default), it uses the original hand-crafted material/zone/king-
-/// safety evaluation below.
-pub fn set_use_nnue(enabled: bool) {
-    USE_NNUE.store(enabled, Ordering::Relaxed);
-}
-
-pub fn using_nnue() -> bool {
-    USE_NNUE.load(Ordering::Relaxed)
-}
 
 /// Material score from Black's perspective (legacy API).
 /// Positive = Black has more material.
@@ -80,14 +63,10 @@ pub fn evaluate(board: &Board) -> i32 {
         };
     }
 
-    if USE_NNUE.load(Ordering::Relaxed) {
-        // Use the incrementally-maintained accumulator when available
-        // (Board::apply_move keeps it in sync); fall back to a from-scratch
-        // refresh only for boards that never had a move applied to them.
-        return match &board.nnue_acc {
-            Some(acc) => nnue::nnue_evaluate(board, acc),
-            None => nnue::nnue_evaluate_from_scratch(board),
-        };
+    // NNUE: the network is attached to the board (`Board::set_network`); its
+    // accumulator is maintained incrementally by apply/undo.
+    if let Some(state) = board.nnue.as_deref() {
+        return state.evaluate(board);
     }
 
     // Incremental PSQT score (combines material + family weight + zone

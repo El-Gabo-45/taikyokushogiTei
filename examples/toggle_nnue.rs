@@ -1,47 +1,39 @@
-// Confirms the hand-crafted vs NNUE evaluation toggle switches which code
-// path runs. The NNUE accumulator is maintained incrementally by
-// apply_move/undo_move now (see training/README.md), but this example calls
-// evaluate() on a freshly-built board whose accumulator is still empty, so
-// the single call includes one from-scratch refresh plus the one-time
-// random-weight initialization. For incremental-vs-scratch timings see the
-// nnue_speed example.
-//
-// Usage: cargo run --release --example toggle_nnue
-//    or: TAIKYOKU_NNUE_PATH=/path/to/trained.nnue cargo run --release --example toggle_nnue
+//! Shows the evaluator selection: the hand-crafted evaluator by default, an
+//! NNUE network once one is attached to the board — per board, no globals.
+//!
+//! Usage: cargo run --release --example toggle_nnue -- [path/to/net.tkn]
+//! Without a path a deterministic random network is used (NOT a playing
+//! network; it only demonstrates the switch).
 
+use std::sync::Arc;
 use std::time::Instant;
-use taikyokushogi::Board;
+use taikyokushogi::{Board, Network};
 
 fn main() {
-    taikyokushogi::set_use_nnue(false);
-    println!("using_nnue() = {}", taikyokushogi::using_nnue());
-    let board = Board::initial();
+    let net = match std::env::args().nth(1) {
+        Some(path) => Network::load(&path).unwrap_or_else(|e| {
+            eprintln!("error: cannot load `{path}`: {e}");
+            std::process::exit(2);
+        }),
+        None => Network::random(1),
+    };
+
+    let mut board = Board::initial();
     let t = Instant::now();
-    let score_handcrafted = board.evaluate();
     println!(
-        "hand-crafted eval: score = {}, took {:?}",
-        score_handcrafted,
+        "hand-crafted eval: {:>8}  ({:?})",
+        board.evaluate(),
         t.elapsed()
     );
 
-    taikyokushogi::set_use_nnue(true);
-    println!("\nusing_nnue() = {}", taikyokushogi::using_nnue());
+    board.set_network(Some(Arc::new(net)));
     let t = Instant::now();
-    let score_nnue = board.evaluate();
     println!(
-        "NNUE eval:          score = {}, took {:?}",
-        score_nnue,
+        "NNUE eval:         {:>8}  ({:?})",
+        board.evaluate(),
         t.elapsed()
     );
 
-    if score_handcrafted != score_nnue {
-        println!("\nOK: the two backends produced different scores, confirming the toggle switches evaluation logic.");
-    } else {
-        println!("\nNOTE: scores matched -- unlikely but not impossible by coincidence with an untrained/random NNUE.");
-    }
-    println!("\nNOTE: the NNUE timing above is for a SINGLE evaluate() call on a");
-    println!("freshly-built board, so it includes one from-scratch accumulator");
-    println!("refresh plus one-time random-weight initialization. After moves are");
-    println!("applied, evaluate() uses the incrementally-maintained accumulator");
-    println!("(see the nnue_speed example for the incremental vs scratch timing).");
+    board.set_network(None);
+    println!("detached again:    {:>8}", board.evaluate());
 }

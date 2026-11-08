@@ -67,9 +67,6 @@ pub struct UndoInfo {
     /// Index into `Board::cap_stack` marking where this move's captured
     /// pieces are popped back to. No heap allocation.
     pub cap_base: usize,
-    /// Snapshot of the NNUE accumulator before the move (only populated
-    /// when the NNUE backend is active). Undo restores it in O(1).
-    pub nnue_acc: Option<crate::eval::nnue::Accumulator>,
     pub no_progress_plies: u32,
     pub hash: u64,
     /// Incremental material score snapshot for fast undo.

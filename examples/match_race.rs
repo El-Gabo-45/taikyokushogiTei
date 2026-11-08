@@ -9,8 +9,8 @@
 //!   cargo run --release --example match_race -- [args]
 //!
 //! Positional args:  games [depthA] [depthB] [time_ms] [opening_plies]
-//! Optional flags:   nnueA        side A uses the NNUE evaluator
-//!                   nnueB        side B uses the NNUE evaluator
+//! Optional flags:   netA=PATH    side A uses this NNUE network (TKN1 file)
+//!                   netB=PATH    side B uses this NNUE network
 //!                   sprt=elo0:elo1   run a GSPRT (alpha=0.05, beta=0.10)
 //!
 //! Examples:
@@ -18,8 +18,10 @@
 //!   cargo run --release --example match_race -- 100 3 2 2000 6
 //!   # SPRT test: is depth 3 >= +10 Elo over depth 2?
 //!   cargo run --release --example match_race -- 400 3 2 2000 6 sprt=0:10
-//!   # handcrafted vs NNUE (needs TAIKYOKU_NNUE_PATH)
-//!   TAIKYOKU_NNUE_PATH=net.nnue cargo run --release --example match_race -- 100 3 3 2000 6 nnueB
+//!   # handcrafted (A) vs NNUE (B)
+//!   cargo run --release --example match_race -- 100 3 3 2000 6 netB=nets/net.tkn
+//!   # two different networks head to head
+//!   cargo run --release --example match_race -- 100 3 3 2000 6 netA=a.tkn netB=b.tkn
 //!
 //! The game results are deterministic (seeded LCG), so a given invocation
 //! is reproducible. For publishable claims use the SPRT mode with standard
@@ -107,7 +109,7 @@ struct Config {
     name: &'static str,
     depth: u32,
     time_ms: u64,
-    nnue: bool,
+    net: Option<std::sync::Arc<taikyokushogi::Network>>,
 }
 
 struct Lcg(u64);
@@ -156,7 +158,7 @@ fn play_game(game: usize, cfg_black: &Config, cfg_white: &Config, opening_plies:
         } else {
             cfg_white
         };
-        taikyokushogi::set_use_nnue(cfg.nnue);
+        board.set_network(cfg.net.clone());
         let r = board.search(cfg.depth, cfg.time_ms);
         match r.best_move {
             Some(m) => board.apply(&m),
@@ -177,8 +179,14 @@ fn play_game(game: usize, cfg_black: &Config, cfg_white: &Config, opening_plies:
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut pos: Vec<u64> = Vec::new();
-    let mut nnue_a = false;
-    let mut nnue_b = false;
+    let mut net_a: Option<std::sync::Arc<taikyokushogi::Network>> = None;
+    let mut net_b: Option<std::sync::Arc<taikyokushogi::Network>> = None;
+    let load = |path: &str| {
+        std::sync::Arc::new(taikyokushogi::Network::load(path).unwrap_or_else(|e| {
+            eprintln!("error: cannot load network `{path}`: {e}");
+            std::process::exit(2);
+        }))
+    };
     let mut sprt: Option<(f64, f64)> = None;
     for a in &args {
         if let Some(rest) = a.strip_prefix("sprt=") {
@@ -189,10 +197,10 @@ fn main() {
                     parts[1].parse().unwrap_or(10.0),
                 ));
             }
-        } else if a.eq_ignore_ascii_case("nnueA") {
-            nnue_a = true;
-        } else if a.eq_ignore_ascii_case("nnueB") {
-            nnue_b = true;
+        } else if let Some(path) = a.strip_prefix("netA=") {
+            net_a = Some(load(path));
+        } else if let Some(path) = a.strip_prefix("netB=") {
+            net_b = Some(load(path));
         } else if let Ok(v) = a.parse::<u64>() {
             pos.push(v);
         } else {
@@ -204,13 +212,13 @@ fn main() {
         name: "A",
         depth: pos.get(1).copied().unwrap_or(3) as u32,
         time_ms: pos.get(3).copied().unwrap_or(2000),
-        nnue: nnue_a,
+        net: net_a,
     };
     let cfg_b = Config {
         name: "B",
         depth: pos.get(2).copied().unwrap_or(2) as u32,
         time_ms: pos.get(3).copied().unwrap_or(2000),
-        nnue: nnue_b,
+        net: net_b,
     };
     let opening_plies = pos.get(4).copied().unwrap_or(6) as usize;
     let (elo0, elo1) = sprt.unwrap_or((0.0, 10.0));
@@ -219,10 +227,10 @@ fn main() {
         "match: {} games | A: d{}{} {}ms | B: d{}{} {}ms | {} opening plies{}",
         games,
         cfg_a.depth,
-        if cfg_a.nnue { "+nnue" } else { "" },
+        if cfg_a.net.is_some() { "+nnue" } else { "" },
         cfg_a.time_ms,
         cfg_b.depth,
-        if cfg_b.nnue { "+nnue" } else { "" },
+        if cfg_b.net.is_some() { "+nnue" } else { "" },
         cfg_b.time_ms,
         opening_plies,
         sprt.map(|(e0, e1)| format!(" | SPRT [{},{}] a=0.05 b=0.10", e0, e1))
@@ -298,11 +306,11 @@ fn main() {
         "{} (d{}{}): {} wins | {} (d{}{}): {} wins | draws {}",
         cfg_a.name,
         cfg_a.depth,
-        if cfg_a.nnue { "+nnue" } else { "" },
+        if cfg_a.net.is_some() { "+nnue" } else { "" },
         stats.w,
         cfg_b.name,
         cfg_b.depth,
-        if cfg_b.nnue { "+nnue" } else { "" },
+        if cfg_b.net.is_some() { "+nnue" } else { "" },
         stats.l,
         stats.d
     );

@@ -109,14 +109,14 @@ impl Wdl {
 // ============================================================
 
 /// One engine side of a match.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone)]
 pub struct EngineConfig {
     /// Search depth in plies.
     pub depth: u32,
     /// Wall-clock time budget per move in ms (0 = unlimited).
     pub time_ms: u64,
-    /// Use the NNUE evaluator instead of the hand-crafted one.
-    pub nnue: bool,
+    /// NNUE network for this side (`None` = hand-crafted evaluator).
+    pub net: Option<std::sync::Arc<crate::Network>>,
     /// Lazy SMP workers for this side (1 = plain single-threaded search).
     /// Raise it on one side only to measure what multithreading is worth in
     /// Elo — the A/B test for the SMP search itself.
@@ -128,7 +128,7 @@ impl EngineConfig {
         EngineConfig {
             depth: d,
             time_ms: 0,
-            nnue: false,
+            net: None,
             threads: search::DEFAULT_THREADS,
         }
     }
@@ -139,7 +139,7 @@ impl Default for EngineConfig {
         EngineConfig {
             depth: 2,
             time_ms: 0,
-            nnue: false,
+            net: None,
             threads: search::DEFAULT_THREADS,
         }
     }
@@ -155,7 +155,7 @@ pub struct GameOutcome {
 }
 
 fn apply_best(board: &mut Board, cfg: &EngineConfig) -> Option<Move> {
-    crate::set_use_nnue(cfg.nnue);
+    board.set_network(cfg.net.clone());
     let r = search::search_threads(board, cfg.depth, cfg.time_ms, cfg.threads);
     r.best_move
 }
@@ -298,9 +298,9 @@ pub fn run_match(cfg: &MatchConfig) -> MatchReport {
     for g in 0..cfg.games {
         let a_was_white = g % 2 == 0;
         let (white, black) = if a_was_white {
-            (cfg.a, cfg.b)
+            (cfg.a.clone(), cfg.b.clone())
         } else {
-            (cfg.b, cfg.a)
+            (cfg.b.clone(), cfg.a.clone())
         };
         let outcome = play_game(&white, &black, cfg.max_plies);
         let (w, d, l) = points_from_a(outcome.result, a_was_white);
@@ -432,9 +432,9 @@ pub fn run_sprt(cfg: &MatchConfig, sprt: &Sprt) -> SprtReport {
     for g in 0..cfg.games {
         let a_was_white = g % 2 == 0;
         let (white, black) = if a_was_white {
-            (cfg.a, cfg.b)
+            (cfg.a.clone(), cfg.b.clone())
         } else {
-            (cfg.b, cfg.a)
+            (cfg.b.clone(), cfg.a.clone())
         };
         let outcome = play_game(&white, &black, cfg.max_plies);
         let (w, d, l) = points_from_a(outcome.result, a_was_white);

@@ -545,7 +545,9 @@ mod tests {
         );
         board.undo();
         assert!(
-            board.apply_by_coord(fr, fc, tr, tc, false, Some(500)).is_err(),
+            board
+                .apply_by_coord(fr, fc, tr, tc, false, Some(500))
+                .is_err(),
             "mid_sq=Some(500) must not match a normal move (mid_sq=NONE)"
         );
         assert_eq!(board.side_to_move(), crate::Color::Black);

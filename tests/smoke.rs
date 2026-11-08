@@ -101,7 +101,7 @@ fn apply_by_coord_legal_move_returns_true() {
     let tr = raw.to_sq as usize / 36;
     let tc = raw.to_sq as usize % 36;
     assert!(
-        board.apply_by_coord(fr, fc, tr, tc, false, None),
+        board.apply_by_coord(fr, fc, tr, tc, false, None).is_ok(),
         "legal move must be accepted"
     );
     assert_eq!(board.side_to_move(), Color::White);
@@ -119,12 +119,14 @@ fn apply_by_coord_mid_sq_rejects_mismatch() {
     let tr = raw.to_sq as usize / 36;
     let tc = raw.to_sq as usize % 36;
     assert!(
-        board.apply_by_coord(fr, fc, tr, tc, false, None),
+        board.apply_by_coord(fr, fc, tr, tc, false, None).is_ok(),
         "mid_sq=None must match a normal move"
     );
     board.undo();
     assert!(
-        board.apply_by_coord(fr, fc, tr, tc, false, Some(500)),
+        board
+            .apply_by_coord(fr, fc, tr, tc, false, Some(500))
+            .is_err(),
         "mid_sq=Some(500) must not match a normal move"
     );
     assert_eq!(board.side_to_move(), Color::Black);

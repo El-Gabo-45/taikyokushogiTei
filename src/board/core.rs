@@ -31,13 +31,11 @@ pub struct Board {
     pub psqt_score: i32,
     // Undo stack
     history: Vec<UndoInfo>,
-    /// Incrementally-maintained NNUE accumulator. `None` unless the NNUE
-    /// evaluation backend is active (`set_use_nnue(true)`); in that case
-    /// apply_move keeps it up to date with O(FT_NEURONS) deltas per piece
-    /// moved/captured, falling back to a full refresh when a royal anchor
-    /// (king_square) changes. Undo restores the pre-move snapshot from
-    /// UndoInfo. Never touched on the default hand-crafted-eval path.
-    pub(crate) nnue_acc: Option<crate::eval::nnue::Accumulator>,
+    /// Optional NNUE network plus its incrementally-maintained accumulator
+    /// (`Board::set_network`). `None` on the hand-crafted-eval path, which
+    /// then pays nothing. apply/undo keep it in sync with O(L1) deltas per
+    /// piece moved or captured and a fixed ring of undo snapshots.
+    pub(crate) nnue: Option<Box<crate::eval::nnue::NnueState>>,
     // Preallocated side stack holding (square, cell) for every piece
     // captured on INTERMEDIATE squares of a range-capture move. apply_move
     // pushes, undo_move pops back to the move's `cap_base`. Never cleared
@@ -67,7 +65,7 @@ impl Clone for Board {
             psqt_score: self.psqt_score,
             history: self.history.clone(),
             cap_stack: self.cap_stack.clone(),
-            nnue_acc: self.nnue_acc.clone(),
+            nnue: self.nnue.clone(),
             occupancy: self.occupancy,
             all_occupancy: self.all_occupancy,
         }
@@ -98,41 +96,65 @@ impl Board {
             psqt_score: self.psqt_score,
             history: Vec::new(),
             cap_stack: Vec::new(),
-            nnue_acc: self.nnue_acc.clone(),
+            nnue: self.nnue.as_ref().map(|st| Box::new(st.without_history())),
             occupancy: self.occupancy,
             all_occupancy: self.all_occupancy,
         }
     }
 }
 
-/// Apply the NNUE accumulator delta for the just-applied move. Falls back
-/// to a full refresh when a royal anchor changed (all HalfKP features
-/// become invalid on an anchor change). No-op when the accumulator is not
-/// being maintained (NNUE backend off).
-fn nnue_apply_delta(
-    board: &mut Board,
-    removed: &[(u16, u16, u8)],
-    added: &[(u16, u16, u8)],
-    old_anchor_black: u16,
-    old_anchor_white: u16,
-) {
-    let mut acc = match board.nnue_acc.take() {
-        Some(a) => a,
-        None => return,
-    };
-    if board.king_square(BLACK) != old_anchor_black || board.king_square(WHITE) != old_anchor_white
-    {
-        acc.refresh(&*board, &crate::eval::nnue::nnue().ft);
-    } else {
-        let ft = &crate::eval::nnue::nnue().ft;
-        for &(sq, pt, color) in removed {
-            acc.remove_piece(&*board, sq as usize, pt, color, ft);
+impl Board {
+    /// Attach (or detach, with `None`) an NNUE network. The accumulator is
+    /// rebuilt from the current position. While a network is attached,
+    /// `evaluate()` uses it instead of the hand-crafted evaluator.
+    pub fn set_network(&mut self, net: Option<std::sync::Arc<crate::eval::nnue::Network>>) {
+        // Already attached (the accumulator is kept in sync by apply/undo).
+        match (&self.nnue, &net) {
+            (None, None) => return,
+            (Some(st), Some(n)) if std::sync::Arc::ptr_eq(&st.net, n) => return,
+            _ => {}
         }
-        for &(sq, pt, color) in added {
-            acc.add_piece(&*board, sq as usize, pt, color, ft);
+        self.nnue = net.map(|n| Box::new(crate::eval::nnue::NnueState::new(n, &*self)));
+    }
+
+    /// Key of the transposition table: the position hash separated by
+    /// evaluator, so entries searched with one network (or with the
+    /// hand-crafted evaluator) are never reused by another. `hash` itself is
+    /// untouched because repetition detection uses it.
+    #[inline]
+    pub fn tt_key(&self) -> u64 {
+        self.hash ^ self.nnue.as_deref().map_or(0, |st| st.net.tt_salt)
+    }
+
+    /// The attached network, if any.
+    pub fn network(&self) -> Option<&std::sync::Arc<crate::eval::nnue::Network>> {
+        self.nnue.as_deref().map(|st| &st.net)
+    }
+
+    /// Rebuild the NNUE accumulator after the cells were changed from outside
+    /// apply/undo (setup, TSFEN decoding, tests). No-op without a network.
+    pub(crate) fn nnue_reset(&mut self) {
+        if let Some(mut st) = self.nnue.take() {
+            st.reset(&*self);
+            self.nnue = Some(st);
         }
     }
-    board.nnue_acc = Some(acc);
+
+    #[inline]
+    fn nnue_sub(&mut self, sq: usize, pt: u16, color: u8) {
+        if let Some(st) = self.nnue.as_deref_mut() {
+            let crate::eval::nnue::NnueState { net, acc, .. } = st;
+            acc.sub(net, pt, color, sq);
+        }
+    }
+
+    #[inline]
+    fn nnue_add(&mut self, sq: usize, pt: u16, color: u8) {
+        if let Some(st) = self.nnue.as_deref_mut() {
+            let crate::eval::nnue::NnueState { net, acc, .. } = st;
+            acc.add(net, pt, color, sq);
+        }
+    }
 }
 
 impl Board {
@@ -153,7 +175,7 @@ impl Board {
             psqt_score: 0,
             history: Vec::new(),
             cap_stack: Vec::with_capacity(256),
-            nnue_acc: None,
+            nnue: None,
             occupancy: [Bitboard1296::new(), Bitboard1296::new()],
             all_occupancy: Bitboard1296::new(),
         }
@@ -175,7 +197,6 @@ impl Board {
         self.psqt_score = 0;
         self.history.clear();
         self.cap_stack.clear();
-        self.nnue_acc = None;
         self.occupancy = [Bitboard1296::new(), Bitboard1296::new()];
         self.all_occupancy = Bitboard1296::new();
 
@@ -201,6 +222,7 @@ impl Board {
                 }
             }
         }
+        self.nnue_reset();
     }
 
     fn place_piece(&mut self, row: usize, col: usize, pt: u16, color: u8) {
@@ -259,21 +281,11 @@ impl Board {
         let c = color as usize;
         let _opp = 1 - c;
 
-        // ── NNUE accumulator maintenance (only when the backend is on) ──
-        // Deltas are consistent with Accumulator::refresh; a royal-anchor
-        // change (king_square) invalidates every HalfKP feature, so the
-        // delta helper falls back to a full refresh in that case.
-        let nnue_on = crate::eval::using_nnue();
-        if nnue_on && self.nnue_acc.is_none() {
-            let mut acc = crate::eval::nnue::Accumulator::new();
-            acc.refresh(&*self, &crate::eval::nnue::nnue().ft);
-            self.nnue_acc = Some(acc);
+        // ── NNUE: remember the accumulator for undo (ring, no allocation) ──
+        let nnue_on = self.nnue.is_some();
+        if let Some(st) = self.nnue.as_deref_mut() {
+            st.push_snapshot();
         }
-        let nnue_undo = if nnue_on { self.nnue_acc.clone() } else { None };
-        let old_anchor_black = self.king_square(BLACK);
-        let old_anchor_white = self.king_square(WHITE);
-        let mut nnue_removed: Vec<(u16, u16, u8)> = Vec::new();
-        let mut nnue_added: Vec<(u16, u16, u8)> = Vec::new();
 
         let mut undo = UndoInfo {
             from_sq: m.from_sq,
@@ -285,7 +297,6 @@ impl Board {
             mid_sq: m.mid_sq,
             mid_cell: EMPTY_CELL,
             cap_base: self.cap_stack.len(),
-            nnue_acc: nnue_undo,
             no_progress_plies: self.no_progress_plies,
             hash: self.hash,
             material_score: self.material_score,
@@ -337,7 +348,7 @@ impl Board {
                     self.cells[sq as usize] = EMPTY_CELL;
                     self.cap_stack.push((sq, cap_cell));
                     if nnue_on {
-                        nnue_removed.push((sq, cell_piece(cap_cell), cell_color(cap_cell)));
+                        self.nnue_sub(sq as usize, cell_piece(cap_cell), cell_color(cap_cell));
                     }
                 }
                 r += dr;
@@ -372,11 +383,7 @@ impl Board {
             self.remove_from_lists(msq);
             self.cells[msq] = EMPTY_CELL;
             if nnue_on && undo.mid_cell != EMPTY_CELL {
-                nnue_removed.push((
-                    m.mid_sq,
-                    cell_piece(undo.mid_cell),
-                    cell_color(undo.mid_cell),
-                ));
+                self.nnue_sub(msq, cell_piece(undo.mid_cell), cell_color(undo.mid_cell));
             }
         }
 
@@ -389,8 +396,8 @@ impl Board {
             if m.promotion {
                 if let Some(promo_pt) = pieces::promotes_to(pt) {
                     if nnue_on {
-                        nnue_removed.push((from as u16, pt, color));
-                        nnue_added.push((from as u16, promo_pt, color));
+                        self.nnue_sub(from, pt, color);
+                        self.nnue_add(from, promo_pt, color);
                     }
                     self.hash ^= zobrist_piece_key(pt, from, color);
                     // Update material score for promotion
@@ -417,13 +424,6 @@ impl Board {
                     self.update_royal_status(from, pt, promo_pt, c);
                 }
             }
-            nnue_apply_delta(
-                self,
-                &nnue_removed,
-                &nnue_added,
-                old_anchor_black,
-                old_anchor_white,
-            );
             self.side_to_move = 1 - self.side_to_move;
             self.hash ^= zobrist_side_key();
             if self.side_to_move == BLACK {
@@ -451,7 +451,7 @@ impl Board {
             self.remove_sq_from_royal_list(from, c);
         }
         if nnue_on {
-            nnue_removed.push((from as u16, pt, color));
+            self.nnue_sub(from, pt, color);
         }
 
         // Capture at destination
@@ -476,7 +476,7 @@ impl Board {
             self.remove_from_lists(to);
             // Bitboard cleanup for captured piece is handled in remove_from_lists
             if nnue_on {
-                nnue_removed.push((to as u16, cap_pt, cap_c));
+                self.nnue_sub(to, cap_pt, cap_c);
             }
         }
 
@@ -506,7 +506,7 @@ impl Board {
             self.psqt_score -= to_psq;
         }
         if nnue_on {
-            nnue_added.push((to as u16, final_pt, color));
+            self.nnue_add(to, final_pt, color);
         }
 
         // Place at destination
@@ -521,14 +521,6 @@ impl Board {
             self.royal_list[c][ri] = to as u16;
             self.royal_count[c] = ri + 1;
         }
-
-        nnue_apply_delta(
-            self,
-            &nnue_removed,
-            &nnue_added,
-            old_anchor_black,
-            old_anchor_white,
-        );
 
         self.side_to_move = 1 - self.side_to_move;
         self.hash ^= zobrist_side_key();
@@ -550,9 +542,13 @@ impl Board {
         self.no_progress_plies = undo.no_progress_plies;
         self.material_score = undo.material_score;
         self.psqt_score = undo.psqt_score;
-        // Restore the pre-move NNUE accumulator snapshot (O(1); a no-op
-        // Option when the NNUE backend is off).
-        self.nnue_acc = undo.nnue_acc;
+        // Restore the pre-move NNUE accumulator (O(1) from the snapshot ring).
+        // If the ring is exhausted (undoing further back than SNAPSHOT_RING
+        // plies) the accumulator is rebuilt from the restored board below.
+        let nnue_refresh = match self.nnue.as_deref_mut() {
+            Some(st) => !st.pop_snapshot(),
+            None => false,
+        };
 
         let from = undo.from_sq as usize;
         let to = undo.to_sq as usize;
@@ -564,6 +560,9 @@ impl Board {
                 self.cells[undo.mid_sq as usize] = undo.mid_cell;
             }
             self.rebuild_lists();
+            if nnue_refresh {
+                self.nnue_reset();
+            }
             return true;
         }
 
@@ -642,11 +641,15 @@ impl Board {
             }
         }
 
+        if nnue_refresh {
+            self.nnue_reset();
+        }
         true
     }
 
     pub fn rebuild_lists_pub(&mut self) {
         self.rebuild_lists();
+        self.nnue_reset();
     }
 
     fn rebuild_lists(&mut self) {
@@ -822,7 +825,6 @@ impl Board {
             mid_sq: INVALID_SQ,
             mid_cell: EMPTY_CELL,
             cap_base: self.cap_stack.len(),
-            nnue_acc: None,
             no_progress_plies: self.no_progress_plies,
             hash: self.hash,
             material_score: self.material_score,

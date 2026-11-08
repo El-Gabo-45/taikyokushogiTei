@@ -56,7 +56,7 @@ impl<'a> Ctx<'a> {
         // Reuse shallow results at leaf nodes: on a 36×36 board the transposition
         // count in quiescence is enormous (captures transpose constantly), so
         // caching here saves whole quiescence subtrees.
-        let q_hash = self.board.hash;
+        let q_hash = self.board.tt_key();
         if qd > 0 {
             if let Some(entry) = self.tt.probe(q_hash) {
                 match entry.flag {

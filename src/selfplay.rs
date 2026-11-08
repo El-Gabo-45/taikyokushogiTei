@@ -19,6 +19,14 @@ pub struct SelfPlayConfig {
     pub output_dir: String,
     pub save_interval: usize,
     pub sqlite_path: Option<String>,
+    /// Random legal moves played at the start of every game (seeded by
+    /// `seed` and the game id) so that the otherwise deterministic engine
+    /// produces different games. Opening positions are not recorded.
+    pub opening_plies: u32,
+    /// Seed of the opening randomisation.
+    pub seed: u64,
+    /// NNUE network used by the searches (`None` = hand-crafted evaluator).
+    pub net: Option<Arc<crate::eval::nnue::Network>>,
 }
 
 impl Default for SelfPlayConfig {
@@ -32,6 +40,9 @@ impl Default for SelfPlayConfig {
             output_dir: "training_data".to_string(),
             save_interval: 100,
             sqlite_path: Some("training_data/games.db".to_string()),
+            opening_plies: 8,
+            seed: 1,
+            net: None,
         }
     }
 }
@@ -43,66 +54,58 @@ fn should_stop_game(move_count: u32, max_moves: u32, terminal: Option<GameResult
     max_moves > 0 && move_count >= max_moves
 }
 
-/// A single training sample: board position + move played + game outcome.
-///
-/// IMPORTANT: the on-disk byte layout must stay byte-for-byte identical to
-/// the old `#[repr(C)]` memory dump (2612 bytes/sample, little-endian — see
-/// `training/dataset.py::SAMPLE_FORMAT`). `TrainingSample::to_bytes` writes
-/// each field explicitly with zeroed padding so the file format is stable
-/// across compilers and platforms, without reading uninitialized padding
-/// bytes (which the old `unsafe` memory dump did — technically UB — and
-/// without depending on host endianness.
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
+/// One training position: the board, the side to move, the search score and
+/// the final outcome of the game.
+#[derive(Clone, Debug)]
 pub struct TrainingSample {
+    /// `(piece_type & 0x1FF) | (color << 9)` per square; 0 = empty.
     pub board: [u16; 1296],
     pub side_to_move: u8,
-    pub move_from: u16,
-    pub move_to: u16,
-    pub move_promo: u8,
+    /// Game outcome from the side to move's point of view: -1, 0 or +1.
     pub result: i8,
-    pub policy_target: u16,
-    pub value_target: f32,
-    pub move_number: u16,
+    /// Score of the search that chose the move, side to move's point of view,
+    /// in the engine's internal units (pawn = 500).
+    pub score: i32,
+    /// Hand-crafted evaluation of the same position (side to move, internal
+    /// units). Used by `training/check_label_units.py` to catch label-scale
+    /// mistakes before training.
+    pub classic_eval: i32,
+    /// Ply number within the game (0 = initial position).
+    pub ply: u16,
 }
 
-/// Byte size of one serialized sample. Must match
-/// `training/dataset.py::SAMPLE_SIZE` (2612).
-pub const TRAINING_SAMPLE_SIZE: usize = 2612;
+/// File header of the training-sample format "TKD1": magic, u16 version, u16 reserved.
+pub const SAMPLE_FILE_HEADER: [u8; 8] = *b"TKD1\x01\x00\x00\x00";
 
 impl TrainingSample {
-    /// Serialize to the exact legacy `repr(C)` little-endian layout:
-    /// `board[1296]u16 | u8 side | pad | u16 from | u16 to | u8 promo |
-    /// i8 result | u16 policy | pad*2 | f32 value | u16 moveno | pad*2`.
-    pub fn to_bytes(&self) -> [u8; TRAINING_SAMPLE_SIZE] {
-        let mut out = [0u8; TRAINING_SAMPLE_SIZE];
-        let mut o = 0;
-        for v in &self.board {
-            out[o..o + 2].copy_from_slice(&v.to_le_bytes());
-            o += 2;
+    /// Append the sparse little-endian record to `out`:
+    /// `u8 stm | i8 result | i32 score | i32 classic_eval | u16 ply | u16 n | n * (u16 sq, u16 piece|color<<9)`.
+    pub fn encode_into(&self, out: &mut Vec<u8>) {
+        let n = self.board.iter().filter(|&&c| c != 0).count() as u16;
+        out.push(self.side_to_move);
+        out.push(self.result as u8);
+        out.extend_from_slice(&self.score.to_le_bytes());
+        out.extend_from_slice(&self.classic_eval.to_le_bytes());
+        out.extend_from_slice(&self.ply.to_le_bytes());
+        out.extend_from_slice(&n.to_le_bytes());
+        for (sq, &c) in self.board.iter().enumerate() {
+            if c != 0 {
+                out.extend_from_slice(&(sq as u16).to_le_bytes());
+                out.extend_from_slice(&c.to_le_bytes());
+            }
         }
-        debug_assert_eq!(o, 2592);
-        out[o] = self.side_to_move;
-        o += 1;
-        o += 1; // padding at 2593
-        out[o..o + 2].copy_from_slice(&self.move_from.to_le_bytes());
-        o += 2;
-        out[o..o + 2].copy_from_slice(&self.move_to.to_le_bytes());
-        o += 2;
-        out[o] = self.move_promo;
-        o += 1;
-        out[o] = self.result as u8;
-        o += 1;
-        out[o..o + 2].copy_from_slice(&self.policy_target.to_le_bytes());
-        o += 2;
-        o += 2; // padding at 2602-2603
-        out[o..o + 4].copy_from_slice(&self.value_target.to_le_bytes());
-        o += 4;
-        out[o..o + 2].copy_from_slice(&self.move_number.to_le_bytes());
-        o += 2;
-        // trailing padding at 2610-2611 stays zeroed
-        debug_assert_eq!(o, 2610);
-        out
+    }
+}
+
+/// Tiny deterministic generator for the opening randomisation.
+struct SplitMix(u64);
+impl SplitMix {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
     }
 }
 
@@ -162,6 +165,14 @@ impl SelfPlayStats {
     }
 }
 
+/// Hand-crafted evaluation of `board` even when a network is attached.
+fn classic_eval(board: &mut Board) -> i32 {
+    let saved = board.nnue.take();
+    let e = crate::eval::evaluate(board);
+    board.nnue = saved;
+    e
+}
+
 struct SelfPlayWorker {
     id: usize,
     config: SelfPlayConfig,
@@ -174,6 +185,8 @@ impl SelfPlayWorker {
     fn play_one_game(&mut self, game_id: u64) -> (Vec<TrainingSample>, GameRecord) {
         let mut board = Board::new();
         board.setup_initial();
+        board.set_network(self.config.net.clone());
+        let mut rng = SplitMix(self.config.seed ^ game_id.wrapping_mul(0xD1B5_4A32_D192_ED03));
         let start = std::time::Instant::now();
 
         let mut move_count = 0u32;
@@ -193,16 +206,31 @@ impl SelfPlayWorker {
                 break;
             }
 
-            let search_result = search(&mut board, self.config.depth, self.config.time_limit_ms);
-            let best_move = match search_result.best_move {
-                Some(m) => m,
-                None => {
+            // Random opening: not searched, not recorded as training data.
+            let in_opening = move_count < self.config.opening_plies;
+            let (best_move, score, nodes, time_ms) = if in_opening {
+                let legal = crate::movegen::generate_legal_moves(&board);
+                if legal.is_empty() {
                     result_val = if board.side_to_move == BLACK {
                         -1i8
                     } else {
                         1i8
                     };
                     break;
+                }
+                (legal[(rng.next() % legal.len() as u64) as usize], 0, 0, 0)
+            } else {
+                let r = search(&mut board, self.config.depth, self.config.time_limit_ms);
+                match r.best_move {
+                    Some(m) => (m, r.score, r.nodes, r.time_ms),
+                    None => {
+                        result_val = if board.side_to_move == BLACK {
+                            -1i8
+                        } else {
+                            1i8
+                        };
+                        break;
+                    }
                 }
             };
 
@@ -221,53 +249,33 @@ impl SelfPlayWorker {
                 white_pieces,
             });
 
-            let mut sample = TrainingSample {
-                board: [0; 1296],
-                side_to_move: side,
-                move_from: best_move.from_sq,
-                move_to: best_move.to_sq,
-                move_promo: best_move.promotion as u8,
-                result: 0,
-                policy_target: 0,
-                value_target: 0.0,
-                move_number: board.move_number as u16,
-            };
-            for sq in 0..1296 {
-                let cell = board.cells[sq];
-                if cell != EMPTY_CELL {
-                    // NOTE: piece_type can be up to 301 (9 bits), so it must
-                    // NOT be OR'd directly with (color << 8) -- that would
-                    // clobber bit 8 of piece_type for any piece_type >= 256
-                    // (there are ~45 such piece types in the full Taikyoku
-                    // Shogi piece set). Color now goes in bit 9 instead, and
-                    // piece_type is masked to 9 bits defensively even though
-                    // it should never exceed that range.
-                    sample.board[sq] =
-                        (cell_piece(cell) & 0x1FF) | ((cell_color(cell) as u16) << 9);
+            if !in_opening {
+                let mut sample = TrainingSample {
+                    board: [0; 1296],
+                    side_to_move: side,
+                    result: 0,
+                    score,
+                    classic_eval: classic_eval(&mut board),
+                    ply: move_count as u16,
+                };
+                for sq in 0..1296 {
+                    let cell = board.cells[sq];
+                    if cell != EMPTY_CELL {
+                        // Color goes in bit 9: piece types go up to 301 (9 bits).
+                        sample.board[sq] =
+                            (cell_piece(cell) & 0x1FF) | ((cell_color(cell) as u16) << 9);
+                    }
                 }
+                game_samples.push(sample);
             }
-            // Use pseudo-legal moves for policy target (much faster than generate_legal_moves)
-            let pseudo_moves = crate::movegen::generate_pseudo_legal_moves(&board);
-            for (idx, m) in pseudo_moves.iter().enumerate() {
-                if m.from_sq == best_move.from_sq
-                    && m.to_sq == best_move.to_sq
-                    && m.promotion == best_move.promotion
-                {
-                    sample.policy_target = idx as u16;
-                    break;
-                }
-            }
-            game_samples.push(sample);
 
             board.apply_move(&best_move);
             move_count += 1;
             self.stats.total_moves.fetch_add(1, Ordering::Relaxed);
-            self.stats
-                .total_nodes
-                .fetch_add(search_result.nodes, Ordering::Relaxed);
+            self.stats.total_nodes.fetch_add(nodes, Ordering::Relaxed);
             self.stats
                 .total_time_ms
-                .fetch_add(search_result.time_ms, Ordering::Relaxed);
+                .fetch_add(time_ms, Ordering::Relaxed);
         }
 
         for s in &mut game_samples {
@@ -276,7 +284,6 @@ impl SelfPlayWorker {
             } else {
                 -(result_val as f32)
             };
-            s.value_target = from_perspective;
             s.result = from_perspective as i8;
         }
 
@@ -391,9 +398,9 @@ impl SelfPlayCoordinator {
             buffer.push(sample);
             if buffer.len() >= save_interval {
                 let filename = format!("{}/samples_{:06}.bin", output_dir, file_count);
-                let mut data = Vec::with_capacity(buffer.len() * TRAINING_SAMPLE_SIZE);
+                let mut data = SAMPLE_FILE_HEADER.to_vec();
                 for s in &buffer {
-                    data.extend_from_slice(&s.to_bytes());
+                    s.encode_into(&mut data);
                 }
                 std::fs::write(&filename, &data).expect("failed to write training samples");
                 total_saved += buffer.len() as u64;
@@ -413,9 +420,9 @@ impl SelfPlayCoordinator {
         }
         if !buffer.is_empty() {
             let filename = format!("{}/samples_{:06}.bin", output_dir, file_count);
-            let mut data = Vec::with_capacity(buffer.len() * TRAINING_SAMPLE_SIZE);
+            let mut data = SAMPLE_FILE_HEADER.to_vec();
             for s in &buffer {
-                data.extend_from_slice(&s.to_bytes());
+                s.encode_into(&mut data);
             }
             std::fs::write(&filename, &data).expect("failed to write training samples");
             total_saved += buffer.len() as u64;

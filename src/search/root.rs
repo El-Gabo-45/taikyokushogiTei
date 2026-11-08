@@ -167,7 +167,7 @@ pub(crate) fn search_root_window(
     // every depth runs the real alpha-beta root below.
     let mut best_move = None;
     let mut best_score = -MATE_SCORE - 1;
-    let root_tt_move = tt.probe(board.hash).map(|e| e.best_move).unwrap_or(0);
+    let root_tt_move = tt.probe(board.tt_key()).map(|e| e.best_move).unwrap_or(0);
 
     // A depth-2 preliminary search warms the TT and gives the ordering a
     // cheap head start before the real iteration.

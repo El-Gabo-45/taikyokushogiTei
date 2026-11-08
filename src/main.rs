@@ -577,7 +577,10 @@ async fn post_ai_move(
     };
 
     // Apply the move using apply_by_coord
-    match state.board.apply_by_coord(fr, fc, tr, tc, promotion, mid_sq) {
+    match state
+        .board
+        .apply_by_coord(fr, fc, tr, tc, promotion, mid_sq)
+    {
         Ok(()) => {}
         Err(MoveError::OutOfBounds) => {
             return Json(MoveResponse {

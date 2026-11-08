@@ -1,57 +1,52 @@
-//! Micro-benchmark: NNUE evaluate() from-scratch refresh vs incrementally
-//! maintained accumulator, on the same midgame position.
+//! Micro-benchmark of the NNUE evaluator on a midgame position:
+//! incremental `evaluate()`, full accumulator refresh, and the cost NNUE adds
+//! to `apply` + `undo`.
 //!
-//! Run with: cargo run --release --example nnue_speed
-use taikyokushogi::{set_use_nnue, Board};
+//! Run with: cargo run --release --example nnue_speed -- [path/to/net.tkn]
+//! (the `nnue bench` tool prints the same numbers).
+
+use std::sync::Arc;
+use std::time::Instant;
+use taikyokushogi::{Board, Network};
 
 fn main() {
-    set_use_nnue(true);
+    let net = Arc::new(match std::env::args().nth(1) {
+        Some(path) => Network::load(&path).unwrap_or_else(|e| {
+            eprintln!("error: cannot load `{path}`: {e}");
+            std::process::exit(2);
+        }),
+        None => Network::random(1),
+    });
+
+    // Midgame position: 12 plies of depth-2 search.
     let mut board = Board::initial();
-    // Build a midgame position (12 plies of depth-2 search, like stress_undo).
     for _ in 0..12 {
-        let r = board.search(2, 0);
-        match r.best_move {
+        match board.search(2, 0).best_move {
             Some(m) => board.apply(&m),
             None => break,
         }
     }
-    let tsfen = board.to_tsfen(); // same position, but fresh boards have no accumulator
+    board.set_network(Some(net.clone()));
 
-    // Warm-up (also initializes the global net).
-    let _ = board.evaluate();
-
-    // Incremental path: accumulator is already maintained by the applies.
-    let iters = 50;
-    let t0 = std::time::Instant::now();
+    let iters = 20_000u32;
+    let t = Instant::now();
+    let mut sink = 0i64;
     for _ in 0..iters {
-        let _ = board.evaluate();
+        sink += board.evaluate() as i64;
     }
-    let inc = t0.elapsed() / iters as u32;
+    let inc = t.elapsed() / iters;
 
-    // From-scratch path: a board parsed from TSFen has nnue_acc = None, so
-    // evaluate() must do the full O(pieces x FT_NEURONS) refresh. Re-parse
-    // per iteration (cheap relative to the refresh) to reset the state.
-    let mut scr = std::time::Duration::ZERO;
-    let mut n_ok = 0;
-    for _ in 0..10 {
-        if let Ok(b) = Board::from_tsfen(&tsfen) {
-            let t0 = std::time::Instant::now();
-            let _ = b.evaluate();
-            scr += t0.elapsed();
-            n_ok += 1;
-        }
+    let refreshes = 200u32;
+    let t = Instant::now();
+    for _ in 0..refreshes {
+        board.set_network(None);
+        board.set_network(Some(net.clone()));
     }
-    if n_ok > 0 {
-        scr /= n_ok as u32;
-    }
+    let full = t.elapsed() / refreshes;
 
-    println!("NNUE evaluate()  incremental : {:>10.3?}", inc);
-    println!("NNUE evaluate()  from-scratch: {:>10.3?}", scr);
-    if inc.as_micros() > 0 {
-        println!(
-            "speedup: {:>8.1}x",
-            scr.as_nanos() as f64 / inc.as_nanos() as f64
-        );
+    println!("evaluate()  incremental : {:>10.3?}", inc);
+    println!("full refresh            : {:>10.3?}", full);
+    if sink == i64::MIN {
+        println!();
     }
-    set_use_nnue(false);
 }

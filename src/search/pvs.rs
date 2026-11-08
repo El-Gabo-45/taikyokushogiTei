@@ -207,7 +207,7 @@ impl<'a> Ctx<'a> {
         }
 
         // ── TT PROBE ──────────────────────────────────────────────
-        let hash = self.board.hash;
+        let hash = self.board.tt_key();
         let tt_move = if self.cfg.transposition_table {
             self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0)
         } else {
@@ -597,7 +597,7 @@ impl<'a> Ctx<'a> {
         // probes on positions the tree reaches repeatedly via transpositions.
         if searched {
             self.tt.store(
-                self.board.hash,
+                self.board.tt_key(),
                 tt::TTEntry {
                     score: alpha,
                     depth: d.min(120) as i8,
