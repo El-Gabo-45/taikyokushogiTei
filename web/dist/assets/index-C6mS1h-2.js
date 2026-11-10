@@ -533,6 +533,42 @@ function errorText(err) {
 	return String(err);
 }
 //#endregion
+//#region src/game/export.ts
+/** Marker that identifies a file written by the web GUI. */
+var GAME_FILE_FORMAT = "taikyokushogi-game";
+/** Build the JSON-serialisable game record from a board snapshot. */
+function buildGameFile(board, options = {}) {
+	const exportedAt = options.exportedAt ?? /* @__PURE__ */ new Date();
+	const engine = options.engine;
+	return {
+		format: GAME_FILE_FORMAT,
+		version: 1,
+		exported_at: exportedAt.toISOString(),
+		app: "taikyokushogi-web",
+		engine: engine ? {
+			name: engine.name,
+			version: engine.version
+		} : null,
+		tsfen: board.tsfen,
+		moves: [...board.move_log],
+		side: board.side_to_move === 0 ? "b" : "w",
+		move_number: board.move_number,
+		result: board.game_result,
+		black_pieces: board.black_pieces,
+		white_pieces: board.white_pieces,
+		no_progress_plies: board.no_progress_plies
+	};
+}
+/** Pretty-print a game record with a trailing newline (text-file friendly). */
+function serializeGameFile(file) {
+	return `${JSON.stringify(file, null, 2)}\n`;
+}
+/** Timestamped download name, e.g. `taikyoku-game-20261110-153012-move-42.json`. */
+function gameFileName(when, moveNumber) {
+	const pad = (value, width = 2) => String(value).padStart(width, "0");
+	return `taikyoku-game-${`${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}-${pad(when.getHours())}${pad(when.getMinutes())}${pad(when.getSeconds())}`}-move-${moveNumber}.json`;
+}
+//#endregion
 //#region src/data/kanji.ts
 /**
 * Kanji symbols for all Taikyoku Shogi piece types.
@@ -1362,6 +1398,27 @@ $("btn-download").addEventListener("click", () => {
 	link.click();
 	URL.revokeObjectURL(url);
 	state.announce("TSFEN downloaded", "success");
+});
+$("btn-export-game").addEventListener("click", () => {
+	const board = state.board;
+	if (!board) {
+		state.announce("No game to export yet", "error");
+		return;
+	}
+	const now = /* @__PURE__ */ new Date();
+	const file = buildGameFile(board, {
+		exportedAt: now,
+		engine: state.engineInfo
+	});
+	const blob = new Blob([serializeGameFile(file)], { type: "application/json" });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = gameFileName(now, board.move_number);
+	link.click();
+	URL.revokeObjectURL(url);
+	const plies = board.move_log.length;
+	state.announce(`Game exported (${plies} ${plies === 1 ? "ply" : "plies"})`, "success");
 });
 document.addEventListener("keydown", (event) => {
 	const target = event.target;

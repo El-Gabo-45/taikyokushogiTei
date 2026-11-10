@@ -10,6 +10,7 @@
  */
 
 import { GameState, type Mode } from './game/state';
+import { buildGameFile, gameFileName, serializeGameFile } from './game/export';
 import { Controller } from './ui/controller';
 import { updatePanels } from './ui/panel';
 import { MAX_ZOOM, MIN_ZOOM } from './game/view';
@@ -116,6 +117,29 @@ $('btn-download').addEventListener('click', () => {
   link.click();
   URL.revokeObjectURL(url);
   state.announce('TSFEN downloaded', 'success');
+});
+
+// ── Game export ───────────────────────────────────────────────────
+
+$('btn-export-game').addEventListener('click', () => {
+  const board = state.board;
+  if (!board) {
+    state.announce('No game to export yet', 'error');
+    return;
+  }
+
+  const now = new Date();
+  const file = buildGameFile(board, { exportedAt: now, engine: state.engineInfo });
+  const blob = new Blob([serializeGameFile(file)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = gameFileName(now, board.move_number);
+  link.click();
+  URL.revokeObjectURL(url);
+
+  const plies = board.move_log.length;
+  state.announce(`Game exported (${plies} ${plies === 1 ? 'ply' : 'plies'})`, 'success');
 });
 
 // ── Keyboard shortcuts ────────────────────────────────────────────

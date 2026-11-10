@@ -277,6 +277,9 @@ cd web && npm install && npm run build && cd ..
 - **Analysis mode** (`Analyze`): run a search without moving, then inspect
   the best move and score
 - **Material balance chart** with the full score history
+- **Game export**: download the played game as a timestamped JSON file with
+  the CLI-compatible `tsfen`, `moves`, `side` and `move_number` fields (plus
+  result/metadata); load it in the CLI with `load <file.json>`
 - **TSFEN panel**: export, copy, download and load positions
 - **Flip board**, **zoom slider**, kanji/English glyphs, last-move and hover
   highlights, responsive layout, keyboard shortcuts (N/U/A/K/F/±/Space)
