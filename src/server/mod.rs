@@ -349,8 +349,9 @@ async fn serve_frontend() -> impl IntoResponse {
 // ============================================================
 
 /// Start the HTTP server. Bind address defaults to `127.0.0.1:8000` and can
-/// be overridden with `TAIKYOKU_BIND`. Set `TAIKYOKU_NET` to a `.tkn` file to
-/// evaluate with NNUE, or to `none` for the hand-crafted evaluator.
+/// be overridden with `TAIKYOKU_BIND`. Set `TAIKYOKU_NET` to a `.tkn` or
+/// zstd-compressed `.tkn.zst` file to evaluate with NNUE, or to `none` for the
+/// hand-crafted evaluator.
 pub async fn run() {
     let net = match std::env::var("TAIKYOKU_NET")
         .ok()

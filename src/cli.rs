@@ -1127,7 +1127,7 @@ struct CliArgs {
     movetime: Option<u64>,
     threads: Option<usize>,
     hash_mb: Option<usize>,
-    /// NNUE network file (`--net PATH`).
+    /// NNUE network file (`--net PATH`), raw `.tkn` or zstd-compressed `.tkn.zst`.
     net: Option<String>,
     position: Option<String>,
     /// Print version and exit
@@ -1170,6 +1170,7 @@ OPTIONS:
     -t, --movetime <MS>    time budget per move in ms (0 = none)
     -j, --threads <N>      Lazy SMP workers, 1..=64 (default 1)
         --hash <MiB>       transposition table size in MiB
+        --net <FILE>       NNUE network (raw .tkn or zstd-compressed .tkn.zst)
     -p, --position <TSFEN> start from this position (`startpos` = initial board;
                            quote a TSFEN so it arrives as one argument)
         --go               run one search, print `bestmove ...`, exit

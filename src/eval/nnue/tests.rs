@@ -1,5 +1,5 @@
 use super::*;
-use crate::eval::nnue::format::{MAGIC, VERSION};
+use crate::eval::nnue::format::{MAGIC, VERSION, ZSTD_MAGIC};
 use crate::Board as PubBoard;
 
 fn net() -> Arc<Network> {
@@ -106,6 +106,55 @@ fn file_roundtrip_is_exact() {
     let bytes = n.to_bytes();
     let back = Network::from_bytes(&bytes).expect("roundtrip");
     assert_eq!(back.to_bytes(), bytes);
+}
+
+#[test]
+fn zstd_compressed_network_loads_transparently() {
+    let n = Network::random(5);
+    let raw = n.to_bytes();
+    let compressed = zstd::stream::encode_all(&raw[..], 3).expect("zstd encode");
+    assert!(compressed.starts_with(&ZSTD_MAGIC));
+
+    let back = Network::from_bytes(&compressed).expect("load zstd-compressed network");
+    assert_eq!(back.to_bytes(), raw);
+}
+
+#[test]
+fn zstd_compressed_network_file_loads_through_load() {
+    let n = Network::random(6);
+    let raw = n.to_bytes();
+    let compressed = zstd::stream::encode_all(&raw[..], 3).expect("zstd encode");
+    let path = std::env::temp_dir().join(format!(
+        "taikyokushogi-net-{}-{}.tkn.zst",
+        std::process::id(),
+        line!()
+    ));
+    std::fs::write(&path, compressed).expect("write temp network");
+
+    let loaded = Network::load(&path);
+    let _ = std::fs::remove_file(&path);
+    let back = loaded.expect("load compressed file");
+    assert_eq!(back.to_bytes(), raw);
+}
+
+#[test]
+fn zstd_loader_rejects_corrupt_frames() {
+    let mut bad = ZSTD_MAGIC.to_vec();
+    bad.extend_from_slice(&[0u8; 16]);
+    assert!(matches!(
+        Network::from_bytes(&bad),
+        Err(NnueError::Decompression(_))
+    ));
+}
+
+#[test]
+fn zstd_loader_still_validates_tkn1() {
+    let not_a_network =
+        zstd::stream::encode_all(&b"not a TKN1 network"[..], 3).expect("zstd encode");
+    assert!(matches!(
+        Network::from_bytes(&not_a_network),
+        Err(NnueError::BadMagic)
+    ));
 }
 
 #[test]

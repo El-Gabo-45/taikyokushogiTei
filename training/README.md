@@ -271,7 +271,9 @@ The previous HalfKP-style pipeline (`.nnue` files, `FT_BUCKETS` hashing,
 `TAIKYOKU_NNUE_PATH`, `set_use_nnue()`) has been removed. It is **not**
 compatible with the current code:
 
-- Networks are `.tkn` (TKN1 v2), not `.nnue`.
+- Networks are `.tkn` (TKN1 v2), not `.nnue`. The Rust loaders (`Network::load`,
+  CLI, server and `nnue` tool) also accept a zstd-compressed `.tkn.zst`
+  transparently; `training/tkn.py` and `export.py` still read/write raw TKN1.
 - The evaluator is attached per board with `Board::set_network`, not through a
   global switch or environment variable.
 - Old training samples and checkpoints cannot be reused; regenerate `TKD1`

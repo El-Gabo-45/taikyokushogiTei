@@ -12,6 +12,11 @@
 //! ```
 //!
 //! Matrices are stored `[input][output]` (row-major), per output bucket.
+//!
+//! `Network::load`/`from_bytes` also accept the same TKN1 image inside a zstd
+//! frame (`.tkn.zst`): the frame is decompressed in memory and then goes
+//! through this exact parser. Compression is a distribution container, not a
+//! different network format or version.
 
 use std::fmt;
 
@@ -19,11 +24,15 @@ use super::arch::{ArchSpec, NUM_THRESHOLDS};
 use super::{Network, H1, H2, L1, MAX_BOARD_PIECES, NSQ, OUT_BUCKETS};
 
 pub const MAGIC: &[u8; 4] = b"TKN1";
+/// zstd frame magic (`0xFD2FB528` little-endian).
+pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 pub const VERSION: u16 = 2;
 
 #[derive(Debug)]
 pub enum NnueError {
     Io(std::io::Error),
+    /// A zstd-compressed network could not be decompressed.
+    Decompression(std::io::Error),
     BadMagic,
     UnsupportedVersion(u16),
     /// The file was produced for a different architecture (class map,
@@ -39,6 +48,9 @@ impl fmt::Display for NnueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             NnueError::Io(e) => write!(f, "I/O error: {e}"),
+            NnueError::Decompression(e) => {
+                write!(f, "cannot decompress zstd-compressed network: {e}")
+            }
             NnueError::BadMagic => write!(f, "not a TKN1 network file (bad magic)"),
             NnueError::UnsupportedVersion(v) => {
                 write!(
@@ -109,8 +121,22 @@ fn mismatch<T>(what: impl Into<String>) -> Result<T, NnueError> {
 }
 
 impl Network {
-    /// Parse and validate a TKN1 v2 image against `arch`.
+    /// Parse a network image against `arch`.
+    ///
+    /// Raw TKN1 v2 and zstd-compressed TKN1 (`.tkn.zst`) are accepted. The
+    /// zstd frame is decompressed in memory first, then validated by the same
+    /// TKN1 parser. The canonical format remains raw TKN1; compression is only
+    /// a distribution/transport container.
     pub fn from_bytes_with_arch(bytes: &[u8], arch: &ArchSpec) -> Result<Network, NnueError> {
+        if bytes.starts_with(&ZSTD_MAGIC) {
+            let decoded = zstd::stream::decode_all(bytes).map_err(NnueError::Decompression)?;
+            return Self::from_tkn1_bytes_with_arch(&decoded, arch);
+        }
+        Self::from_tkn1_bytes_with_arch(bytes, arch)
+    }
+
+    /// Parse and validate a raw TKN1 v2 image against `arch`.
+    fn from_tkn1_bytes_with_arch(bytes: &[u8], arch: &ArchSpec) -> Result<Network, NnueError> {
         let mut r = Reader { buf: bytes, pos: 0 };
         if r.take(4)? != MAGIC {
             return Err(NnueError::BadMagic);
@@ -217,13 +243,20 @@ impl Network {
         })
     }
 
-    /// Parse a TKN1 v2 image against the architecture compiled into this build.
+    /// Parse a network image against the architecture compiled into this build.
+    ///
+    /// Accepts raw TKN1 v2 and zstd-compressed TKN1 (`.tkn.zst`).
     pub fn from_bytes(bytes: &[u8]) -> Result<Network, NnueError> {
         Network::from_bytes_with_arch(bytes, ArchSpec::embedded())
     }
 
-    /// Load a network file. Never falls back to random weights: any problem
-    /// is reported as an error.
+    /// Load a network file.
+    ///
+    /// Accepts a raw `.tkn` file or a zstd-compressed `.tkn.zst` file. The
+    /// format is detected from the file contents (magic bytes), not from the
+    /// extension, so renaming either file does not change how it is decoded.
+    /// Never falls back to random weights: any problem is reported as an
+    /// error.
     pub fn load(path: impl AsRef<std::path::Path>) -> Result<Network, NnueError> {
         Network::from_bytes(&std::fs::read(path)?)
     }
@@ -268,6 +301,10 @@ impl Network {
         o
     }
 
+    /// Write the raw TKN1 v2 layout.
+    ///
+    /// The output is never compressed; compress it externally (for example
+    /// with `zstd`) if a smaller distribution asset is wanted.
     pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), NnueError> {
         std::fs::write(path, self.to_bytes())?;
         Ok(())

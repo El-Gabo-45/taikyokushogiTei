@@ -13,8 +13,11 @@
 //!                                           output bucket is exercised)
 //! nnue bench [<net>]                        evals/s, apply+undo overhead
 //! ```
+//!
+//! A `<net>` argument can be a raw `.tkn` or a zstd-compressed `.tkn.zst`;
+//! `Network::load` detects the format from the file contents.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -22,6 +25,7 @@ use taikyokushogi::nnue::{
     arch::ArchSpec,
     classes,
     dump::{dump_position, thinned},
+    format::ZSTD_MAGIC,
 };
 use taikyokushogi::{Board, Network};
 
@@ -133,9 +137,19 @@ fn hex(b: &[u8]) -> String {
 
 fn cmd_info(path: &str) {
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let compressed = std::fs::File::open(path)
+        .and_then(|mut f| {
+            let mut magic = [0u8; 4];
+            f.read_exact(&mut magic)?;
+            Ok(magic == ZSTD_MAGIC)
+        })
+        .unwrap_or(false);
     let net = load(path);
     println!("file        {path} ({:.1} MB)", size as f64 / 1e6);
-    println!("format      TKN1 v2");
+    println!(
+        "format      TKN1 v2{}",
+        if compressed { " (zstd-compressed)" } else { "" }
+    );
     println!("arch hash   {}", hex(net.arch_hash()));
     println!(
         "classes     {} (planes {}, features {})",

@@ -16,7 +16,7 @@ here is checked by tests; if code and this document disagree, that is a bug.
 use std::sync::Arc;
 use taikyokushogi::{Board, Network};
 
-let net = Arc::new(Network::load("nets/tk.tkn")?);   // Err on any problem; never random weights
+let net = Arc::new(Network::load("nets/tk.tkn")?);   // raw .tkn or .tkn.zst; Err on any problem
 let mut board = Board::initial();
 board.set_network(Some(net));                         // evaluate()/search() now use it
 let result = board.search(4, 0);
@@ -31,7 +31,7 @@ Python (build with `--features python`):
 
 ```python
 import taikyokushogi as t
-net = t.PyNetwork.load("nets/tk.tkn")      # ValueError with the reason on any problem
+net = t.PyNetwork.load("nets/tk.tkn")      # raw .tkn or .tkn.zst; ValueError on any problem
 board = t.PyBoard(); board.setup_initial()
 board.set_network(net)                     # board.set_network(None) detaches
 board.search_py(3, 0)
@@ -43,7 +43,8 @@ never mixed, which matters when two evaluators alternate in one process
 (`match_race`).
 
 CLI: `taikyokushogi-cli --net nets/tk.tkn …` or `setoption net <path|none>`.
-Self-play: `selfplay … --net nets/tk.tkn`. Head to head:
+`--net`/`setoption net` also accept a zstd-compressed `.tkn.zst`. Self-play:
+`selfplay … --net nets/tk.tkn`. Head to head:
 `cargo run --release --example match_race -- 200 3 3 2000 6 netA=a.tkn netB=b.tkn sprt=0:10`.
 Web server: `TAIKYOKU_NET=nets/tk.tkn cargo run --release --features server
 --bin taikyokushogi-server` (`none` disables it).
@@ -124,6 +125,10 @@ Little-endian, no padding, nothing after the last field:
 ```
 
 Matrices are `[input][output]`, per bucket. A current network is about 38 MB.
+The canonical file is raw TKN1. `Network::load` also accepts the same image
+inside a zstd frame (`.tkn.zst`): it detects the frame magic, decompresses it
+in memory, and then applies the exact validation below. Compression is only a
+distribution/transport choice, not a different format or version.
 `Network::load` validates magic, version, hash, dimensions, class map,
 thresholds, exact file size, and proves the `i32` accumulators cannot overflow.
 Every failure is a distinct `NnueError` with a clear message; an old or

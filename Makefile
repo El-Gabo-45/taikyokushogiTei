@@ -9,8 +9,9 @@ DATA   ?= data
 NET    ?= nets/tk.tkn
 EPOCHS ?= 10
 PY     ?= python3
+ZSTD   ?= zstd
 
-.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-parity nnue-bench nnue-test
+.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-parity nnue-bench nnue-test
 
 nnue-data:
 	cargo run --release --bin selfplay -- $(GAMES) $(DEPTH) $(MAXMV) $(WORKERS) $(TIMEMS) --out $(DATA) --opening-plies $(OPEN)
@@ -25,6 +26,9 @@ nnue-buckets:
 nnue-train:
 	mkdir -p $(dir $(NET))
 	$(PY) training/train.py $(DATA) --out $(NET) --epochs $(EPOCHS)
+
+nnue-pack:
+	cd $(dir $(NET)) && $(ZSTD) -19 -f $(notdir $(NET)) -o $(notdir $(NET)).zst && sha256sum $(notdir $(NET)).zst > $(notdir $(NET)).zst.sha256
 
 nnue-parity:
 	cargo run --release --bin nnue -- dump-positions --net $(NET) --n 2000 --seed 11 --out /tmp/tk_pos.jsonl

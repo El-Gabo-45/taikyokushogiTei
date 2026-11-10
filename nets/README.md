@@ -1,8 +1,8 @@
 # Networks
 
-Network files (`*.tkn`) are **not tracked in Git**: the experimental one is
-38.1 MB and every clone would pay for it. They are distributed as release
-assets instead.
+Network files (`*.tkn`, and optional zstd-compressed `*.tkn.zst`) are **not
+tracked in Git**: the experimental one is 38.1 MB and every clone would pay
+for it. They are distributed as release assets instead.
 
 ## Getting `experimental-v1.tkn`
 
@@ -34,6 +34,46 @@ TAIKYOKU_NET=nets/experimental-v1.tkn \
 
 The engine panel in the web UI shows `Backend: nnue` when the server loaded
 the file. `TAIKYOKU_NET=none` (or unset) selects the hand-crafted evaluator.
+
+## Compressed release asset (optional)
+
+`Network::load` accepts a zstd-compressed network transparently: `--net`,
+`setoption net`, `TAIKYOKU_NET`, `nnue info` and `nnue verify` all work with
+either `.tkn` or `.tkn.zst`. The engine detects the zstd frame magic,
+decompresses it in memory, and then runs the same TKN1 validation, so
+inference is identical and no manual decompression step is needed.
+
+If download size matters, publish a compressed asset next to the raw file:
+
+```bash
+# from the repository root (recommended; also writes the .sha256)
+make nnue-pack NET=nets/experimental-v1.tkn
+
+# equivalent manual commands:
+zstd -19 nets/experimental-v1.tkn -o nets/experimental-v1.tkn.zst
+sha256sum nets/experimental-v1.tkn.zst > nets/experimental-v1.tkn.zst.sha256
+```
+
+The measured size is 38.1 MB raw → 10.2 MB with `zstd -19`. Upload the
+`.tkn.zst` and its `.sha256` (for example with
+`gh release upload <release-tag> nets/experimental-v1.tkn.zst nets/experimental-v1.tkn.zst.sha256`);
+users can pass the `.zst` directly. The raw `.tkn` remains the canonical format
+and is still accepted. To download and verify the compressed asset:
+
+```bash
+gh release download <release-tag> --pattern 'experimental-v1.tkn.zst*' --dir nets
+cd nets && sha256sum -c experimental-v1.tkn.zst.sha256
+```
+
+The prepared checksum is:
+
+```text
+1c5357c93c44de9b3e4a0986684d36699e8d08e81f4e01537825c5b47c734928  experimental-v1.tkn.zst
+```
+
+Compression is a distribution choice only: it does not change the network,
+the inference result or the TKN1 version. Do not rename a `.tkn`/`.tkn.zst`
+to `.nnue`; that extension belongs to Stockfish's incompatible format.
 
 ## Why not commit it?
 

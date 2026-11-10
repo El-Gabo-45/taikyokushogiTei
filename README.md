@@ -563,10 +563,12 @@ board.set_network(Some(net));      // evaluate() and search() now use it
 
 The network is a value (`Arc<Network>`), not a global, so different boards
 and match sides can use different networks. Loading never falls back to random
-weights: any problem is an error. CLI: `--net PATH` / `setoption net <path|none>`.
-Web server: `TAIKYOKU_NET=nets/experimental-v1.tkn cargo run --release
---features server --bin taikyokushogi-server` (`TAIKYOKU_NET=none` disables
-it); the GUI engine panel then shows `Backend: nnue`.
+weights: any problem is an error. CLI: `--net PATH` / `setoption net <path|none>`;
+`PATH` may be a raw `.tkn` or a zstd-compressed `.tkn.zst` (detected by
+content, not by extension). Web server: `TAIKYOKU_NET=nets/experimental-v1.tkn
+cargo run --release --features server --bin taikyokushogi-server`
+(`TAIKYOKU_NET=none` disables it); the GUI engine panel then shows
+`Backend: nnue`.
 
 The accumulator is maintained incrementally by `Board::apply_move` with no
 king anchor (no move forces a full refresh) and restored from a fixed ring of

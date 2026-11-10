@@ -16,6 +16,7 @@ target/
 *.pyd
 *.dll
 # NNUE networks are distributed as release assets, not committed to Git
-# (see nets/README.md). Remove this line or use `git add -f` to version one.
+# (see nets/README.md). Remove these lines or use `git add -f` to version one.
 nets/*.tkn
+nets/*.tkn.zst
 training_data/
