@@ -570,6 +570,12 @@ cargo run --release --features server --bin taikyokushogi-server`
 (`TAIKYOKU_NET=none` disables it); the GUI engine panel then shows
 `Backend: nnue`.
 
+The engine source is licensed under GPL-3.0-or-later. The NNUE network files
+and the data they encode are a separate work licensed under the
+[Open Database License (ODbL) 1.0](nets/LICENSE-ODbL.md). See
+[`nets/README.md`](nets/README.md) for the release assets and the attribution
+notice.
+
 The accumulator is maintained incrementally by `Board::apply_move` with no
 king anchor (no move forces a full refresh) and restored from a fixed ring of
 snapshots on undo. Measured on one core in a release build: about 1 µs per
@@ -678,7 +684,12 @@ println!("{}: value={} area={} igui={}",
 
 This was a *fork* of **[taikyokushogi](https://github.com/jh85/taikyokushogi)**, a complete engine for Taikyoku Shogi originally developed by **[jh85](https://github.com/jh85)** due to the differences I decided to make this project independent but I'm really grateful with the creator and recommend take a see I. he's project.
 
-The original base code is released under the [MIT License](LICENSE). We thank the original author for his excellent work on the optimization and logic of the 36×36 board in Rust.
+The original base code was released under the MIT License. The engine source
+in this repository is distributed under the [GNU General Public License v3.0
+or later](LICENSE). The NNUE network files and the data they encode are a
+separate work distributed under the [Open Database License (ODbL)
+1.0](nets/LICENSE-ODbL.md). We thank the original author for his excellent
+work on the optimization and logic of the 36×36 board in Rust.
 
 ## References
 

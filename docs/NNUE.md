@@ -9,6 +9,8 @@ here is checked by tests; if code and this document disagree, that is a bug.
 * Architecture constants (single source of truth): `rules/nnue_arch.json`
 * Tool: `cargo run --release --bin nnue -- <command>`
 * Training: `training/` (PyTorch)
+* Licensing: engine code GPL-3.0-or-later; network files and data ODbL-1.0
+  (see [`nets/LICENSE-ODbL.md`](../nets/LICENSE-ODbL.md))
 
 ## Using a network
 
@@ -212,6 +214,21 @@ make nnue-bench
 | Rust and Python compute the same architecture hash | `training/test_pipeline.py` (`NNUE_BIN=…`) |
 | float model ≈ integer reference after quantisation | `training/test_pipeline.py` |
 | Rust == Python integer reference on thousands of positions | `parity_gate.py` |
+
+## Licensing
+
+The Rust and Python source code that implements, trains and exports the
+evaluator is part of the engine and is licensed under GPL-3.0-or-later (see
+[`LICENSE`](../LICENSE)).
+
+The network files themselves (`.tkn` and `.tkn.zst`) and the data they encode
+are a separate work licensed under the Open Database License (ODbL) 1.0; the
+full text is in [`nets/LICENSE-ODbL.md`](../nets/LICENSE-ODbL.md). Redistributing
+a network or a derivative database requires keeping the ODbL notices and
+complying with its share-alike terms. The attribution notice is:
+
+> Contains information from the Taikyoku Shogi NNUE network database, which is
+> made available here under the Open Database License (ODbL).
 
 ## Current status (read this)
 

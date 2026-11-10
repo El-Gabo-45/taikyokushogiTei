@@ -4,20 +4,22 @@ Network files (`*.tkn`, and optional zstd-compressed `*.tkn.zst`) are **not
 tracked in Git**: the experimental one is 38.1 MB and every clone would pay
 for it. They are distributed as release assets instead.
 
-## Getting `experimental-v1.tkn`
+## Getting the network
 
-Download the asset from a release (replace `<release-tag>` when one is
-published) and verify its checksum:
+The [`nnue-v1`](https://github.com/El-Gabo-45/taikyokushogiTei/releases/tag/nnue-v1)
+release publishes the compressed transport asset `experimental-v1.tkn.zst`
+(10.2 MB). The engine loads it directly; no manual decompression is needed.
+Download it and verify the checksum:
 
 ```bash
-gh release download <release-tag> --pattern experimental-v1.tkn --dir nets
-cd nets && sha256sum -c experimental-v1.tkn.sha256
+gh release download nnue-v1 --pattern 'experimental-v1.tkn.zst*' --dir nets
+cd nets && sha256sum -c experimental-v1.tkn.zst.sha256
 ```
 
 Expected SHA-256:
 
 ```text
-61aa3fa0e4b2ac02b6f45281305c718a5f4a468f4ed69a7e498b355a91697a10  experimental-v1.tkn
+1c5357c93c44de9b3e4a0986684d36699e8d08e81f4e01537825c5b47c734928  experimental-v1.tkn.zst
 ```
 
 Without the file the engine still works with the hand-crafted evaluator. To
@@ -25,17 +27,17 @@ use this network:
 
 ```bash
 # CLI
-./target/release/taikyokushogi-cli --net nets/experimental-v1.tkn
+./target/release/taikyokushogi-cli --net nets/experimental-v1.tkn.zst
 
 # Web server + GUI
-TAIKYOKU_NET=nets/experimental-v1.tkn \
+TAIKYOKU_NET=nets/experimental-v1.tkn.zst \
   cargo run --release --features server --bin taikyokushogi-server
 ```
 
 The engine panel in the web UI shows `Backend: nnue` when the server loaded
 the file. `TAIKYOKU_NET=none` (or unset) selects the hand-crafted evaluator.
 
-## Compressed release asset (optional)
+## Compressed transport asset
 
 `Network::load` accepts a zstd-compressed network transparently: `--net`,
 `setoption net`, `TAIKYOKU_NET`, `nnue info` and `nnue verify` all work with
@@ -43,7 +45,8 @@ either `.tkn` or `.tkn.zst`. The engine detects the zstd frame magic,
 decompresses it in memory, and then runs the same TKN1 validation, so
 inference is identical and no manual decompression step is needed.
 
-If download size matters, publish a compressed asset next to the raw file:
+The `nnue-v1` release ships the compressed asset to keep downloads small. To
+regenerate it from the canonical raw file:
 
 ```bash
 # from the repository root (recommended; also writes the .sha256)
@@ -54,26 +57,33 @@ zstd -19 nets/experimental-v1.tkn -o nets/experimental-v1.tkn.zst
 sha256sum nets/experimental-v1.tkn.zst > nets/experimental-v1.tkn.zst.sha256
 ```
 
-The measured size is 38.1 MB raw → 10.2 MB with `zstd -19`. Upload the
-`.tkn.zst` and its `.sha256` (for example with
-`gh release upload <release-tag> nets/experimental-v1.tkn.zst nets/experimental-v1.tkn.zst.sha256`);
-users can pass the `.zst` directly. The raw `.tkn` remains the canonical format
-and is still accepted. To download and verify the compressed asset:
+The measured size is 38.1 MB raw → 10.2 MB with `zstd -19`. The raw `.tkn`
+remains the canonical format and is still accepted; it is only needed when you
+want to inspect, retrain or repackage the uncompressed data. Compression is a
+distribution choice only: it does not change the network, the inference result
+or the TKN1 version. Do not rename a `.tkn`/`.tkn.zst` to `.nnue`; that
+extension belongs to Stockfish's incompatible format.
 
-```bash
-gh release download <release-tag> --pattern 'experimental-v1.tkn.zst*' --dir nets
-cd nets && sha256sum -c experimental-v1.tkn.zst.sha256
-```
+## License
 
-The prepared checksum is:
+The NNUE network files and the data they encode (`experimental-v1.tkn`,
+`experimental-v1.tkn.zst` and future network releases) are licensed under the
+[Open Database License (ODbL) 1.0](LICENSE-ODbL.md) (SPDX: `ODbL-1.0`).
 
-```text
-1c5357c93c44de9b3e4a0986684d36699e8d08e81f4e01537825c5b47c734928  experimental-v1.tkn.zst
-```
+The engine source code is a separate work and remains under the
+[GNU General Public License v3.0 or later](../LICENSE) (SPDX:
+`GPL-3.0-or-later`). The ODbL does not apply to the engine code, and the GPL
+does not apply to the network data.
 
-Compression is a distribution choice only: it does not change the network,
-the inference result or the TKN1 version. Do not rename a `.tkn`/`.tkn.zst`
-to `.nnue`; that extension belongs to Stockfish's incompatible format.
+Attribution notice for produced works, as described by ODbL Section 4.3:
+
+> Contains information from the Taikyoku Shogi NNUE network database, which is
+> made available here under the Open Database License (ODbL).
+
+If you redistribute a network or a derivative database, keep the license and
+attribution notices and comply with the ODbL share-alike terms. The canonical
+license text is also available at
+<https://opendatacommons.org/licenses/odbl/1-0/>.
 
 ## Why not commit it?
 

@@ -22,6 +22,11 @@ the Python trainer, the class map and the frozen `rules/nnue_arch.json`
 interchangeable between the two projects — TKN1 is versioned and every file
 carries an architecture hash.
 
+The training code is part of the engine and is licensed under
+GPL-3.0-or-later. The network files it exports (`.tkn`/`.tkn.zst`) and the
+data they encode are a separate work licensed under the Open Database License
+(ODbL) 1.0; see [`nets/LICENSE-ODbL.md`](../nets/LICENSE-ODbL.md).
+
 ## What is in this directory
 
 | File | Role |
