@@ -322,9 +322,10 @@
             <h3>Move Log</h3>
             <div class="move-log" id="move-log"></div>
             <div class="button-row" style="margin-top:6px">
-              <button id="btn-export-game" title="Download the played game as a JSON file">Export game (.json)</button>
+              <button id="btn-export-game" title="Download a CLI-compatible JSON game file">Export JSON</button>
+              <button id="btn-export-game-pgn" title="Download the game in PGN notation">Export PGN</button>
             </div>
-            <div class="hint">The download is CLI-compatible: <code>load &lt;file.json&gt;</code>.</div>
+            <div class="hint">JSON reloads in the CLI with <code>load &lt;file.json&gt;</code>; PGN is for reading/sharing.</div>
           </section>
 
           <section class="panel">

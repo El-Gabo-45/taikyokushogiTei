@@ -4,6 +4,7 @@ import {
   GAME_FILE_FORMAT,
   GAME_FILE_VERSION,
   buildGameFile,
+  buildPgn,
   gameFileName,
   serializeGameFile,
 } from '../src/game/export';
@@ -143,9 +144,82 @@ describe('serializeGameFile', () => {
   });
 });
 
+describe('buildPgn', () => {
+  it('writes standard-shaped headers and coordinate move text', () => {
+    const board = makeBoard({
+      move_log: [
+        '1. Black: BG (33,31)-(29,27)',
+        '2. White: BG (2,4)-(29,31)',
+      ],
+      move_number: 2,
+      side_to_move: 0,
+    });
+    const pgn = buildPgn(board, { exportedAt: AT, engine: ENGINE });
+
+    expect(pgn).toContain('[Event "Taikyoku Shogi - Web Game"]');
+    expect(pgn).toContain('[Date "2026.11.10"]');
+    expect(pgn).toContain('[Variant "Taikyoku Shogi"]');
+    expect(pgn).toContain('[BoardSize "36x36"]');
+    expect(pgn).toContain('[MoveFormat "piece.from-to"]');
+    expect(pgn).toContain('[PlyCount "2"]');
+    expect(pgn).toContain('[Engine "taikyokushogi 0.2.0"]');
+    expect(pgn).toContain('[Result "*"]');
+    expect(pgn.endsWith('1. BG.F34-B30 BG.e3-F30 *\n')).toBe(true);
+  });
+
+  it('maps finished games to PGN results and termination tags', () => {
+    expect(buildPgn(makeBoard({ game_result: 'black_wins' }))).toContain(
+      '[Result "1-0"]',
+    );
+    expect(buildPgn(makeBoard({ game_result: 'white_wins' }))).toContain(
+      '[Result "0-1"]',
+    );
+    expect(buildPgn(makeBoard({ game_result: 'draw' }))).toContain(
+      '[Result "1/2-1/2"]',
+    );
+    expect(buildPgn(makeBoard({ game_result: 'black_wins' }))).toContain(
+      '[Termination "black wins"]',
+    );
+  });
+
+  it('keeps promotion suffixes and numbers plies from the current snapshot', () => {
+    const board = makeBoard({
+      move_log: [
+        '11. White: P (35,0)-(34,0)+',
+        '12. Black: P (0,35)-(1,35)',
+      ],
+      move_number: 12,
+      side_to_move: 1,
+    });
+    const pgn = buildPgn(board, { exportedAt: AT });
+
+    expect(pgn).toContain('11... P.a36-a35+ 12. P.J1-J2 *');
+  });
+
+  it('exports a fresh game with only the result token', () => {
+    const pgn = buildPgn(makeBoard(), { exportedAt: AT, engine: null });
+
+    expect(pgn).toContain('[PlyCount "0"]');
+    expect(pgn).toContain('[Result "*"]');
+    expect(pgn.endsWith('\n\n*\n')).toBe(true);
+  });
+
+  it('escapes quotes and backslashes in tag values', () => {
+    const engine = { ...ENGINE, name: 'taikyoku "test"\\net' };
+    const pgn = buildPgn(makeBoard(), { engine });
+    expect(pgn).toContain('[Engine "taikyoku \\"test\\"\\\\net 0.2.0"]');
+  });
+});
+
 describe('gameFileName', () => {
   it('builds a timestamped, move-numbered .json name', () => {
     expect(gameFileName(AT, 42)).toBe('taikyoku-game-20261110-153012-move-42.json');
+  });
+
+  it('uses the requested extension', () => {
+    expect(gameFileName(AT, 42, 'pgn')).toBe(
+      'taikyoku-game-20261110-153012-move-42.pgn',
+    );
   });
 
   it('zero-pads every timestamp component', () => {

@@ -102,7 +102,7 @@ All external access goes through the public facade in `lib.rs`.
   launcher; the axum router, handlers and JSON types live in
   `src/server/{mod,handlers,types}.rs` inside the library so integration
   tests can drive the whole API in-process. Serves the REST API and the
-  static web GUI (port 8000).
+  static web GUI (port 8000; `TAIKYOKU_BIND`, optional `TAIKYOKU_NET`).
 - `src/elo.rs`: engine-vs-engine matches, Elo + 95% CI, SPRT
   (`EngineConfig { depth, time_ms, net, threads }` per side; `net` is an
   optional `Arc<Network>`).

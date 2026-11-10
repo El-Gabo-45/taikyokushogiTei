@@ -45,6 +45,8 @@ never mixed, which matters when two evaluators alternate in one process
 CLI: `taikyokushogi-cli --net nets/tk.tkn …` or `setoption net <path|none>`.
 Self-play: `selfplay … --net nets/tk.tkn`. Head to head:
 `cargo run --release --example match_race -- 200 3 3 2000 6 netA=a.tkn netB=b.tkn sprt=0:10`.
+Web server: `TAIKYOKU_NET=nets/tk.tkn cargo run --release --features server
+--bin taikyokushogi-server` (`none` disables it).
 
 ## Architecture "S"
 

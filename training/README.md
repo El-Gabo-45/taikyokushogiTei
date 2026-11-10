@@ -220,6 +220,9 @@ cargo run --release --example match_race -- 200 3 3 2000 6 \
     netA=nets/a.tkn netB=nets/b.tkn sprt=0:10
 cargo run --release --bin nnue -- info nets/tk.tkn
 cargo run --release --bin nnue -- verify nets/tk.tkn
+# Web server + GUI (engine panel shows Backend: nnue)
+TAIKYOKU_NET=nets/tk.tkn \
+  cargo run --release --features server --bin taikyokushogi-server
 ```
 
 ## Memory budget

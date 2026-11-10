@@ -6,6 +6,8 @@
 //! Run with: `cargo run --features server --bin taikyokushogi-server`
 //! Bind address: `TAIKYOKU_BIND` (default `127.0.0.1:8000`).
 //! Frontend dir: `TAIKYOKU_DIST` (default `web/dist`).
+//! NNUE network: `TAIKYOKU_NET` (e.g. `nets/experimental-v1.tkn`; `none` to
+//! disable). The engine panel reports `Backend: nnue` when one is loaded.
 
 #[tokio::main]
 async fn main() {

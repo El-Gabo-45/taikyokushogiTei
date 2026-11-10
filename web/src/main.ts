@@ -10,7 +10,13 @@
  */
 
 import { GameState, type Mode } from './game/state';
-import { buildGameFile, gameFileName, serializeGameFile } from './game/export';
+import {
+  buildGameFile,
+  buildPgn,
+  gameFileName,
+  serializeGameFile,
+  type GameFormat,
+} from './game/export';
 import { Controller } from './ui/controller';
 import { updatePanels } from './ui/panel';
 import { MAX_ZOOM, MIN_ZOOM } from './game/view';
@@ -31,6 +37,17 @@ state.subscribe(() => updatePanels(state));
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 const select = (id: string): HTMLSelectElement => $<HTMLSelectElement>(id);
+
+/** Start a browser download for generated text (TSFEN, JSON, PGN…). */
+function downloadText(contents: string, filename: string, type: string): void {
+  const blob = new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 // ── Toolbar ────────────────────────────────────────────────────────
 
@@ -109,19 +126,14 @@ $('btn-copy').addEventListener('click', async () => {
 });
 
 $('btn-download').addEventListener('click', () => {
-  const blob = new Blob([tsfenBox.value], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `taikyoku-move-${state.board?.move_number ?? 1}.tsfen`;
-  link.click();
-  URL.revokeObjectURL(url);
+  const filename = `taikyoku-move-${state.board?.move_number ?? 1}.tsfen`;
+  downloadText(tsfenBox.value, filename, 'text/plain');
   state.announce('TSFEN downloaded', 'success');
 });
 
 // ── Game export ───────────────────────────────────────────────────
 
-$('btn-export-game').addEventListener('click', () => {
+function exportGame(format: GameFormat): void {
   const board = state.board;
   if (!board) {
     state.announce('No game to export yet', 'error');
@@ -129,18 +141,23 @@ $('btn-export-game').addEventListener('click', () => {
   }
 
   const now = new Date();
-  const file = buildGameFile(board, { exportedAt: now, engine: state.engineInfo });
-  const blob = new Blob([serializeGameFile(file)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = gameFileName(now, board.move_number);
-  link.click();
-  URL.revokeObjectURL(url);
+  const options = { exportedAt: now, engine: state.engineInfo };
+  const contents =
+    format === 'json'
+      ? serializeGameFile(buildGameFile(board, options))
+      : buildPgn(board, options);
+  const type = format === 'json' ? 'application/json' : 'application/x-chess-pgn';
+  downloadText(contents, gameFileName(now, board.move_number, format), type);
 
   const plies = board.move_log.length;
-  state.announce(`Game exported (${plies} ${plies === 1 ? 'ply' : 'plies'})`, 'success');
-});
+  state.announce(
+    `Game exported as ${format.toUpperCase()} (${plies} ${plies === 1 ? 'ply' : 'plies'})`,
+    'success',
+  );
+}
+
+$('btn-export-game').addEventListener('click', () => exportGame('json'));
+$('btn-export-game-pgn').addEventListener('click', () => exportGame('pgn'));
 
 // ── Keyboard shortcuts ────────────────────────────────────────────
 

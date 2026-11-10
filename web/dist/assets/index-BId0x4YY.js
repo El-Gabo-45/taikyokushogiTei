@@ -563,10 +563,108 @@ function buildGameFile(board, options = {}) {
 function serializeGameFile(file) {
 	return `${JSON.stringify(file, null, 2)}\n`;
 }
+/** Matches the move-log lines produced by `record_move` in the Rust server. */
+var MOVE_LOG_RE = /^(\d+)\.\s+(Black|White):\s+(\S+)\s+\((\d+),(\d+)\)-\((\d+),(\d+)\)(\+)?$/;
+function parseMoveLogEntry(entry) {
+	const match = MOVE_LOG_RE.exec(entry.trim());
+	if (!match) return null;
+	return {
+		side: match[2] === "Black" ? "b" : "w",
+		piece: match[3],
+		from: [Number(match[4]), Number(match[5])],
+		to: [Number(match[6]), Number(match[7])],
+		promotion: match[8] === "+"
+	};
+}
+/** Columns 0–25 are files a–z; 26–35 are A–J (same as the CLI). */
+function squareName([row, col]) {
+	return `${col < 26 ? String.fromCharCode(97 + col) : String.fromCharCode(65 + col - 26)}${row + 1}`;
+}
+/**
+* Full-move number for every ply. The engine increments `move_number` after
+* White's move, so the last ply's number can be derived from the current
+* snapshot and then walked back to the first logged ply.
+*/
+function pgnMoveNumbers(moves, board) {
+	if (moves.length === 0) return [];
+	let full = board.move_number - (board.side_to_move === 0 ? 1 : 0);
+	for (let i = 0; i < moves.length - 1; i += 1) if (moves[i].side === "w") full -= 1;
+	full = Math.max(1, full);
+	const numbers = [];
+	for (const move of moves) {
+		numbers.push(full);
+		if (move.side === "w") full += 1;
+	}
+	return numbers;
+}
+function pgnMoveToken(move) {
+	const suffix = move.promotion ? "+" : "";
+	return `${move.piece}.${squareName(move.from)}-${squareName(move.to)}${suffix}`;
+}
+function wrapWords(text, width = 80) {
+	const words = text.split(/\s+/).filter(Boolean);
+	const lines = [];
+	let line = "";
+	for (const word of words) if (line.length === 0) line = word;
+	else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+	else {
+		lines.push(line);
+		line = word;
+	}
+	if (line.length > 0) lines.push(line);
+	return lines.join("\n");
+}
+function pgnResult(result) {
+	switch (result) {
+		case "black_wins": return "1-0";
+		case "white_wins": return "0-1";
+		case "draw": return "1/2-1/2";
+		default: return "*";
+	}
+}
+function pgnDate(when) {
+	const pad = (value) => String(value).padStart(2, "0");
+	return `${when.getFullYear()}.${pad(when.getMonth() + 1)}.${pad(when.getDate())}`;
+}
+function pgnTag(name, value) {
+	return `[${name} "${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"]`;
+}
+/** Build a PGN-style record. See the module comment for the format caveat. */
+function buildPgn(board, options = {}) {
+	const exportedAt = options.exportedAt ?? /* @__PURE__ */ new Date();
+	const engine = options.engine;
+	const moves = board.move_log.map(parseMoveLogEntry).filter((move) => move !== null);
+	const result = pgnResult(board.game_result);
+	const tags = [
+		["Event", "Taikyoku Shogi - Web Game"],
+		["Site", "Taikyoku Shogi Web GUI"],
+		["Date", pgnDate(exportedAt)],
+		["Round", "-"],
+		["White", "?"],
+		["Black", "?"],
+		["Result", result],
+		["Variant", "Taikyoku Shogi"],
+		["BoardSize", "36x36"],
+		["MoveFormat", "piece.from-to"],
+		["Mode", board.mode],
+		["PlyCount", String(moves.length)]
+	];
+	if (engine) tags.push(["Engine", `${engine.name} ${engine.version}`]);
+	if (board.game_result) tags.push(["Termination", board.game_result.replace(/_/g, " ")]);
+	const numbers = pgnMoveNumbers(moves, board);
+	const parts = [];
+	moves.forEach((move, index) => {
+		const token = pgnMoveToken(move);
+		if (move.side === "b" || index === 0) parts.push(`${numbers[index]}${move.side === "b" ? "." : "..."}`);
+		parts.push(token);
+	});
+	parts.push(result);
+	return `${tags.map(([name, value]) => pgnTag(name, value)).join("\n")}\n\n${wrapWords(parts.join(" "))}\n`;
+}
 /** Timestamped download name, e.g. `taikyoku-game-20261110-153012-move-42.json`. */
-function gameFileName(when, moveNumber) {
+function gameFileName(when, moveNumber, format = "json") {
 	const pad = (value, width = 2) => String(value).padStart(width, "0");
-	return `taikyoku-game-${`${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}-${pad(when.getHours())}${pad(when.getMinutes())}${pad(when.getSeconds())}`}-move-${moveNumber}.json`;
+	return `taikyoku-game-${`${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}-${pad(when.getHours())}${pad(when.getMinutes())}${pad(when.getSeconds())}`}-move-${moveNumber}.${format}`;
 }
 //#endregion
 //#region src/data/kanji.ts
@@ -1330,6 +1428,16 @@ new Controller(canvas, ctx, state);
 state.subscribe(() => updatePanels(state));
 var $ = (id) => document.getElementById(id);
 var select = (id) => $(id);
+/** Start a browser download for generated text (TSFEN, JSON, PGN…). */
+function downloadText(contents, filename, type) {
+	const blob = new Blob([contents], { type });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = filename;
+	link.click();
+	URL.revokeObjectURL(url);
+}
 function readSettingsFromControls() {
 	state.settings.mode = select("mode-select").value;
 	state.settings.humanColor = Number(select("color-select").value);
@@ -1390,36 +1498,29 @@ $("btn-copy").addEventListener("click", async () => {
 	}
 });
 $("btn-download").addEventListener("click", () => {
-	const blob = new Blob([tsfenBox.value], { type: "text/plain" });
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement("a");
-	link.href = url;
-	link.download = `taikyoku-move-${state.board?.move_number ?? 1}.tsfen`;
-	link.click();
-	URL.revokeObjectURL(url);
+	const filename = `taikyoku-move-${state.board?.move_number ?? 1}.tsfen`;
+	downloadText(tsfenBox.value, filename, "text/plain");
 	state.announce("TSFEN downloaded", "success");
 });
-$("btn-export-game").addEventListener("click", () => {
+function exportGame(format) {
 	const board = state.board;
 	if (!board) {
 		state.announce("No game to export yet", "error");
 		return;
 	}
 	const now = /* @__PURE__ */ new Date();
-	const file = buildGameFile(board, {
+	const options = {
 		exportedAt: now,
 		engine: state.engineInfo
-	});
-	const blob = new Blob([serializeGameFile(file)], { type: "application/json" });
-	const url = URL.createObjectURL(blob);
-	const link = document.createElement("a");
-	link.href = url;
-	link.download = gameFileName(now, board.move_number);
-	link.click();
-	URL.revokeObjectURL(url);
+	};
+	const contents = format === "json" ? serializeGameFile(buildGameFile(board, options)) : buildPgn(board, options);
+	const type = format === "json" ? "application/json" : "application/x-chess-pgn";
+	downloadText(contents, gameFileName(now, board.move_number, format), type);
 	const plies = board.move_log.length;
-	state.announce(`Game exported (${plies} ${plies === 1 ? "ply" : "plies"})`, "success");
-});
+	state.announce(`Game exported as ${format.toUpperCase()} (${plies} ${plies === 1 ? "ply" : "plies"})`, "success");
+}
+$("btn-export-game").addEventListener("click", () => exportGame("json"));
+$("btn-export-game-pgn").addEventListener("click", () => exportGame("pgn"));
 document.addEventListener("keydown", (event) => {
 	const target = event.target;
 	if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;

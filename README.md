@@ -277,9 +277,11 @@ cd web && npm install && npm run build && cd ..
 - **Analysis mode** (`Analyze`): run a search without moving, then inspect
   the best move and score
 - **Material balance chart** with the full score history
-- **Game export**: download the played game as a timestamped JSON file with
-  the CLI-compatible `tsfen`, `moves`, `side` and `move_number` fields (plus
-  result/metadata); load it in the CLI with `load <file.json>`
+- **Game export**: download the played game as CLI-compatible **JSON**
+  (`tsfen`, `moves`, `side`, `move_number`; load it in the CLI with
+  `load <file.json>`) or as a **PGN** file for reading/sharing. Taikyoku's
+  36×36 board is outside the PGN standard, so the PGN uses coordinate moves
+  and a `MoveFormat` tag.
 - **TSFEN panel**: export, copy, download and load positions
 - **Flip board**, **zoom slider**, kanji/English glyphs, last-move and hover
   highlights, responsive layout, keyboard shortcuts (N/U/A/K/F/±/Space)
@@ -562,6 +564,9 @@ board.set_network(Some(net));      // evaluate() and search() now use it
 The network is a value (`Arc<Network>`), not a global, so different boards
 and match sides can use different networks. Loading never falls back to random
 weights: any problem is an error. CLI: `--net PATH` / `setoption net <path|none>`.
+Web server: `TAIKYOKU_NET=nets/experimental-v1.tkn cargo run --release
+--features server --bin taikyokushogi-server` (`TAIKYOKU_NET=none` disables
+it); the GUI engine panel then shows `Backend: nnue`.
 
 The accumulator is maintained incrementally by `Board::apply_move` with no
 king anchor (no move forces a full refresh) and restored from a fixed ring of

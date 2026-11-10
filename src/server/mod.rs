@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 
-use crate::{Board, Color, GameResult};
+use crate::{Board, Color, GameResult, Network};
 
 use types::{BoardResponse, CellData, MoveData};
 
@@ -38,8 +38,16 @@ pub struct AppState {
 
 /// Create the initial [`AppState`] used by [`build_router`] and [`run`].
 pub fn new_state() -> Arc<AppState> {
+    new_state_with_network(None)
+}
+
+/// Create the initial [`AppState`] with an NNUE network attached.
+///
+/// The network is stored in the game state (not just on the initial board) so
+/// it survives `new game`, TSFEN loads and undo.
+pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
     Arc::new(AppState {
-        board: Mutex::new(GameState::new()),
+        board: Mutex::new(GameState::new_with_network(net)),
     })
 }
 
@@ -54,11 +62,18 @@ pub struct GameState {
     pub score_history: Vec<i32>,
     pub half_move: u32,
     pub game_over: bool,
+    /// Network attached to every board created by this game (if any).
+    network: Option<Arc<Network>>,
 }
 
 impl GameState {
     pub fn new() -> Self {
-        let board = Board::initial();
+        Self::new_with_network(None)
+    }
+
+    pub fn new_with_network(net: Option<Arc<Network>>) -> Self {
+        let mut board = Board::initial();
+        board.set_network(net.clone());
         let score = board.material_score();
         GameState {
             version: 0,
@@ -67,18 +82,21 @@ impl GameState {
             score_history: vec![score],
             half_move: 0,
             game_over: false,
+            network: net,
         }
     }
 
     pub fn reset(&mut self) {
         let version = self.version.wrapping_add(1);
-        *self = GameState::new();
+        let network = self.network.clone();
+        *self = GameState::new_with_network(network);
         self.version = version;
     }
 
     /// Replace the board from a TSFEN/load operation. The move log restarts
     /// at the imported position (the TSFEN format has no move history).
-    pub fn set_board(&mut self, board: Board) {
+    pub fn set_board(&mut self, mut board: Board) {
+        board.set_network(self.network.clone());
         self.board = board;
         self.move_log.clear();
         self.score_history = vec![self.board.material_score()];
@@ -331,14 +349,35 @@ async fn serve_frontend() -> impl IntoResponse {
 // ============================================================
 
 /// Start the HTTP server. Bind address defaults to `127.0.0.1:8000` and can
-/// be overridden with `TAIKYOKU_BIND`.
+/// be overridden with `TAIKYOKU_BIND`. Set `TAIKYOKU_NET` to a `.tkn` file to
+/// evaluate with NNUE, or to `none` for the hand-crafted evaluator.
 pub async fn run() {
+    let net = match std::env::var("TAIKYOKU_NET")
+        .ok()
+        .map(|p| p.trim().to_string())
+    {
+        Some(path) if !path.is_empty() && !matches!(path.as_str(), "none" | "off" | "classic") => {
+            match Network::load(&path) {
+                Ok(net) => {
+                    println!("NNUE network: {path}");
+                    Some(Arc::new(net))
+                }
+                Err(e) => panic!("cannot load NNUE network `{path}`: {e}"),
+            }
+        }
+        _ => None,
+    };
+    run_with_network(net).await;
+}
+
+/// [`run`] with an already-loaded network (useful for embedders and tests).
+pub async fn run_with_network(net: Option<Arc<Network>>) {
     let bind_addr = std::env::var("TAIKYOKU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".to_string());
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .unwrap_or_else(|e| panic!("cannot bind {bind_addr}: {e}"));
     println!("Taikyoku Shogi Server listening on http://{bind_addr}");
-    axum::serve(listener, build_router(new_state()))
+    axum::serve(listener, build_router(new_state_with_network(net)))
         .await
         .unwrap();
 }
