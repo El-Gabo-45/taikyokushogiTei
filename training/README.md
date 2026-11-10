@@ -1,295 +1,275 @@
-# NNUE Training Pipeline
+# NNUE training pipeline
 
-This directory trains a neural network evaluator for the Taikyoku Shogi
-engine (`src/eval/nnue.rs`) using PyTorch, then exports the trained
-weights to a binary format the Rust engine can load.
+This directory trains the NNUE **"S"** evaluator used by the Rust engine and
+exports it as a **TKN1 v2** `.tkn` network that `src/eval/nnue/` loads.
 
-## Status: what works, what doesn't yet
+The architecture is documented in full in [`docs/NNUE.md`](../docs/NNUE.md);
+this file covers the training workflow.
 
-**Works, tested end-to-end:**
-- Parsing `.bin` training data from `selfplay` (`dataset.py`)
-- Converting positions to HalfKP-style features (`features.py`)
-- The PyTorch model architecture, forward + backward pass (`model.py`)
-- The training loop, including checkpointing and resume (`train.py`)
-- Exporting a checkpoint to a `.nnue` file the Rust engine loads
-  (`export.py`)
-- Loading that `.nnue` file in Rust and running a forward pass
-  (`NnueEvaluator::load_from_file` + the `load_and_evaluate_exported_nnue`
-  test in `src/eval/nnue.rs`)
-- Toggling between the hand-crafted evaluator and NNUE at runtime
-  (`taikyokushogi::set_use_nnue(true/false)`)
+## Credits
 
-**RESOLVED -- incremental accumulator updates are now wired in:**
-`Board::apply_move` maintains the NNUE `Accumulator` incrementally (add/remove
-only the features of pieces that moved or were captured, including range-capture
-intermediates, lion mid-captures and igui). When a royal anchor (`king_square`)
-changes, all HalfKP features become invalid, so it falls back to a full refresh
-for that move. `undo_move` restores the pre-move accumulator snapshot in O(1)
-via `UndoInfo::nnue_acc`. `eval::evaluate()` uses the maintained accumulator
-when available and only refreshes from scratch for boards with no applied
-moves. Correctness is enforced by the
-`eval::nnue::tests::incremental_accumulator_matches_refresh` test, which walks
-tactical lines asserting the incremental accumulator equals a from-scratch
-refresh at every position. This removes the historical ~1.8s-per-evaluate()
-bottleneck (~31,000x slower than the hand-crafted eval); NNUE is now usable
-inside the search when a trained `.nnue` file is provided via
-`TAIKYOKU_NNUE_PATH`.
+The NNUE architecture "S" — class-based `(plane, square)` features, 180°
+rotation for the second perspective, output buckets selected by total piece
+count, and the TKN1 network container — follows the design documented by
+**[Belzedar94/TaikyokuShogi-Stockfish](https://github.com/Belzedar94/TaikyokuShogi-Stockfish)**
+(GPL-3.0), in particular `docs/nnue-taikyoku-s.md`, `rules/nnue_classes.json`
+and `rules/output_buckets.json`. Credit for the architecture belongs to that
+project.
 
-## Pipeline overview
+The implementation in this repository is independent: the Rust inference,
+the Python trainer, the class map and the frozen `rules/nnue_arch.json`
+(27 classes, 8 buckets) are this engine's own. Network files are not
+interchangeable between the two projects — TKN1 is versioned and every file
+carries an architecture hash.
 
+## What is in this directory
+
+| File | Role |
+|---|---|
+| `arch.py` | Loads `rules/nnue_arch.json`; architecture constants, arch hash, output buckets |
+| `dataset.py` | Reader for the `TKD1` self-play files (`samples_*.bin`) |
+| `features.py` | Vectorised feature indices; must match `Network::feature_index` in Rust |
+| `model.py` | PyTorch model (`TKNet`); float forward pass mirrors the integer inference |
+| `train.py` | Training loop, label gate, validation and final export |
+| `export.py` | Quantises a trained model and writes the TKN1 v2 file |
+| `tkn.py` | TKN1 v2 reader/writer (layout documented in the module docstring) |
+| `quantized_forward.py` | Pure-Python integer reference used by the parity gate |
+| `check_label_units.py` | Gate: search-score labels must be on the engine's scale |
+| `calibrate_buckets.py` | Computes the output-bucket thresholds from real games |
+| `parity_gate.py` | Rust-vs-Python integer parity on dumped positions |
+| `test_pipeline.py` | Unit tests for the Python side |
+
+The single source of truth for the architecture is
+[`rules/nnue_arch.json`](../rules/nnue_arch.json). It is embedded in the Rust
+binary with `include_str!` and read by `training/arch.py`; nothing here
+hard-codes the class map, thresholds or scales.
+
+## Architecture in brief
+
+| Part | Value in this repository |
+|---|---|
+| Piece classes | 27 (frozen class map, 302 entries including the unused index 0) |
+| Input planes | 54 (`2 × 27`), no king anchor and no feature hashing |
+| Feature index | `plane × 1296 + square`; White uses `square → 1295 − square` |
+| Feature transformer | `i16` weights, `i32` accumulator of width `L1 = 256` per perspective |
+| PSQT | 8 values per feature, one per output bucket |
+| Dense stack | `[stm ∥ other]` (512) → pairwise product → 256 → 16 → 32 → 1, `i8` weights |
+| Output buckets | 8, selected by total piece count (`thresholds_pieces` in the JSON) |
+| Output | `(psqt_diff / 2 + dense_out) / 16`, clamped to `eval_limit = 250000` |
+| Network file | TKN1 v2, about **38.1 MB** |
+
+`Board::apply_move` / `undo_move` maintain the accumulator incrementally; no
+move forces a full refresh. There is no global NNUE switch: the network is
+attached to a board with `Board::set_network(Some(Arc<Network>))`.
+
+## Requirements
+
+- Rust toolchain (the workspace's normal requirements).
+- Python 3.9+ with `torch>=2.0` and `numpy>=1.24`:
+
+```bash
+python3 -m pip install -r training/requirements.txt
 ```
-selfplay (Rust binary)          ->  training_data/samples_*.bin
-        |
-        v
-dataset.py (parse .bin)         ->  Sample objects
-        |
-        v
-features.py (board -> features) ->  HalfKP feature indices per perspective
-        |
-        v
-model.py (PyTorch nn.Module)    ->  NnueModel
-        |
-        v
-train.py (training loop)        ->  checkpoints/*.pt
-        |
-        v
-export.py (quantize + write)    ->  trained.nnue
-        |
-        v
-src/eval/nnue.rs::load_from_file -> usable in the Rust engine
+
+The trainer currently runs on **CPU**. The pilot network was trained in about
+6 minutes on one core; a GPU is not required.
+
+## Workflow
+
+The `Makefile` wraps the whole pipeline:
+
+```bash
+make nnue-data      # self-play -> data/samples_*.bin (TKD1)
+make nnue-gates     # label-unit gate
+make nnue-buckets   # calibrate thresholds, rewrite rules/nnue_arch.json, rebuild
+make nnue-train     # train + export nets/tk.tkn
+make nnue-parity    # Rust vs Python integer parity (normal + thinned positions)
+make nnue-bench     # evaluations/s and apply+undo overhead
+make nnue-test      # Rust tests + Python pipeline tests
 ```
 
-## Step-by-step
+Useful overrides: `make nnue-data GAMES=800 DEPTH=3 WORKERS=8`,
+`make nnue-train EPOCHS=20 NET=nets/run2.tkn`.
 
-### 1. Generate training data
-
-From the repo root:
+### 1. Generate self-play data
 
 ```bash
 cargo build --release --bin selfplay
-./target/release/selfplay <num_games> <depth> <max_moves> <num_workers> <time_limit_ms>
-# e.g.: 1000 games, depth 3, no move cap, 4 parallel workers, 200 ms/move
-# e.g.: ./target/release/selfplay 1000 3 0 4 200
-# defaults (missing args fall back to): 10 / 2 / 0 (unlimited) / 4 / 500
+./target/release/selfplay 400 3 0 4 500 --out data --opening-plies 8 --seed 1
 ```
 
-This writes `training_data/samples_*.bin`. **If you have .bin files from
-before this session's fixes to `selfplay.rs` (the `#[repr(C)]` fix and the
-piece-encoding bit-overlap fix), delete them and regenerate** -- they have
-corrupted piece_type data for ~45 of the 301 piece types (any with
-piece_type >= 256).
+Positional arguments:
 
-### 2. Generate piece metadata (only needed once, or after pieces.rs changes)
+```text
+selfplay <games> <depth> <max_moves> <workers> <time_limit_ms>
+         [--out DIR] [--opening-plies N] [--seed S] [--net FILE.tkn]
+```
+
+- `max_moves = 0` means unlimited.
+- The engine is deterministic, so **without** `--opening-plies` every game is
+  the same. The opening plies are random legal moves and are not recorded.
+- `--net` makes self-play use a network; omit it to generate data from the
+  hand-crafted evaluator + search labels.
+- Output: `data/samples_*.bin` plus `data/games.db`.
+
+Each sample is a `TKD1` v1 record (see `dataset.py` for the exact byte
+layout): side to move, result, search score, hand-crafted eval, ply and the
+piece list `(square, piece_type | color << 9)`. Scores are from the side to
+move, in engine units (pawn = 500).
+
+### 2. Label-unit gate
 
 ```bash
-cargo run --release --example export_piece_metadata > training/piece_metadata.json
+python3 training/check_label_units.py data
 ```
 
-This tells `features.py` which piece_type IDs count as "royal" (needed to
-determine king_sq for HalfKP feature indexing). Already generated and
-committed as of this session (`{"num_piece_types": 301,
-"royal_piece_types": [29, 88]}`), but re-run this if the piece set in
-`pieces.rs` ever changes.
+It regresses the search score on the hand-crafted eval of the same positions;
+the slope must stay in `[0.8, 1.25]` and the correlation must be `> 0.9`.
+This catches label-scale bugs that parity checks cannot see. `train.py` runs
+the same gate automatically unless `--skip-unit-gate` is passed.
 
-### 3. Set up PyTorch with your RX 470
-
-Your card doesn't have ROCm support, so you're using a Docker-based
-workaround project. The general shape (adjust to whatever specific image
-your ROCm-compat project provides):
+### 3. Calibrate output buckets
 
 ```bash
-docker run -it --rm \
-    --device=/dev/kfd --device=/dev/dri \
-    --group-add video \
-    -v $(pwd):/workspace \
-    -w /workspace/training \
-    <your-rocm-compat-image> \
-    bash
+python3 training/calibrate_buckets.py data --apply
+cargo build --release --bin nnue --bin selfplay
 ```
 
-Once inside the container, install the Python dependencies (if the image
-doesn't already have them):
+The thresholds are octiles of the piece count observed in the data. They are
+frozen into `rules/nnue_arch.json`, which is embedded in the binary, so the
+Rust tools must be rebuilt afterwards. Calibrate on **long** games: the pilot
+data rarely went below 480 pieces, so its bucket 0 covers every endgame.
+
+### 4. Train and export
 
 ```bash
-pip install torch numpy
+python3 training/train.py data --out nets/tk.tkn --epochs 10 --batch 512
 ```
 
-Then verify PyTorch actually sees your GPU before starting a real
-training run:
+`train.py` validates, trains and writes the TKN1 file in one step. Important
+flags:
+
+- `--lambda 0.7` — weight of the search score vs the game result target.
+- `--scale SC` — sigmoid scale; by default chosen from the data
+  (median `|score|` maps to a 75% win probability).
+- `--psqt-lr 2.0`, `--bias-lr 1.0` — separate learning rates; the PSQT starts
+  as a material count (`model.init_material`) and must move by thousands of
+  engine units.
+- `--checkpoint checkpoints/latest.pt` — save the float `state_dict` after
+  every epoch.
+- `--allow-clip` — allow exporting a network whose weights saturate their
+  integer types. Prefer fixing the training instead.
+- `--max-abs-score 100000` — drop mate-like labels (the default).
+
+The loss is MSE between `sigmoid(pred / SC)` and
+`λ · sigmoid(search_score / SC) + (1 − λ) · (result + 1) / 2`.
+
+To export an existing checkpoint later, reconstruct the model and call
+`export.export`:
+
+```python
+import torch
+from arch import Arch
+from export import export
+from model import TKNet
+
+arch = Arch()
+model = TKNet(arch)
+model.load_state_dict(torch.load("checkpoints/latest.pt", map_location="cpu"))
+model.eval()
+export(model, arch, "nets/tk.tkn")
+```
+
+### 5. Parity gate
 
 ```bash
-python3 -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'no GPU found')"
+cargo run --release --bin nnue -- dump-positions \
+    --net nets/tk.tkn --n 2000 --seed 11 --out /tmp/tk_pos.jsonl
+cargo run --release --bin nnue -- dump-positions \
+    --net nets/tk.tkn --n 2000 --seed 12 --thin --out /tmp/tk_pos_thin.jsonl
+
+python3 training/parity_gate.py --net nets/tk.tkn --positions /tmp/tk_pos.jsonl
+python3 training/parity_gate.py --net nets/tk.tkn --positions /tmp/tk_pos_thin.jsonl
 ```
 
-If this prints `False`, something's off with the Docker device passthrough
-or the ROCm-compat layer -- fix that before training (training will still
-run on CPU, just extremely slowly given the model's ~100M+ parameters).
+`--thin` removes random pieces so every output bucket is exercised. The gate
+recomputes feature indices, the bucket and the integer evaluation in Python;
+any difference is a failure. This catches Rust/Python drift in the feature
+encoding or quantisation.
 
-### 4. Train
+### 6. Use the network
+
+```rust
+use std::sync::Arc;
+use taikyokushogi::{Board, Network};
+
+let net = Arc::new(Network::load("nets/tk.tkn")?);
+let mut board = Board::initial();
+board.set_network(Some(net));       // evaluate()/search() now use it
+let result = board.search(3, 0);
+board.set_network(None);            // back to the hand-crafted evaluator
+```
+
+CLI and tools:
 
 ```bash
-python3 train.py --data-dir ../training_data --epochs 20 --batch-size 4096
+taikyokushogi-cli --net nets/tk.tkn
+# inside the REPL: setoption net nets/tk.tkn   /   setoption net none
+./target/release/selfplay 100 3 0 4 200 --net nets/tk.tkn
+cargo run --release --example match_race -- 200 3 3 2000 6 \
+    netA=nets/a.tkn netB=nets/b.tkn sprt=0:10
+cargo run --release --bin nnue -- info nets/tk.tkn
+cargo run --release --bin nnue -- verify nets/tk.tkn
 ```
 
-Useful flags:
-- `--batch-size`: 4096 is a reasonable starting point for 8GB VRAM given
-  this model's size (~104M params, dominated by the feature transformer --
-  see "Memory budget" below). Reduce if you hit out-of-memory errors.
-- `--num-workers`: CPU processes for data loading/feature extraction in
-  parallel with GPU training. Start around 4; tune based on your CPU core
-  count.
-- `--resume checkpoints/latest.pt`: continue an interrupted run.
-- `--device cuda` / `--device cpu`: force a device if auto-detection picks
-  the wrong one.
+## Memory budget
 
-Checkpoints are saved to `checkpoints/` every `--checkpoint-every-steps`
-steps and at the end of every epoch. `checkpoints/latest.pt` always points
-at the most recent one, for convenient `--resume`.
+The current S network is much smaller than the old HalfKP design:
 
-### 5. Export to a `.nnue` file
+| Component | Size |
+|---|---|
+| Feature transformer weights in the file (`i16`) | ~35.8 MB |
+| PSQT (`i32`, 8 buckets) | ~2.2 MB |
+| Dense layers + header | < 0.1 MB |
+| **TKN1 file** | **~38.1 MB** |
+| Float32 training state (weights + gradients + 2 Adam moments) | ~0.3 GB |
+| Pilot training run | ~6 min, one CPU core, `--batch 512 --epochs 5` |
 
-```bash
-python3 export.py --checkpoint checkpoints/latest.pt --output ../trained.nnue
-```
+Peak memory grows with `--batch`; the default 512 is comfortable on a normal
+laptop. If you hit memory limits, lower `--batch` first.
 
-### 6. Use the trained network in the engine
+## What is verified
 
-```bash
-export TAIKYOKU_NNUE_PATH=/absolute/path/to/trained.nnue
-```
+| Check | Where |
+|---|---|
+| Incremental accumulator == full refresh over random walks, lion/igui moves, null moves and undo | `src/eval/nnue/tests.rs` |
+| White perspective is a 180° rotation; feature indices unique and in range | Rust and Python tests |
+| Class map and class values equal the frozen JSON | `class_map_matches_frozen_arch` |
+| Loader rejects bad magic, old versions, truncated/extended files, wrong hash, class map or thresholds | `loader_rejects_*` |
+| Rust and Python compute the same architecture hash | `training/test_pipeline.py` (`NNUE_BIN=…`) |
+| Float model ≈ integer reference after quantisation | `training/test_pipeline.py` |
+| Rust == Python integer reference on thousands of positions | `training/parity_gate.py` |
+| Label-unit gate | `training/check_label_units.py` |
 
-Then, from Rust code (`taikyokushogi::set_use_nnue(true)`), or from the
-CLI (`taikyokushogi-cli` → `setoption nnue on`), switch the evaluator. Without
-`TAIKYOKU_NNUE_PATH` set, the engine falls back to randomly-initialized
-(untrained) NNUE weights with a loud warning on stderr -- it will NOT
-silently use the hand-crafted evaluator instead, so don't forget to set
-the env var.
+## Current status
 
-### Verifying the exported `.nnue` file loads correctly
+- The architecture, tools and gates are implemented and tested.
+- **No strength gain has been demonstrated yet.** `nets/experimental-v1.tkn`
+  was trained on 104k self-play positions: it predicts search scores slightly
+  better than the hand-crafted eval (MSE 0.0077 vs 0.0081), but in 90 games at
+  depth 2 it went 6–6–78 against the hand-crafted engine. See
+  [`nets/README.md`](../nets/README.md).
+- The next step is more and deeper data, recalibrated buckets, retraining, and
+  a long SPRT (`match_race … sprt=0:10`) before claiming any gain.
 
-There's an internal Rust test that loads a `.nnue` file and runs a real
-forward pass on the initial position, to catch any architecture mismatch
-between the PyTorch and Rust sides (wrong dimensions, wrong weight
-transpose, etc. -- these would show up as either a load error or a panic,
-not a silent wrong answer, precisely because of the shape assertions in
-both `export.py` and `load_from_file`):
+## Migrating from the old pipeline
 
-```bash
-TAIKYOKU_TEST_NNUE_PATH=/path/to/trained.nnue cargo test --release --lib eval::nnue::tests::load_and_evaluate_exported_nnue -- --nocapture
-```
+The previous HalfKP-style pipeline (`.nnue` files, `FT_BUCKETS` hashing,
+`TAIKYOKU_NNUE_PATH`, `set_use_nnue()`) has been removed. It is **not**
+compatible with the current code:
 
-## Architecture notes / design decisions made this session
-
-### Piece type count: 301, not 209
-
-`nnue.rs` previously hardcoded `NUM_PIECE_TYPES = 209`, left over from an
-earlier design doc, before the full Taikyoku Shogi piece set was
-implemented. The actual count (verified via
-`taikyokushogi::num_piece_types()` at runtime) is **301**. Fixed in
-`nnue.rs`; `model.py` and `features.py` match.
-
-### Feature hashing: FT_BUCKETS = 200,000
-
-The raw HalfKP feature space (`king_sq * piece_sq * piece_type`, doubled
-for both perspectives) is ~1.01 **billion** possible indices --
-`FeatureTransformer::new_random()` originally declared `FT_FEATURES =
-541,632` (or, after the piece-count fix, `780,192`), wildly mismatched
-with what `feature_index()` could actually produce. This was caught
-immediately when mirroring the architecture in PyTorch: `nn.Embedding`
-raised an `IndexError` the moment a real index was looked up.
-
-There was an unused `FT_BUCKETS = 8_000_000` constant already in the code,
-suggesting feature hashing (`index % FT_BUCKETS`) was the intended fix but
-never implemented. It's implemented now (in both `nnue.rs` and
-`features.py` / `model.py`, using the identical formula) -- but
-`8,000,000` buckets at `FT_NEURONS=512` needs **~65GB of VRAM to train**
-(weights + gradients + Adam's two moment buffers, all fp32), completely
-infeasible on an 8GB card. **Reduced to `FT_BUCKETS = 200,000`** (~1.6GB
-for the feature transformer during training), leaving comfortable headroom
-for batch size and the rest of the model on an 8GB GPU. If you have more
-VRAM available later and want fewer hash collisions (currently ~5,000 raw
-indices sharing each bucket on average), this is the constant to raise --
-just change it in `nnue.rs`, `model.py`, and `features.py` together, and
-retrain from scratch (existing checkpoints/.nnue files won't be
-compatible with a different bucket count).
-
-### Dimension-chaining bug in the original NnueEvaluator
-
-The original `NnueEvaluator::new_random()` declared layer dimensions that
-didn't chain correctly (`l2` expected 1024 inputs but `l1` only produced
-256, etc.). This never crashed -- `FactorizedLayer::forward` silently only
-reads as many weight-matrix rows as the actual input length, so a
-too-small input just left most of each layer's weights unused rather than
-panicking -- but it meant 3 of 4 downstream layers were wasting the vast
-majority of their parameters. Fixed to chain correctly: 1024 -> 256 -> 128
--> 64 -> 1.
-
-### `TrainingSample` needed `#[repr(C)]`
-
-Without it, Rust is free to reorder struct fields for padding efficiency,
-which is exactly what it was doing (verified empirically: field order
-differed from declaration order). Since `TrainingSample` is serialized to
-disk via a raw byte dump, this made the `.bin` file format
-compiler-version-dependent and impossible for an external tool (this
-Python pipeline) to parse reliably. Fixed by adding `#[repr(C)]`, which
-fixes the layout to declaration order. See the docstring at the top of
-`dataset.py` for the exact byte layout this produces.
-
-### Board cell encoding bit-overlap bug
-
-`selfplay.rs` encoded `board[sq] = piece_type | (color << 8)`. With 301
-piece types (needing 9 bits, since 301 > 255), any piece_type >= 256 had
-its high bit silently clobbered by the color bit. Fixed to
-`(piece_type & 0x1FF) | (color << 9)`. **Any `.bin` files generated before
-this fix have corrupted data for the affected piece types and should be
-regenerated**, not just re-parsed with the new decoder -- the original
-bit was actually lost, not just misinterpreted.
-
-### `save_to_file`/`load_from_file` were non-functional
-
-The original `save_to_file` cast `Vec<Vec<i16>>` (a vector of separately
-heap-allocated inner vectors) directly to bytes via `slice::from_raw_parts`
-on the outer vector's pointer -- this serializes the inner `Vec`s'
-internal pointer/capacity/length metadata (24 bytes of garbage per row),
-not the actual i16 weight values, and only for the feature transformer
-(l1/l2/l3/output weren't saved at all). `load_from_file` just returned
-`Err("not yet implemented")`. Both are rewritten in this session with a
-flat, fully-documented binary format (see the "Serialization" section at
-the top of the relevant part of `nnue.rs`) that `export.py` writes and
-`load_from_file` reads -- verified working end-to-end via the Rust test
-described above.
-
-### King square reconstruction is an approximation
-
-`board.king_square(color)` in the live engine returns
-`royal_list[color][0]` -- the first royal piece added, by game history.
-That order isn't recoverable from a single board snapshot (all
-`TrainingSample` stores). `features.py`'s `find_king_squares` instead uses
-the royal piece at the lowest square index as a deterministic
-approximation. This only affects positions where a color has 2+ royal
-pieces alive simultaneously (a subset of positions), and only changes
-which of several valid king-relative feature encodings gets used -- it's
-a small, bounded source of label noise, not a correctness bug. See the
-docstring in `features.py` for more detail, and for the real fix if it
-turns out to matter (have `selfplay.rs` record king_sq directly into
-`TrainingSample` instead of reconstructing it in Python).
-
-## Memory budget reference (FT_BUCKETS = 200,000)
-
-fp32 arithmetic from the model definition
-(`FeatureTransformer = nn.Embedding(200_000, 512)`):
-
-| Component | Params | Size |
-|---|---|---|
-| Feature transformer **weights** | 200,000 × 512 ≈ 102.4M | ~0.4 GB (4 B/param) |
-| Feature transformer **gradients** | ≈ 102.4M | ~0.4 GB |
-| Feature transformer **Adam moments** (2 buffers) | ≈ 2 × 102.4M | ~0.8 GB |
-| **Feature transformer training state (weights + grad + Adam)** | | **~1.6 GB** |
-| L1/L2/L3/output (weights + grad + Adam) | ~1.5M | ~24 MB |
-
-The network has ~104M parameters in total (the feature transformer
-dominates). Peak VRAM is higher than the training-state numbers above
-because activations also scale with `--batch-size` — at the default
-`--batch-size 4096` this leaves usable but not huge headroom on an 8 GB
-card. If you hit OOM, first reduce `--batch-size`, then consider whether
-`FT_BUCKETS` needs to come down further.
+- Networks are `.tkn` (TKN1 v2), not `.nnue`.
+- The evaluator is attached per board with `Board::set_network`, not through a
+  global switch or environment variable.
+- Old training samples and checkpoints cannot be reused; regenerate `TKD1`
+  data with the current `selfplay` and retrain.
