@@ -252,7 +252,7 @@ pub async fn get_engine_info(State(app): State<Arc<AppState>>) -> Json<EngineInf
         "reverse_futility",
         "futility",
         "null_move_pruning",
-        "probcut",
+        "static_eval_prune",
         "transposition_table",
         "killer_moves",
         "history_heuristic",

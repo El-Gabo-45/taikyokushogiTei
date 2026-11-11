@@ -82,7 +82,7 @@ All external access goes through the public facade in `lib.rs`.
   - `mod.rs` — iterative deepening + aspiration windows; the `search` and
     `search_threads` (Lazy SMP) entry points; hash-size configuration.
   - `pvs.rs` — PVS core: null-window re-search, LMR, null-move pruning,
-    razoring / reverse-futility / futility / ProbCut, IID, staged movegen.
+    razoring / reverse-futility / futility / static-eval prune, IID, staged movegen.
   - `root.rs` — root iteration (the historical depth 1–3 material-delta
     fast path was removed outright, not toggled off).
   - `smp.rs` — Lazy SMP: `SharedBest` (lock-free "best completed

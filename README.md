@@ -518,7 +518,7 @@ The search (`src/search/`) uses iterative deepening with aspiration
 windows, principal-variation search (PVS), a transposition table with
 lock-free concurrent access, killer / counter / history move ordering,
 late move reductions, null-move pruning, razoring / reverse-futility /
-futility / ProbCut pruning, internal iterative deepening, staged move
+futility / static-eval pruning, internal iterative deepening, staged move
 generation and quiescence search.
 
 **Lazy SMP is opt-in, not automatic.** The default is one worker

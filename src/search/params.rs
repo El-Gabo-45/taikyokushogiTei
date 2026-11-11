@@ -65,8 +65,8 @@ pub fn futility_margin(d: u32) -> Option<i32> {
     }
 }
 
-/// ProbCut: `static_eval + margin <= alpha` → statistical prune.
-pub fn probcut_margin(d: u32) -> Option<i32> {
+/// Static-eval prune: `static_eval + margin <= alpha` → skip node.
+pub fn static_eval_prune_margin(d: u32) -> Option<i32> {
     if d >= 4 {
         Some(500 + 300 * d as i32)
     } else {
@@ -212,7 +212,7 @@ pub struct SearchConfig {
 
     // ── Pruning that needs a search ──
     pub null_move_pruning: bool,
-    pub probcut: bool,
+    pub static_eval_prune: bool,
 
     // ── Move ordering helpers ──
     pub transposition_table: bool,
@@ -239,7 +239,7 @@ impl SearchConfig {
             reverse_futility: true,
             futility: true,
             null_move_pruning: true,
-            probcut: true,
+            static_eval_prune: true,
             transposition_table: true,
             killer_moves: true,
             history_heuristic: true,
@@ -261,7 +261,7 @@ impl SearchConfig {
             reverse_futility: false,
             futility: false,
             null_move_pruning: false,
-            probcut: false,
+            static_eval_prune: false,
             transposition_table: true, // TT is read-only for move selection; keep on
             killer_moves: false,
             history_heuristic: false,

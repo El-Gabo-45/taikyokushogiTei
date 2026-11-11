@@ -150,7 +150,7 @@ fn search_config_all_toggles_work() {
         (|c| c.reverse_futility = false, "rfp"),
         (|c| c.futility = false, "futility"),
         (|c| c.null_move_pruning = false, "null-move"),
-        (|c| c.probcut = false, "probcut"),
+        (|c| c.static_eval_prune = false, "static-eval-prune"),
         (|c| c.transposition_table = false, "tt"),
         (|c| c.killer_moves = false, "killers"),
         (|c| c.history_heuristic = false, "history"),

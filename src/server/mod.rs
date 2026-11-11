@@ -20,7 +20,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
 use std::sync::{Arc, Mutex};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::ServeDir;
 
 use crate::{Board, Color, GameResult, Network};
@@ -32,6 +32,12 @@ use types::{BoardResponse, CellData, MoveData};
 // ============================================================
 
 /// Shared application state: one game per server process.
+///
+/// WARNING: All clients share the same `GameState`. This is fine for local
+/// use (default bind `127.0.0.1:8000`) but unsuitable for a public demo:
+/// different visitors would share the same board, moves, undo history, etc.
+/// For a public deployment you need per-session game state (e.g. keyed by
+/// session cookie or token) and a restricted CORS policy.
 pub struct AppState {
     pub board: Mutex<GameState>,
 }
@@ -277,8 +283,10 @@ pub fn record_move(
 /// Public so integration tests and embedders can drive it without binding a
 /// TCP socket.
 pub fn build_router(state: Arc<AppState>) -> Router {
+    // NOTE: For a public-facing deployment, restrict allow_origin to the
+    // specific frontend origin(s) instead of mirroring all requests.
     let cors = CorsLayer::new()
-        .allow_origin(Any)
+        .allow_origin(AllowOrigin::mirror_request())
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any);
 

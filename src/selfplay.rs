@@ -1,4 +1,4 @@
-//! GPU-accelerated self-play for Taikyoku Shogi.
+//! Parallel self-play for Taikyoku Shogi.
 use crate::board::Board;
 use crate::search::search;
 use crate::types::*;
@@ -58,6 +58,10 @@ fn should_stop_game(move_count: u32, max_moves: u32, terminal: Option<GameResult
 /// the final outcome of the game.
 #[derive(Clone, Debug)]
 pub struct TrainingSample {
+    /// Identifier of the game this sample came from. Used by the trainer to
+    /// split train/validation by game so positions from the same game never
+    /// appear in both sets.
+    pub game_id: u32,
     /// `(piece_type & 0x1FF) | (color << 9)` per square; 0 = empty.
     pub board: [u16; 1296],
     pub side_to_move: u8,
@@ -79,7 +83,7 @@ pub const SAMPLE_FILE_HEADER: [u8; 8] = *b"TKD1\x01\x00\x00\x00";
 
 impl TrainingSample {
     /// Append the sparse little-endian record to `out`:
-    /// `u8 stm | i8 result | i32 score | i32 classic_eval | u16 ply | u16 n | n * (u16 sq, u16 piece|color<<9)`.
+    /// `u8 stm | i8 result | i32 score | i32 classic_eval | u16 ply | u32 game_id | u16 n | n * (u16 sq, u16 piece|color<<9)`.
     pub fn encode_into(&self, out: &mut Vec<u8>) {
         let n = self.board.iter().filter(|&&c| c != 0).count() as u16;
         out.push(self.side_to_move);
@@ -87,6 +91,7 @@ impl TrainingSample {
         out.extend_from_slice(&self.score.to_le_bytes());
         out.extend_from_slice(&self.classic_eval.to_le_bytes());
         out.extend_from_slice(&self.ply.to_le_bytes());
+        out.extend_from_slice(&self.game_id.to_le_bytes());
         out.extend_from_slice(&n.to_le_bytes());
         for (sq, &c) in self.board.iter().enumerate() {
             if c != 0 {
@@ -251,6 +256,7 @@ impl SelfPlayWorker {
 
             if !in_opening {
                 let mut sample = TrainingSample {
+                    game_id: game_id as u32,
                     board: [0; 1296],
                     side_to_move: side,
                     result: 0,

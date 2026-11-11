@@ -6,7 +6,7 @@
 //!   3. leaf handling (quiescence / static eval)
 //!   4. shallow-eval pruning: razoring → RFP → futility
 //!   5. null-move pruning
-//!   6. ProbCut
+//!   6. Static-eval pruning
 //!   7. internal iterative deepening
 //!   8. staged movegen: capture beam (branching-scaled) → quiet LMP stage
 //!   9. TT store
@@ -161,14 +161,15 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// ProbCut (depth ≥ 4): statistical pruning — if the static eval is far
-    /// enough below alpha, the probability that any move can raise it above
-    /// beta is negligible. Reference: "ProbCut" — Kotani, Computer Shogi.
-    fn probcut(&mut self, d: u32, static_eval: i32, alpha: i32, in_check: bool) -> Option<i32> {
-        if !self.cfg.probcut {
+    /// Static-eval prune (depth ≥ 4): if the static eval is far enough below
+    /// alpha, skip searching this node because no move can realistically raise
+    /// it above alpha. This is a static-evaluation cut, *not* the statistical
+    /// ProbCut technique (Kotani, Computer Shogi) which uses a reduced search.
+    fn static_eval_prune(&mut self, d: u32, static_eval: i32, alpha: i32, in_check: bool) -> Option<i32> {
+        if !self.cfg.static_eval_prune {
             return None;
         }
-        if let Some(margin) = params::probcut_margin(d) {
+        if let Some(margin) = params::static_eval_prune_margin(d) {
             if !in_check && params::mate_gate_ok(alpha) && static_eval + margin <= alpha {
                 return Some(alpha);
             }
@@ -247,8 +248,8 @@ impl<'a> Ctx<'a> {
             return score;
         }
 
-        // ── PROBCUT ───────────────────────────────────────────────
-        if let Some(score) = self.probcut(d, static_eval, alpha, in_check) {
+        // ── STATIC-EVAL PRUNE ─────────────────────────────────────
+        if let Some(score) = self.static_eval_prune(d, static_eval, alpha, in_check) {
             return score;
         }
 

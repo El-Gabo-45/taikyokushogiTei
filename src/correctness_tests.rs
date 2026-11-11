@@ -56,6 +56,99 @@ fn tsfen_roundtrip_after_random_walk() {
     assert_eq!(restored.legal_moves().len(), board.legal_moves().len());
 }
 
+// ── TSFEN strict validation (negative tests) ─────────────────────
+
+#[test]
+fn tsfen_rejects_invalid_side() {
+    let b = Board::initial();
+    let good = b.to_tsfen();
+    // Replace side field with something invalid
+    let parts: Vec<&str> = good.split(' ').collect();
+    let bad = format!("{} x {}", parts[0], parts[2]);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(err.contains("side to move"), "unexpected error: {err}");
+}
+
+#[test]
+fn tsfen_rejects_invalid_move_number() {
+    let b = Board::initial();
+    let good = b.to_tsfen();
+    let parts: Vec<&str> = good.split(' ').collect();
+    let bad = format!("{} w 0", parts[0]);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(err.contains("move number"), "unexpected error: {err}");
+
+    let bad = format!("{} w abc", parts[0]);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(err.contains("move number"), "unexpected error: {err}");
+}
+
+#[test]
+fn tsfen_rejects_unknown_piece_abbreviation() {
+    let b = Board::initial();
+    let good = b.to_tsfen();
+    let parts: Vec<&str> = good.split(' ').collect();
+    // Replace the first piece on rank 0 with an unknown single-letter piece 'Z'
+    let mut bad_rank = String::from("Z");
+    bad_rank.push_str(&parts[0][1..]);
+    let bad = format!("{} {} {}", bad_rank, parts[1], parts[2]);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(
+        err.contains("unknown piece abbreviation") || err.contains("unknown piece"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn tsfen_rejects_wrong_square_count_per_rank() {
+    let b = Board::initial();
+    let good = b.to_tsfen();
+    let parts: Vec<&str> = good.split(' ').collect();
+    let side_move = parts[1];
+    let move_num = parts[2];
+
+    // Too few squares: a rank with only 35 squares (one 'P' + 34 empties)
+    let short_rank = "P34";
+    // Build a 36-rank string where rank 0 has 35 squares
+    let mut ranks: Vec<&str> = good.split('/').collect();
+    ranks[0] = short_rank;
+    let bad = format!("{} {} {}", ranks.join("/"), side_move, move_num);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(
+        err.contains("squares") || err.contains("expected"),
+        "unexpected error: {err}"
+    );
+
+    // Too many squares: a rank with 37 squares (two pieces + 35 empties)
+    let mut ranks2: Vec<&str> = good.split('/').collect();
+    ranks2[0] = "PP35";
+    let bad = format!("{} {} {}", ranks2.join("/"), side_move, move_num);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(
+        err.contains("squares") || err.contains("expected"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn tsfen_rejects_wrong_rank_count() {
+    let b = Board::initial();
+    let good = b.to_tsfen();
+    let parts: Vec<&str> = good.split(' ').collect();
+    // Only half the ranks
+    let half_ranks: Vec<&str> = parts[0].split('/').take(crate::BOARD_SIZE / 2).collect();
+    let bad = format!("{} {} {}", half_ranks.join("/"), parts[1], parts[2]);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(err.contains("ranks"), "unexpected error: {err}");
+
+    // Too many ranks
+    let mut many_ranks: Vec<&str> = parts[0].split('/').collect();
+    many_ranks.push("");
+    let bad = format!("{} {} {}", many_ranks.join("/"), parts[1], parts[2]);
+    let err = Board::from_tsfen(&bad).unwrap_err();
+    assert!(err.contains("ranks"), "unexpected error: {err}");
+}
+
 // ── Perft golden values (current tree, dedup ON) ────────────────
 #[test]
 fn perft_golden_initial() {

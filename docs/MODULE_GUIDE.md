@@ -84,7 +84,7 @@ prise.
 | File | Contents |
 |------|----------|
 | `mod.rs` | `Searcher` struct, iterative deepening, aspiration windows, `search()`, `search_threads()`, `set_hash_mb()`, `DEFAULT_THREADS=1`, `MAX_THREADS=64` |
-| `pvs.rs` | PVS core: null-window re-search, LMR, null-move pruning, razoring, reverse-futility, futility, ProbCut, IID, staged movegen |
+| `pvs.rs` | PVS core: null-window re-search, LMR, null-move pruning, razoring, reverse-futility, futility, static-eval prune, IID, staged movegen |
 | `root.rs` | Root iteration |
 | `smp.rs` | Lazy SMP: `SharedBest`, per-worker root-order rotation |
 | `tt.rs` | Lock-free bucketed transposition table |

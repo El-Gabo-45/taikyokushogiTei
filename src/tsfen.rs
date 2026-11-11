@@ -29,14 +29,39 @@ pub fn to_tsfen(board: &Board) -> String {
 }
 
 /// Parse a TSFEN string into a Board. Returns `Err` with a message on failure.
+///
+/// Validation rules:
+/// - Exactly `BOARD_SIZE` ranks separated by `/`
+/// - Exactly `BOARD_SIZE` squares per rank (pieces + empty-square numbers)
+/// - Piece abbreviations must be known (see [`pieces::find_by_abbrev`])
+/// - Side to move must be exactly `b` or `w`
+/// - Move number must be a positive integer (>= 1)
 pub fn from_tsfen(tsfen: &str) -> Result<Board, String> {
     let parts: Vec<&str> = tsfen.trim().splitn(3, ' ').collect();
-    let rank_str = parts.first().ok_or("empty TSFEN")?;
-    let side = parts.get(1).copied().unwrap_or("b");
-    let move_num: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+    if parts.len() < 3 {
+        return Err("TSFEN must have exactly three fields: ranks side move_number".to_string());
+    }
+    let rank_str = parts[0];
+    let side_str = parts[1];
+    let move_str = parts[2];
+
+    // Side to move: strictly 'b' or 'w'
+    let side = match side_str {
+        "b" => BLACK,
+        "w" => WHITE,
+        _ => return Err(format!("invalid side to move '{side_str}': expected 'b' or 'w'")),
+    };
+
+    // Move number: must parse and be positive
+    let move_num: u32 = move_str
+        .parse()
+        .map_err(|_| format!("invalid move number '{move_str}': expected a positive integer"))?;
+    if move_num == 0 {
+        return Err(format!("invalid move number {move_num}: must be >= 1"));
+    }
 
     let mut board = Board::new();
-    board.side_to_move = if side == "w" { WHITE } else { BLACK };
+    board.side_to_move = side;
     board.move_number = move_num;
 
     let ranks: Vec<&str> = rank_str.split('/').collect();
@@ -131,10 +156,10 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
             i += 1; // skip ')'
 
             let (color, abbrev) = parse_piece_token(abbrev_raw);
-            if let Some(pt) = pieces::find_by_abbrev(&abbrev) {
-                let sq = row * BOARD_SIZE + col;
-                board.cells[sq] = make_cell(pt, color);
-            }
+            let pt = pieces::find_by_abbrev(&abbrev)
+                .ok_or_else(|| format!("unknown piece abbreviation '({abbrev_raw})' in rank {row}"))?;
+            let sq = row * BOARD_SIZE + col;
+            board.cells[sq] = make_cell(pt, color);
             col += 1;
         } else {
             // Single character piece
@@ -144,13 +169,18 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
                 WHITE
             };
             let abbrev = ch.to_ascii_uppercase().to_string();
-            if let Some(pt) = pieces::find_by_abbrev(&abbrev) {
-                let sq = row * BOARD_SIZE + col;
-                board.cells[sq] = make_cell(pt, color);
-            }
+            let pt = pieces::find_by_abbrev(&abbrev)
+                .ok_or_else(|| format!("unknown piece abbreviation '{ch}' in rank {row}"))?;
+            let sq = row * BOARD_SIZE + col;
+            board.cells[sq] = make_cell(pt, color);
             col += 1;
             i += 1;
         }
+    }
+    if col != BOARD_SIZE {
+        return Err(format!(
+            "rank {row} has {col} squares, expected {BOARD_SIZE}"
+        ));
     }
     Ok(())
 }

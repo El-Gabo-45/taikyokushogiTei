@@ -995,8 +995,8 @@ fn main() {
     if args.no_null_move.unwrap_or(false) {
         cfg.null_move_pruning = false;
     }
-    if args.no_probcut.unwrap_or(false) {
-        cfg.probcut = false;
+    if args.no_static_eval_prune.unwrap_or(false) {
+        cfg.static_eval_prune = false;
     }
     if args.no_tt.unwrap_or(false) {
         cfg.transposition_table = false;
@@ -1142,7 +1142,7 @@ struct CliArgs {
     no_rfp: Option<bool>,
     no_futility: Option<bool>,
     no_null_move: Option<bool>,
-    no_probcut: Option<bool>,
+    no_static_eval_prune: Option<bool>,
     no_tt: Option<bool>,
     no_killers: Option<bool>,
     no_history: Option<bool>,
@@ -1182,7 +1182,7 @@ TECHNIQUE TOGGLES (ablation / testing — disable one or more):
         --no-rfp           disable reverse futility pruning
         --no-futility      disable futility pruning
         --no-null-move     disable null-move pruning
-        --no-probcut       disable ProbCut pruning
+        --no-static-eval-prune  disable static-eval pruning
         --no-tt            disable transposition table
         --no-killers       disable killer moves
         --no-history       disable butterfly history
@@ -1256,7 +1256,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             "--no-rfp" => out.no_rfp = Some(true),
             "--no-futility" => out.no_futility = Some(true),
             "--no-null-move" => out.no_null_move = Some(true),
-            "--no-probcut" => out.no_probcut = Some(true),
+            "--no-static-eval-prune" => out.no_static_eval_prune = Some(true),
             "--no-tt" => out.no_tt = Some(true),
             "--no-killers" => out.no_killers = Some(true),
             "--no-history" => out.no_history = Some(true),

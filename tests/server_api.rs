@@ -665,7 +665,8 @@ async fn cors_preflight_is_allowed() {
         .headers()
         .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
         .expect("allow-origin header");
-    assert_eq!(origin, "*");
+    // With AllowOrigin::mirror_request() the origin is echoed back.
+    assert_eq!(origin, "http://localhost:5000");
 }
 
 // ============================================================

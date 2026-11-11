@@ -10,7 +10,7 @@
 //! * [`ordering`]   — move scoring (TT move > MVV-LVA > killers > history).
 //! * [`pvs`]        — the PVS core: null-window re-search, late move
 //!   reductions (history-softened), null-move pruning, razoring / reverse
-//!   futility / futility / ProbCut, internal iterative deepening, staged
+//!   futility / static-eval prune, internal iterative deepening, staged
 //!   move generation with incremental pick-next ordering.
 //! * [`qsearch`]    — capture-only quiescence with its own TT traffic.
 //! * [`root`]       — one root iteration at a fixed depth (aspiration
@@ -687,12 +687,12 @@ mod tests {
         assert!(r.best_move.is_some());
     }
 
-    /// Disabling ProbCut must not crash.
+    /// Disabling static-eval prune must not crash.
     #[test]
-    fn search_without_probcut_still_works() {
+    fn search_without_static_eval_prune_still_works() {
         let mut board = Board::initial();
         let mut cfg = SearchConfig::production();
-        cfg.probcut = false;
+        cfg.static_eval_prune = false;
         let mut searcher = Searcher::with_config(cfg);
         let r = board.search_with(&mut searcher, 3, 0);
         assert!(r.best_move.is_some());

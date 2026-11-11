@@ -98,9 +98,22 @@ def main():
     sc = args.scale or auto_scale(d.score)
     print(f"{len(d)} samples after dropping mate-like scores; sigmoid scale SC = {sc:.0f}")
 
-    ids = rng.permutation(len(d))
-    nval = max(1, int(len(d) * args.val_fraction))
-    val_ids, train_ids = ids[:nval], ids[nval:]
+    # ── Split by game, not by position ──────────────────────────────
+    # Positions from the same game are highly correlated. Splitting by
+    # individual positions would leak training data into validation.
+    # Instead, group samples by game_id, shuffle games, and allocate
+    # whole games to train or validation.
+    game_ids = np.unique(d.game_id)
+    rng.shuffle(game_ids)
+    nval_games = max(1, int(len(game_ids) * args.val_fraction))
+    val_game_ids = set(game_ids[:nval_games].tolist())
+    train_game_ids = set(game_ids[nval_games:].tolist())
+
+    val_mask = np.isin(d.game_id, list(val_game_ids))
+    train_mask = np.isin(d.game_id, list(train_game_ids))
+
+    val_ids = np.flatnonzero(val_mask)
+    train_ids = np.flatnonzero(train_mask)
     model = TKNet(arch)
     if not args.no_material_init:
         model.init_material(arch.class_values)
