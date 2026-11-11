@@ -49,7 +49,11 @@ pub fn from_tsfen(tsfen: &str) -> Result<Board, String> {
     let side = match side_str {
         "b" => BLACK,
         "w" => WHITE,
-        _ => return Err(format!("invalid side to move '{side_str}': expected 'b' or 'w'")),
+        _ => {
+            return Err(format!(
+                "invalid side to move '{side_str}': expected 'b' or 'w'"
+            ))
+        }
     };
 
     // Move number: must parse and be positive
@@ -156,8 +160,9 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
             i += 1; // skip ')'
 
             let (color, abbrev) = parse_piece_token(abbrev_raw);
-            let pt = pieces::find_by_abbrev(&abbrev)
-                .ok_or_else(|| format!("unknown piece abbreviation '({abbrev_raw})' in rank {row}"))?;
+            let pt = pieces::find_by_abbrev(&abbrev).ok_or_else(|| {
+                format!("unknown piece abbreviation '({abbrev_raw})' in rank {row}")
+            })?;
             let sq = row * BOARD_SIZE + col;
             board.cells[sq] = make_cell(pt, color);
             col += 1;

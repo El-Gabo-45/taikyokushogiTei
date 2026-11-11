@@ -42,3 +42,29 @@ nnue-bench:
 nnue-test:
 	cargo test --release --lib --tests
 	NNUE_BIN=target/release/nnue $(PY) -m unittest training/test_pipeline.py
+
+# ── Cross-version strength test ─────────────────────────────────
+# Plays the current build against an older commit (built in a throwaway git
+# worktree) and reports W/L/D, Elo CI and optional SPRT.
+#   make version-race                                # vs HEAD~1
+#   make version-race OLD=HEAD~5 RACE_ARGS="sprt=0:10"
+#   make version-race OLD=v1.2 NET=nets/experimental-v1.tkn.zst   # with NNUE
+OLD          ?= HEAD~1
+RACE_GAMES   ?= 40
+RACE_DEPTH   ?= 2
+RACE_MOVETIME?= 2000
+RACE_OPEN    ?= 6
+RACE_MAXPLIES?= 300
+RACE_NET     ?=
+RACE_ARGS    ?=
+WT           ?= target/version-race
+
+.PHONY: version-race
+
+version-race:
+	cargo build --release --bin taikyokushogi-cli
+	rm -rf $(WT) && git worktree prune
+	git worktree add --detach $(WT) $(OLD)
+	cd $(WT) && cargo build --release --bin taikyokushogi-cli || (git worktree remove --force $(WT); exit 1)
+	cargo run --release --example version_race -- $(RACE_GAMES) $(RACE_DEPTH) $(RACE_MOVETIME) $(RACE_OPEN) $(RACE_MAXPLIES) engineA=target/release/taikyokushogi-cli engineB=$(WT)/target/release/taikyokushogi-cli $(if $(RACE_NET),netA=$(RACE_NET) netB=$(RACE_NET),) $(RACE_ARGS)
+	git worktree remove --force $(WT)

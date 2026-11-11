@@ -548,6 +548,31 @@ and deterministic opening randomization. For publishable Elo claims, run
 >= 1000 games and compute a confidence interval or SPRT bounds on the
 W/L/D counts.
 
+### Comparing engine versions
+
+`match_race` can only compare configurations of the *same* binary. To
+measure a code change itself, race two engine executables with
+`version_race` (the harness orchestrates both processes with
+`position`/`go`; it never searches):
+
+```bash
+# current build vs the previous commit (builds the old ref in a worktree)
+make version-race
+make version-race OLD=HEAD~5
+
+# with NNUE on both sides and an SPRT stop rule
+make version-race OLD=HEAD~3 RACE_NET=nets/experimental-v1.tkn.zst RACE_ARGS="sprt=0:10"
+
+# or point the harness at any two binaries yourself
+cargo run --release --example version_race -- 40 2 2000 6 \
+  engineA=target/release/taikyokushogi-cli engineB=/path/to/old/taikyokushogi-cli
+```
+
+The Makefile target builds `OLD` in a throwaway git worktree under
+`target/version-race/` (removed afterwards), so both sides are genuine
+binaries of the two versions. Side A plays Black on even games; results
+are deterministic for a given invocation (seeded openings).
+
 ## Neural Evaluation (NNUE)
 
 A neural evaluator (NNUE, architecture "S": piece classes × squares, no king

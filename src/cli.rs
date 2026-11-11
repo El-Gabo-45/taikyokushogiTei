@@ -310,13 +310,24 @@ fn cmd_go(board: &mut Board, opt: &Options) {
     let mut searcher = opt.searcher();
     let r = board.search_with(&mut searcher, opt.depth, opt.movetime);
     match &r.best_move {
-        Some(m) => println!(
-            "bestmove {} score {} nodes {} time {}ms",
-            move_name(m),
-            r.score,
-            r.nodes,
-            r.time_ms
-        ),
+        Some(m) => {
+            // igui victims and lion mid-capture squares are not visible in
+            // the from/to name; emit them as a separate `mid` token so
+            // scripted consumers (version_race) can replay the exact move.
+            // Parsers that only read the first token are unaffected.
+            let mid = match m.mid_sq() {
+                Some(sq) => format!(" mid {}{}", file_char(sq % 36), sq / 36 + 1),
+                None => String::new(),
+            };
+            println!(
+                "bestmove {}{} score {} nodes {} time {}ms",
+                move_name(m),
+                mid,
+                r.score,
+                r.nodes,
+                r.time_ms
+            );
+        }
         None => println!("bestmove none (no legal moves) score {}", r.score),
     }
 }

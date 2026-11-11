@@ -1,6 +1,6 @@
 # Examples & Benchmarks
 
-All 21 examples in `examples/`, run from the repo root as:
+The examples in `examples/`, run from the repo root as:
 
 ```bash
 cargo run --release --example <name> -- [args...]
@@ -57,22 +57,50 @@ cargo run --release --example <name> -- [args...]
 ## Strength testing
 
 - `match_race`: head-to-head matches with Elo + 95% CI (and optional
-  GSPRT) between two configurations. **Positional args:**
-  `games [depthA] [depthB] [time_ms] [opening_plies]`; **optional flags:**
-  `nnueA`, `nnueB`, `sprt=elo0:elo1`. Examples:
+  GSPRT) between two configurations of **the same binary**. **Positional
+  args:** `games [depthA] [depthB] [time_ms] [opening_plies]`; **optional
+  flags:** `netA=PATH`, `netB=PATH`, `sprt=elo0:elo1`. Examples:
 
   ```bash
   # depth 3 vs depth 2, 100 games, report every batch
   cargo run --release --example match_race -- 100 3 2 2000 6
   # SPRT: is depth 3 at least +10 Elo over depth 2?
   cargo run --release --example match_race -- 400 3 2 2000 6 sprt=0:10
-  # handcrafted vs NNUE (needs TAIKYOKU_NNUE_PATH)
-  TAIKYOKU_NNUE_PATH=net.nnue cargo run --release --example match_race -- 100 3 3 2000 6 nnueB
+  # handcrafted (A) vs NNUE (B)
+  cargo run --release --example match_race -- 100 3 3 2000 6 netB=nets/experimental-v1.tkn.zst
+  # two different networks head to head
+  cargo run --release --example match_race -- 100 3 3 2000 6 netA=a.tkn netB=b.tkn
   ```
 
   Deterministic (seeded LCG): identical invocations reproduce identical
   games. The CLI's `match`/`sprt` commands offer the same machinery with
   `threadsA`/`threadsB` for Lazy-SMP A/B tests (see the main README).
+
+- `version_race`: the cross-version counterpart — matches between two
+  engine **executables** (e.g. the current build vs an older commit), so
+  code changes themselves can be measured. The harness only orchestrates
+  (`position <tsfen>` + `go`, reading `bestmove`); it never searches, so
+  both sides are genuinely different builds. **Positional args:** `games
+  [depth] [time_ms] [opening_plies] [maxplies]`; **flags:** `engineA=PATH`,
+  `engineB=PATH`, `netA=`, `netB=`, `depthA=`, `depthB=`, `threadsA=`,
+  `threadsB=`, `hash=`, `argA=`, `argB=`, `sprt=elo0:elo1`. The `make
+  version-race` target automates building the old commit in a git worktree:
+
+  ```bash
+  # current vs the previous commit (builds the old ref for you)
+  make version-race
+  make version-race OLD=HEAD~5
+  # with NNUE on both sides, plus an SPRT stop rule
+  make version-race OLD=HEAD~3 RACE_NET=nets/experimental-v1.tkn.zst RACE_ARGS="sprt=0:10"
+  # or run the harness directly with your own two binaries
+  cargo run --release --example version_race -- 40 2 2000 6 \
+    engineA=target/release/taikyokushogi-cli engineB=/path/to/old-cli
+  ```
+
+  Engines run as one persistent process each (warm transposition table, as
+  in real play). Newer builds also emit a `mid <sq>` token after `bestmove`
+  to replay igui/lion mid-captures exactly; older builds fall back to the
+  same move choice the CLI makes for a human-typed move.
 
 ## NNUE pipeline tooling
 

@@ -165,7 +165,13 @@ impl<'a> Ctx<'a> {
     /// alpha, skip searching this node because no move can realistically raise
     /// it above alpha. This is a static-evaluation cut, *not* the statistical
     /// ProbCut technique (Kotani, Computer Shogi) which uses a reduced search.
-    fn static_eval_prune(&mut self, d: u32, static_eval: i32, alpha: i32, in_check: bool) -> Option<i32> {
+    fn static_eval_prune(
+        &mut self,
+        d: u32,
+        static_eval: i32,
+        alpha: i32,
+        in_check: bool,
+    ) -> Option<i32> {
         if !self.cfg.static_eval_prune {
             return None;
         }
