@@ -7,7 +7,7 @@ Thank you for contributing. Quick guidelines and development steps.
 The crate is organized into layers with strict visibility rules:
 
 | Layer | Path | Visibility | Purpose |
-|-------|------|-----------|---------|
+| --- | --- | --- | --- |
 | Public API | `src/lib.rs` | `pub` | User-facing types (`Board`, `Move`, `Square`, `Piece`, `Color`, `GameResult`, `PieceInfo`, `SearchResult`) |
 | Internal core | `src/board/`, `src/movegen/`, `src/types/` | `mod` (private) | Board state, move generation, core types and tables |
 | Evaluation | `src/eval/` | `mod` (private) | Hand-crafted + NNUE evaluators |

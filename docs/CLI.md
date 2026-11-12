@@ -12,7 +12,7 @@ cargo build --release --bin taikyokushogi-cli
 
 ## Command-line flags (non-interactive)
 
-```
+```text
 taikyokushogi-cli [OPTIONS] [COMMANDS...]
 
   -d, --depth <N>        default search depth in plies (default 3)
@@ -77,10 +77,10 @@ Strength changes are measured with the built-in `elo` module
 (`taikyokushogi::elo`), which the CLI exposes through the `match` and `sprt`
 commands:
 
-* **`match 20 2 3`** — plays 20 games alternating colors between a depth-2 and
+- **`match 20 2 3`** — plays 20 games alternating colors between a depth-2 and
   a depth-3 configuration, then prints W/D/L and the Elo difference with a
   95% confidence interval.
-* **`sprt 0 10 100 2 3`** — runs a sequential probability ratio test with
+- **`sprt 0 10 100 2 3`** — runs a sequential probability ratio test with
   H0 ≤ 0 Elo vs H1 ≥ 10 Elo (α = β = 0.05), stopping as soon as the result
   is statistically decided.
 

@@ -111,7 +111,7 @@ It exists so the whole pipeline (load → search → parity) can be tried withou
 training anything first.
 
 | | |
-|---|---|
+| --- | --- |
 | Architecture | NNUE "S", TKN1 v2, 27 classes, 8 buckets (hash `7152ece7…eea8`, see `nnue info`) |
 | Data | 300 self-play games, depth 2, 100 ms, 8 random opening plies, seed 100 (136 902 moves) |
 | Training samples | 104 277 after dropping mate-like scores, sigmoid scale SC = 39 894 |

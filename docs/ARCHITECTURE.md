@@ -158,7 +158,7 @@ Integration notes:
 
 ## Repository layout
 
-```
+```text
 taikyokushogiTei/
   src/
     lib.rs              # Public crate API (Board, Move, PieceInfo, search, TSFEN, elo, ...)

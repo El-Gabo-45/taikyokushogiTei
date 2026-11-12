@@ -7,7 +7,7 @@ complements [ARCHITECTURE.md](ARCHITECTURE.md) (high-level design) and
 
 ## Top-level layout
 
-```
+```text
 src/
   lib.rs          — Public API facade (thin wrappers over internal types)
   board/          — Board state, apply/undo, game_result, incremental scores
@@ -172,6 +172,7 @@ crates, e.g. `usi_main.rs`, and external tooling drives `search`/`elo`).
    - Utilities → existing flat file or new file in `src/`
 
 2. **Create `mod.rs`** if you're making a new directory:
+
    ```rust
    // src/foo/mod.rs
    pub use self::core::*;  // or selective re-exports
@@ -179,6 +180,7 @@ crates, e.g. `usi_main.rs`, and external tooling drives `search`/`elo`).
    ```
 
 3. **Declare the module** in the parent `mod.rs` or `lib.rs`:
+
    ```rust
    // Plain `mod`, never `pub mod` for internal code
    mod foo;

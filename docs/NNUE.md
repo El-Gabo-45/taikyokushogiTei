@@ -117,7 +117,7 @@ and `arch_hash = SHA-256(descriptor)`. Rust and Python build the same string;
 
 Little-endian, no padding, nothing after the last field:
 
-```
+```text
 "TKN1" | u16 version=2 | [u8;32] arch_hash
 | u32 kingbuckets=1 | u32 planes | u32 L1 | u32 out_buckets | u32 npiece
 | u8  class_map[npiece] | u16 thresholds[7]
@@ -163,7 +163,7 @@ refreshes from the board. A board without a network pays nothing.
 
 ## Workflow
 
-```
+```text
 make nnue-data      # self-play (games, depth, workers, time, --opening-plies, --net)
 make nnue-gates     # unit gate on the data
 make nnue-buckets   # calibrate thresholds, write rules/nnue_arch.json, then rebuild

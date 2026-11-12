@@ -30,7 +30,7 @@ data they encode are a separate work licensed under the Open Database License
 ## What is in this directory
 
 | File | Role |
-|---|---|
+| --- | --- |
 | `arch.py` | Loads `rules/nnue_arch.json`; architecture constants, arch hash, output buckets |
 | `dataset.py` | Reader for the `TKD1` self-play files (`samples_*.bin`) |
 | `features.py` | Vectorised feature indices; must match `Network::feature_index` in Rust |
@@ -52,7 +52,7 @@ hard-codes the class map, thresholds or scales.
 ## Architecture in brief
 
 | Part | Value in this repository |
-|---|---|
+| --- | --- |
 | Piece classes | 27 (frozen class map, 302 entries including the unused index 0) |
 | Input planes | 54 (`2 × 27`), no king anchor and no feature hashing |
 | Feature index | `plane × 1296 + square`; White uses `square → 1295 − square` |
@@ -235,7 +235,7 @@ TAIKYOKU_NET=nets/tk.tkn \
 The current S network is much smaller than the old HalfKP design:
 
 | Component | Size |
-|---|---|
+| --- | --- |
 | Feature transformer weights in the file (`i16`) | ~35.8 MB |
 | PSQT (`i32`, 8 buckets) | ~2.2 MB |
 | Dense layers + header | < 0.1 MB |
@@ -249,7 +249,7 @@ laptop. If you hit memory limits, lower `--batch` first.
 ## What is verified
 
 | Check | Where |
-|---|---|
+| --- | --- |
 | Incremental accumulator == full refresh over random walks, lion/igui moves, null moves and undo | `src/eval/nnue/tests.rs` |
 | White perspective is a 180° rotation; feature indices unique and in range | Rust and Python tests |
 | Class map and class values equal the frozen JSON | `class_map_matches_frozen_arch` |

@@ -4,7 +4,7 @@ Complete movement reference for all 209 piece types and their promoted forms.
 
 ## Movement Diagram Legend
 
-```
+```text
   #    piece position
   o    step (1 square)
   2-7  limited range (up to N squares)
@@ -32,7 +32,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Angry Boar (AB) 嗔猪
 
-```
+```text
 . . . . .
 . o . o .
 . o # o .
@@ -46,7 +46,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Angle Mover (B)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -60,7 +60,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Bear (BA)
 
-```
+```text
 . . . . /
 . o o / .
 . o # o .
@@ -74,7 +74,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Blind Bear (BB)
 
-```
+```text
 . . . . .
 . . . . .
 . o # o .
@@ -88,7 +88,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Beast Cadet (BC)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -102,7 +102,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Buddhist Devil (BD)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . o # o .
@@ -116,7 +116,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Bear Soldier (BE)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -130,7 +130,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Angle General (BG)
 
-```
+```text
 . . . . .
 . . . . .
 . . # . .
@@ -145,7 +145,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Blind Dog (BI)
 
-```
+```text
 . . . . .
 . o . o .
 . o # o .
@@ -159,7 +159,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Blue Dragon (BL)
 
-```
+```text
 . . | . /
 . . | / .
 2 1 # 1 2
@@ -173,7 +173,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Blind Monkey (BM)
 
-```
+```text
 . . . . .
 . . . . .
 . o # o .
@@ -187,7 +187,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cannon Soldier (BN)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -201,7 +201,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Beast Officer (BO)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -215,7 +215,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Boar Soldier (BS)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -229,7 +229,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Blind Tiger (BT)
 
-```
+```text
 . . . . .
 . o . o .
 . o # o .
@@ -243,7 +243,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Copper General (C)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -257,7 +257,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Capricorn (CA)
 
-```
+```text
 \ . . . /
 . \ o / .
 . o # o .
@@ -272,7 +272,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Huai Chicken (CC)
 
-```
+```text
 . . . . .
 . o . o .
 . o # o .
@@ -286,7 +286,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Ceramic Dove (CD)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 2 1 # 1 2
@@ -298,7 +298,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cloud Eagle (CE)
 
-```
+```text
 2 . . . 2
 . 1 o 1 .
 . o # o .
@@ -312,7 +312,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Chicken General (CG)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 . . # . .
@@ -326,7 +326,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Chariot Soldier (CH)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -340,7 +340,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Stone Chariot (CI)
 
-```
+```text
 . . | . .
 . o | o .
 2 1 # 1 2
@@ -354,7 +354,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Chicken (CK)
 
-```
+```text
 . . . . .
 . o . o .
 . o # o .
@@ -368,7 +368,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cloud Dragon (CL)
 
-```
+```text
 \ . . . /
 . \ o / .
 . o # o .
@@ -382,7 +382,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Climbing Monkey (CM)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -396,7 +396,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Center Standard (CN)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -410,7 +410,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fowl Officer (CO)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -424,7 +424,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Crown Prince (CP)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -438,7 +438,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Copper Chariot (CR)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 . . # . .
@@ -452,7 +452,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cat Sword (CS)
 
-```
+```text
 . . . . .
 . o . o .
 . . # . .
@@ -466,7 +466,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fowl Cadet (CT)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -480,7 +480,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Dog (D)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -494,7 +494,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Drunken Elephant (DE)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -508,7 +508,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Roaring Dog (DG)
 
-```
+```text
 * . . * . . *
 . \ . | . / .
 . . \ | / . .
@@ -524,7 +524,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Dragon Horse (DH)
 
-```
+```text
 \ . . . /
 . \ o / .
 . o # o .
@@ -538,7 +538,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Dragon King (DK)
 
-```
+```text
 . . | . .
 . o | o .
 - - # - -
@@ -552,7 +552,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Howling Dog (Left) (DL)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -566,7 +566,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fire Demon (DM)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 - - # - -
@@ -580,7 +580,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Donkey (DO)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 2 1 # 1 2
@@ -594,7 +594,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Howling Dog (Right) (DR)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -608,7 +608,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Dark Spirit (DS)
 
-```
+```text
 . . . . .
 . . o o .
 . o # o .
@@ -622,7 +622,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Deva (DV)
 
-```
+```text
 . . . . .
 . o o . .
 . o # o .
@@ -636,7 +636,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Earth General (EA)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -650,7 +650,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Enchanted Badger (EB)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 2 1 # 1 2
@@ -664,7 +664,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Earth Chariot (EC)
 
-```
+```text
 . . | . .
 . . | . .
 . o # o .
@@ -678,7 +678,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Earth Dragon (ED)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . . # . .
@@ -690,7 +690,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Eagle (EG)
 
-```
+```text
 2 . . . 2
 . 1 o 1 .
 . o # o .
@@ -704,7 +704,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Eagle (EL)
 
-```
+```text
 * . | . *
 . \ | / .
 - - # - -
@@ -718,7 +718,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Eastern Barbarian (ES)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . o # o .
@@ -732,7 +732,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Evil Wolf (EW)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -746,7 +746,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fire General (F)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . . # . .
@@ -760,7 +760,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Cat (FC)
 
-```
+```text
 * . . * . . *
 . . . . . . .
 . . . . . . .
@@ -776,7 +776,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Dragon (FD)
 
-```
+```text
 * . . . *
 . . . . .
 . . # . .
@@ -790,7 +790,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Eagle (FE)
 
-```
+```text
 * . . * . . *
 . * . * . * .
 . . \ | / . .
@@ -806,7 +806,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fragrant Elephant (FG)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -820,7 +820,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Horse (FH)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . . # . .
@@ -834,7 +834,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fire Dragon (FI)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -848,7 +848,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Leopard (FL)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -862,7 +862,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Forest Demon (FO)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 2 1 # 1 2
@@ -876,7 +876,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Pup (FP)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -890,7 +890,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Demon (FR)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 - - # - -
@@ -904,7 +904,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Swallow (FS)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -918,7 +918,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Dream-eater (FT)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -932,7 +932,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Goose (FY)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -946,7 +946,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Gold General (G)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -960,7 +960,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Go-between (GB)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -974,7 +974,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Gold Chariot (GC)
 
-```
+```text
 . . | . .
 . o | o .
 2 1 # 1 2
@@ -988,7 +988,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Dragon (GD)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 . . # . .
@@ -1002,7 +1002,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Standard (GE)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -1014,7 +1014,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great General (GG)
 
-```
+```text
 . . . . .
 . . . . .
 . . # . .
@@ -1028,7 +1028,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Gold Stag (GL)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -1042,7 +1042,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Master (GM)
 
-```
+```text
 * . . * . . *
 . \ . | . / .
 . . \ | / . .
@@ -1056,7 +1056,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wood General (GN)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . . # . .
@@ -1070,7 +1070,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Gold Bird (GO)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -1084,7 +1084,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Dove (GR)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 2 1 # 1 2
@@ -1098,7 +1098,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Stag (GS)
 
-```
+```text
 * . | . *
 . . | . .
 - - # - -
@@ -1112,7 +1112,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Turtle (GT)
 
-```
+```text
 \ . * . /
 . \ | / .
 - - # - -
@@ -1126,7 +1126,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Guardian of the Gods (GU)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 2 1 # 1 2
@@ -1140,7 +1140,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Horse General (H)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . . # . .
@@ -1154,7 +1154,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Ram's-head Soldier (HE)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -1168,7 +1168,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Horned Hawk (HF)
 
-```
+```text
 \ . * . /
 . \ | / .
 - - # - -
@@ -1182,7 +1182,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Hook Mover (HM)
 
-```
+```text
 . . | . .
 . . | . .
 - - # - -
@@ -1196,7 +1196,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Horseman (HO)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -1210,7 +1210,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Horse (HR)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -1224,7 +1224,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Horse Soldier (HS)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -1238,7 +1238,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Iron General (I)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -1252,7 +1252,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### King (K)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -1264,7 +1264,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Kirin Master (KM)
 
-```
+```text
 \ . . * . . /
 . \ . | . / .
 . . \ | / . .
@@ -1278,7 +1278,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Kirin (KR)
 
-```
+```text
 . . . . .
 . o o o .
 * . # . *
@@ -1292,7 +1292,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Incense Chariot (L)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -1306,7 +1306,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Longbow Soldier (LB)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 2 1 # 1 2
@@ -1320,7 +1320,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Chariot (LC)
 
-```
+```text
 . . | . /
 . . | / .
 . o # . .
@@ -1334,7 +1334,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Lion Dog (LD)
 
-```
+```text
 * . . * . . *
 . \ . | . / .
 . . \ | / . .
@@ -1350,7 +1350,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Dragon (LE)
 
-```
+```text
 . . . . /
 . . . / .
 2 1 # - -
@@ -1364,7 +1364,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left General (LG)
 
-```
+```text
 . . . . .
 . . o o .
 . . # o .
@@ -1378,7 +1378,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Lion Hawk (LI)
 
-```
+```text
 * * * * *
 * \ o / *
 * o # o *
@@ -1393,7 +1393,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Little Turtle (LL)
 
-```
+```text
 \ . * . /
 . \ | / .
 2 1 # 1 2
@@ -1407,7 +1407,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Lion (LN)
 
-```
+```text
 * * * * *
 * o o o *
 * o # o *
@@ -1423,7 +1423,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Tengu (LO)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -1437,7 +1437,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Leopard Soldier (LP)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 2 1 # 1 2
@@ -1451,7 +1451,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Little Standard (LS)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -1465,7 +1465,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Tiger (LT)
 
-```
+```text
 . . . . /
 . o . / .
 . . # - -
@@ -1479,7 +1479,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mountain General (M)
 
-```
+```text
 2 . . . 2
 . 1 o 1 .
 . . # . .
@@ -1493,7 +1493,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mountain Hawk (MF)
 
-```
+```text
 \ . * . /
 . \ | / .
 - - # - -
@@ -1507,7 +1507,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Monkey (MK)
 
-```
+```text
 . . . . .
 . o . o .
 - - # - -
@@ -1521,7 +1521,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Mountain Eagle (ML)
 
-```
+```text
 * . | . /
 . \ | / .
 - - # - -
@@ -1535,7 +1535,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Mountain Eagle (MR)
 
-```
+```text
 \ . | . *
 . \ | / .
 - - # - -
@@ -1549,7 +1549,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mountain Stag (MS)
 
-```
+```text
 2 . . . 2
 . 1 o 1 .
 2 1 # 1 2
@@ -1563,7 +1563,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Center Master (MT)
 
-```
+```text
 * . * . *
 . \ | / .
 2 1 # 1 2
@@ -1575,7 +1575,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cassia Horse (N)
 
-```
+```text
 . * . * .
 . . . . .
 . . # . .
@@ -1589,7 +1589,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Northern Barbarian (NB)
 
-```
+```text
 . . . . .
 . o o o .
 2 1 # 1 2
@@ -1603,7 +1603,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Neighboring King (NK)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -1617,7 +1617,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Wolf (NT)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -1631,7 +1631,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Ox General (O)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . . # . .
@@ -1645,7 +1645,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Ox Chariot (OC)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -1659,7 +1659,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Old Kite (OK)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . o # o .
@@ -1673,7 +1673,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Old Monkey (OM)
 
-```
+```text
 . . . . .
 . o . o .
 . . # . .
@@ -1687,7 +1687,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Old Rat (OR)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -1701,7 +1701,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Ox Soldier (OS)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -1715,7 +1715,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Swooping Owl (OW)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -1729,7 +1729,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Ox (OX)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -1743,7 +1743,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Pawn (P)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -1757,7 +1757,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Peacock (PC)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -1772,7 +1772,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Peng Master (PE)
 
-```
+```text
 * . . | . . *
 . \ . | . / .
 . . \ | / . .
@@ -1786,7 +1786,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Pup General (PG)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . . # . .
@@ -1800,7 +1800,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Phoenix (PH)
 
-```
+```text
 * . . . *
 . . o . .
 . o # o .
@@ -1814,7 +1814,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Pig General (PI)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . . # . .
@@ -1828,7 +1828,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Phoenix Master (PM)
 
-```
+```text
 * . . | . . *
 . \ . | . / .
 . . \ | / . .
@@ -1842,7 +1842,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Prancing Stag (PR)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . o # o .
@@ -1856,7 +1856,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Poisonous Serpent (PS)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 2 1 # 1 2
@@ -1870,7 +1870,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free King (Q)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -1884,7 +1884,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Chariot (R)
 
-```
+```text
 . . | . .
 . . | . .
 - - # - -
@@ -1898,7 +1898,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Rain Dragon (RA)
 
-```
+```text
 . . . . .
 . o o o .
 - - # - -
@@ -1912,7 +1912,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Rushing Bird (RB)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . o # o .
@@ -1926,7 +1926,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Chariot (RC)
 
-```
+```text
 \ . | . .
 . \ | . .
 . . # o .
@@ -1940,7 +1940,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Reclining Dragon (RD)
 
-```
+```text
 . . . . .
 . . o . .
 . o # o .
@@ -1954,7 +1954,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### River General (RE)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . . # . .
@@ -1968,7 +1968,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right General (RG)
 
-```
+```text
 . . . . .
 . o o . .
 . o # . .
@@ -1982,7 +1982,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Chariot (RH)
 
-```
+```text
 \ . | . /
 . \ | / .
 . o # o .
@@ -1996,7 +1996,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Dragon (RI)
 
-```
+```text
 \ . . . .
 . \ . . .
 - - # 1 2
@@ -2010,7 +2010,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Stag (RN)
 
-```
+```text
 \ . . . /
 . \ . / .
 - - # - -
@@ -2024,7 +2024,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying General (RO)
 
-```
+```text
 . . . . .
 . . . . .
 . . # . .
@@ -2039,7 +2039,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Pup (RP)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2053,7 +2053,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Rabbit (RR)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -2067,7 +2067,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Rear Standard (RS)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -2081,7 +2081,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Tiger (RT)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2095,7 +2095,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Serpent (RU)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2109,7 +2109,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Reverse Chariot (RV)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2123,7 +2123,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Wolf (RW)
 
-```
+```text
 \ . . . /
 . \ o / .
 - - # - -
@@ -2137,7 +2137,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Silver General (S)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -2151,7 +2151,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Boar (SA)
 
-```
+```text
 . . . . .
 . o o o .
 - - # - -
@@ -2165,7 +2165,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Crossbow Soldier (SC)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -2179,7 +2179,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Front Standard (SD)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -2193,7 +2193,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Sword Soldier (SE)
 
-```
+```text
 . . . . .
 . o . o .
 . . # . .
@@ -2207,7 +2207,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Flyer (SF)
 
-```
+```text
 . . . . .
 . o . o .
 - - # - -
@@ -2221,7 +2221,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Stone General (SG)
 
-```
+```text
 . . . . .
 . o . o .
 . . # . .
@@ -2235,7 +2235,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Dragon (SI)
 
-```
+```text
 . . | . .
 . . | . .
 - - # - -
@@ -2249,7 +2249,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Soldier (SL)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 - - # - -
@@ -2263,7 +2263,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Mover (SM)
 
-```
+```text
 . . . . .
 . . o . .
 - - # - -
@@ -2277,7 +2277,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Coiled Serpent (SN)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -2291,7 +2291,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Soldier (SO)
 
-```
+```text
 \ . | . /
 . \ | / .
 . o # o .
@@ -2305,7 +2305,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Spear Soldier (SP)
 
-```
+```text
 . . | . .
 . . | . .
 . o # o .
@@ -2319,7 +2319,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Square Mover (SQ)
 
-```
+```text
 . . | . .
 . . | . .
 - - # - -
@@ -2333,7 +2333,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Silver Rabbit (SR)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . . # . .
@@ -2347,7 +2347,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Serpent (SS)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 - - # - -
@@ -2361,7 +2361,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Strutting Crow (ST)
 
-```
+```text
 . . . . .
 . . o . .
 . . # . .
@@ -2375,7 +2375,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Southern Barbarian (SU)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . o # o .
@@ -2389,7 +2389,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Silver Chariot (SV)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 . . # . .
@@ -2403,7 +2403,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Swallow's Wings (SW)
 
-```
+```text
 . . . . .
 . . o . .
 - - # - -
@@ -2417,7 +2417,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Ox (SX)
 
-```
+```text
 . . . . .
 . . . o .
 - - # - -
@@ -2431,7 +2431,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Tile General (T)
 
-```
+```text
 . . . . .
 . o . o .
 . . # . .
@@ -2445,7 +2445,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Tile Chariot (TC)
 
-```
+```text
 . . | . .
 . . | o .
 . . # . .
@@ -2459,7 +2459,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Turtle Dove (TD)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . o # o .
@@ -2473,7 +2473,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Treacherous Fox (TF)
 
-```
+```text
 \ . . * . . /
 . * . * . * .
 . . \ | / . .
@@ -2489,7 +2489,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Tiger (TG)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2503,7 +2503,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Turtle-snake (TS)
 
-```
+```text
 . . . . /
 . o o / .
 . o # o .
@@ -2517,7 +2517,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Tiger (TT)
 
-```
+```text
 \ . . . .
 . \ . o .
 - - # . .
@@ -2531,7 +2531,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Bear (VB)
 
-```
+```text
 2 . . . 2
 . 1 o 1 .
 . o # o .
@@ -2545,7 +2545,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Dragon (VD)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 2 1 # 1 2
@@ -2560,7 +2560,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Bear (VE)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -2574,7 +2574,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vice General (VG)
 
-```
+```text
 . . * . .
 . . . . .
 * . # . *
@@ -2589,7 +2589,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Horse (VH)
 
-```
+```text
 . . | . .
 . o | o .
 . . # . .
@@ -2603,7 +2603,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vermillion Sparrow (VI)
 
-```
+```text
 \ . . . .
 . \ o o .
 . o # o .
@@ -2617,7 +2617,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Leopard (VL)
 
-```
+```text
 . . | . .
 . o | o .
 . o # o .
@@ -2631,7 +2631,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Mover (VM)
 
-```
+```text
 . . | . .
 . . | . .
 . o # o .
@@ -2645,7 +2645,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Ox (VO)
 
-```
+```text
 \ . . . /
 . \ o / .
 . . # . .
@@ -2659,7 +2659,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Pup (VP)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2673,7 +2673,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Soldier (VR)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 - - # - -
@@ -2687,7 +2687,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Stag (VS)
 
-```
+```text
 . . . . .
 . o o o .
 . . # . .
@@ -2701,7 +2701,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Tiger (VT)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -2715,7 +2715,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Vertical Wolf (VW)
 
-```
+```text
 . . | . .
 . . | . .
 . o # o .
@@ -2729,7 +2729,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Whale (W)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -2743,7 +2743,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Water Dragon (WA)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -2757,7 +2757,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Water Ox (WB)
 
-```
+```text
 . . | . .
 . o | o .
 2 1 # 1 2
@@ -2771,7 +2771,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wood Chariot (WC)
 
-```
+```text
 . . | . .
 . o | . .
 . . # . .
@@ -2785,7 +2785,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wind Dragon (WD)
 
-```
+```text
 \ . . . /
 . \ . / .
 - - # - -
@@ -2799,7 +2799,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### White Elephant (WE)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -2813,7 +2813,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Side Wolf (WF)
 
-```
+```text
 . . . . .
 . o . . .
 - - # - -
@@ -2827,7 +2827,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Water General (WG)
 
-```
+```text
 2 . . . 2
 . 1 o 1 .
 . . # . .
@@ -2841,7 +2841,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### White Foal (WH)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -2855,7 +2855,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wind Horse (WI)
 
-```
+```text
 . . | . .
 . o | o .
 . . # . .
@@ -2869,7 +2869,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Woodland Demon (WL)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -2883,7 +2883,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wind General (WN)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 2 1 # 1 2
@@ -2897,7 +2897,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wooden Dove (WO)
 
-```
+```text
 * . . . . . *
 . \ . 2 . / .
 . . \ 1 / . .
@@ -2911,7 +2911,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Sumo Wrestler (WR)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . . # . .
@@ -2925,7 +2925,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Western Barbarian (WS)
 
-```
+```text
 . . 2 . .
 . o 1 o .
 . o # o .
@@ -2939,7 +2939,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### White Tiger (WT)
 
-```
+```text
 \ . 2 . .
 . \ 1 . .
 - - # - -
@@ -2953,7 +2953,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Nature Spirit (YA)
 
-```
+```text
 . . . . .
 . o . o .
 2 1 # 1 2
@@ -2969,7 +2969,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Ancient Dragon (+ADR)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -2981,7 +2981,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Beast Bird (+BBR)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -2993,7 +2993,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Bear's Eyes (+BEY)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -3005,7 +3005,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Buddhist Spirit (+BSP)
 
-```
+```text
 * * * * *
 * \ | / *
 * - # - *
@@ -3020,7 +3020,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Crossbow General (+CBG)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 2 1 # 1 2
@@ -3032,7 +3032,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cannon Chariot (+CCH)
 
-```
+```text
 \ . | . /
 . \ | / .
 . o # o .
@@ -3044,7 +3044,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Coiled Dragon (+CDR)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -3056,7 +3056,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Copper Elephant (+CEL)
 
-```
+```text
 . . | . .
 . o | o .
 . . # . .
@@ -3068,7 +3068,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cannon General (+CNG)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -3080,7 +3080,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Cavalier (+CVL)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3092,7 +3092,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Divine Dragon (+DDR)
 
-```
+```text
 . . | . /
 . . | / .
 2 1 # - -
@@ -3104,7 +3104,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Divine Sparrow (+DSP)
 
-```
+```text
 \ . . . .
 . \ o o .
 . o # o .
@@ -3116,7 +3116,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Divine Tiger (+DTI)
 
-```
+```text
 \ . | . .
 . \ | . .
 - - # - -
@@ -3128,7 +3128,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Divine Turtle (+DTU)
 
-```
+```text
 . . . . /
 . o o / .
 . o # o .
@@ -3140,7 +3140,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Elephant King (+EKI)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 2 1 # 1 2
@@ -3152,7 +3152,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Bear (+FBR)
 
-```
+```text
 . . . . /
 . o o / .
 . o # o .
@@ -3164,7 +3164,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Boar (+FB) 奔猪
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3176,7 +3176,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Chicken (+FCK)
 
-```
+```text
 . . | . .
 . o | o .
 . o # o .
@@ -3188,7 +3188,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Crocodile (+FCR)
 
-```
+```text
 2 . . . 2
 . 1 . 1 .
 . . # . .
@@ -3202,7 +3202,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Dog (+FDG)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -3214,7 +3214,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Dragon (+FDR)
 
-```
+```text
 \ . . . /
 . \ . / .
 - - # - -
@@ -3226,7 +3226,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Furious Fiend (+FFI)
 
-```
+```text
 * * * * *
 * 1 1 1 *
 * 1 # 1 *
@@ -3241,7 +3241,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Fire (+FFR)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 - - # - -
@@ -3253,7 +3253,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Hawk (+FHK)
 
-```
+```text
 \ . . . /
 . \ o / .
 . . # . .
@@ -3265,7 +3265,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Horse (+FHO)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3277,7 +3277,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Leopard (+FLE)
 
-```
+```text
 \ . . . /
 . \ . / .
 - - # - -
@@ -3289,7 +3289,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fowl (+FOW)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -3301,7 +3301,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Ox (+FOX)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3313,7 +3313,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fire Ox (+FOI)
 
-```
+```text
 . . | . .
 . . | . .
 . o # o .
@@ -3325,7 +3325,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Pig (+FPI)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3337,7 +3337,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Serpent (+FSE)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -3349,7 +3349,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Flying Stag (+FSG)
 
-```
+```text
 . . | . .
 . o | o .
 . o # o .
@@ -3361,7 +3361,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Stag (+FST)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3373,7 +3373,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Tiger (+FTI)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -3385,7 +3385,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Fierce Wind (+FWI)
 
-```
+```text
 . . | . .
 . o | o .
 . . # . .
@@ -3397,7 +3397,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Wolf (+FWO)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3409,7 +3409,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Bear (+GBR)
 
-```
+```text
 \ . | . /
 . \ | / .
 . o # o .
@@ -3421,7 +3421,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Dream-eater (+GDE)
 
-```
+```text
 \ . . | . . /
 . \ . | . / .
 . . \ | / . .
@@ -3435,7 +3435,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Eagle (+GEA)
 
-```
+```text
 * . | . *
 . \ | / .
 - - # - -
@@ -3447,7 +3447,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Elephant (+GEL)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -3459,7 +3459,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Foal (+GFO)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -3471,7 +3471,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Hawk (+GHK)
 
-```
+```text
 \ . * . /
 . \ | / .
 - - # - -
@@ -3483,7 +3483,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Shark (+GSH)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 - - # - -
@@ -3495,7 +3495,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Gliding Swallow (+GSW)
 
-```
+```text
 . . | . .
 . . | . .
 - - # - -
@@ -3507,7 +3507,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Tiger (+GTI)
 
-```
+```text
 . . . . .
 . . o . .
 - - # - -
@@ -3519,7 +3519,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Leopard (+GLE)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 2 1 # 1 2
@@ -3531,7 +3531,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Great Whale (+GWH)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -3543,7 +3543,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Goose Wing (+GWI)
 
-```
+```text
 . . . . .
 . o o o .
 2 1 # 1 2
@@ -3555,7 +3555,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Heavenly Horse (+HHO)
 
-```
+```text
 . * | * .
 . . | . .
 . . # . .
@@ -3567,7 +3567,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Huai River (+HRI)
 
-```
+```text
 . . . . .
 . . o . .
 - - # - -
@@ -3579,7 +3579,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Heavenly Tetrarch (+HT)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -3591,7 +3591,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Heavenly Tetrarch King (+HTK)
 
-```
+```text
 * . * . *
 . \ | / .
 * - # - *
@@ -3603,7 +3603,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### King of Teachings (+KTE)
 
-```
+```text
 * . . * . . *
 . \ . | . / .
 . . \ | / . .
@@ -3617,7 +3617,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Army (+LAR)
 
-```
+```text
 \ . . . .
 . \ o o .
 - - # o .
@@ -3629,7 +3629,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Longbow General (+LBG)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -3641,7 +3641,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Dog (+LDG)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -3653,7 +3653,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Left Iron Chariot (+LIC)
 
-```
+```text
 . . . . /
 . . . / .
 . o # . .
@@ -3665,7 +3665,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Leopard King (+LKI)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 2 1 # 1 2
@@ -3677,7 +3677,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mocking Bird (+MBI)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -3689,7 +3689,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mountain Crane (+MCR)
 
-```
+```text
 * . . * . . *
 . * . * . * .
 . . \ | / . .
@@ -3703,7 +3703,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mount Tai (+MTA)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 2 1 # 1 2
@@ -3715,7 +3715,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Multi General (+MUG)
 
-```
+```text
 \ . | . /
 . \ | / .
 . . # . .
@@ -3727,7 +3727,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Mountain Witch (+MWI)
 
-```
+```text
 \ . . . /
 . \ . / .
 . . # . .
@@ -3739,7 +3739,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Plodding Ox (+POX)
 
-```
+```text
 . . | . .
 . o | o .
 . . # . .
@@ -3751,7 +3751,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Playful Parrot (+PPR)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 2 1 # 1 2
@@ -3763,7 +3763,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Poisonous Wolf (+PWO)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -3775,7 +3775,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Army (+RAR)
 
-```
+```text
 . . . . /
 . o o / .
 . o # - -
@@ -3787,7 +3787,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Reed Bird (+RBI)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -3799,7 +3799,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Boar (+RBO)
 
-```
+```text
 . . . . .
 . o o o .
 - - # - -
@@ -3811,7 +3811,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Dog (+RDG)
 
-```
+```text
 . . | . .
 . . | . .
 . . # . .
@@ -3823,7 +3823,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Rain Demon (+RDM)
 
-```
+```text
 . . 2 . .
 . . 1 . .
 2 1 # 1 2
@@ -3835,7 +3835,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Dragon (+RDR)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3847,7 +3847,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Raiding Hawk (+RHK)
 
-```
+```text
 . . | . .
 . o | o .
 . o # o .
@@ -3859,7 +3859,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Right Iron Chariot (+RIC)
 
-```
+```text
 \ . . . .
 . \ . . .
 . . # o .
@@ -3871,7 +3871,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Leopard (+RLE)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -3883,7 +3883,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Ox (+ROX)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3895,7 +3895,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Running Tile (+RTI)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -3907,7 +3907,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Rushing Boar (+RUB)
 
-```
+```text
 . . . . .
 . o o o .
 . o # o .
@@ -3919,7 +3919,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Strong Bear (+SBR)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3931,7 +3931,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Strong Chariot (+SCH)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3943,7 +3943,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Strong Eagle (+SEA)
 
-```
+```text
 \ . | . /
 . \ | / .
 - - # - -
@@ -3955,7 +3955,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Stone Peng (+SPE)
 
-```
+```text
 \ . . . /
 . \ . / .
 2 1 # 1 2
@@ -3967,7 +3967,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Spear General (+SPG)
 
-```
+```text
 . . | . .
 . . | . .
 2 1 # 1 2
@@ -3979,7 +3979,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Spirit Turtle (+SPT)
 
-```
+```text
 \ . . * . . /
 . \ . | . / .
 . . \ | / . .
@@ -3993,7 +3993,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Sword General (+SWG)
 
-```
+```text
 2 . 2 . 2
 . 1 1 1 .
 . . # . .
@@ -4005,7 +4005,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Thunder Runner (+THR)
 
-```
+```text
 \ . | . /
 . \ | / .
 2 1 # 1 2
@@ -4017,7 +4017,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Treasure Turtle (+TRT)
 
-```
+```text
 \ . * . /
 . \ | / .
 * - # - *
@@ -4029,7 +4029,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Tiger Soldier (+TSO)
 
-```
+```text
 \ . 2 . /
 . \ 1 / .
 . . # . .
@@ -4041,7 +4041,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Walking Heron (+WHR)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 2 1 # 1 2
@@ -4053,7 +4053,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wizard Stork (+WST)
 
-```
+```text
 \ . . . /
 . \ . / .
 - - # - -
@@ -4065,7 +4065,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Wind Snapping Turtle (+WST2)
 
-```
+```text
 2 . | . 2
 . 1 | 1 .
 . . # . .
@@ -4077,7 +4077,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 
 ### Free Bird (+FBI)
 
-```
+```text
 . . | . .
 . . | . .
 - - # - -
