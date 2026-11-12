@@ -39,13 +39,18 @@ def random_position(rng, n=300):
 
 
 def as_data(positions, stm):
-    """Wrap positions into a `dataset.Data` so make_batch can be reused."""
+    """Wrap positions into a `dataset.Data` so make_batch can be reused.
+
+    Every synthetic position counts as its own game (`game_id = i`): the
+    train/val split in `train.py` groups samples by game, and independent
+    positions must not be correlated through a shared id."""
     lens = np.array([len(p[0]) for p in positions])
     z = np.zeros(len(positions), dtype=np.int64)
     return dataset.Data(
         sq=np.concatenate([p[0] for p in positions]), pt=np.concatenate([p[1] for p in positions]),
         color=np.concatenate([p[2] for p in positions]), off=np.concatenate([[0], np.cumsum(lens)]),
-        stm=np.asarray(stm), result=z, score=z, classic=z, ply=z)
+        stm=np.asarray(stm), result=z, score=z, classic=z, ply=z,
+        game_id=np.arange(len(positions), dtype=np.int64))
 
 
 class FeatureTests(unittest.TestCase):
