@@ -340,7 +340,6 @@ Elo math follows the standard logistic model (`expected_score`,
 `elo_from_score`, `Wdl::elo` / `elo_interval95`), with SPRT bounds
 `±ln((1-β)/α)` in the Gaussian approximation used by fishtest.
 
-
 ## Web GUI
 
 The compiled frontend (`web/dist/`) is committed in the repository, so you can run the server immediately after building:
@@ -677,10 +676,12 @@ and measure it with `match_race … sprt=0:10`. Tools: `cargo run --release
 
 ## Module Structure
 
-The crate's internal code is split into module trees by concern. Internal
-modules are **not** `pub` — external users only see the public API in
-`lib.rs` (`Board`, `Move`, `Square`, `Piece`, `Color`, `GameResult`,
-`PieceInfo`, `SearchResult`).
+The crate's internal code is split into module trees by concern. The public
+API in `lib.rs` exposes `Board`, `Move`, `Square`, `Piece`, `Color`,
+`GameResult`, `PieceInfo`, `SearchResult` and `Network`; the
+protocol/service modules `search`, `elo`, `selfplay`, `usi` and `server`
+are also `pub` (the binaries and external tooling drive them directly).
+Everything else is crate-internal.
 
 | Directory | Responsibility |
 |-----------|---------------|
@@ -696,10 +697,11 @@ modules are **not** `pub` — external users only see the public API in
 | `src/tsfen.rs` | TSFEN position encoding/decoding |
 | `src/elo.rs` | Engine-vs-engine matches, Elo + 95% CI, SPRT |
 | `src/selfplay.rs` | Self-play game generation for NNUE training |
-| `src/python.rs` | PyO3 Python bindings (feature-gated) |
-| `src/main.rs` | axum HTTP server + web GUI (port 8000) |
-| `src/cli.rs` | Interactive CLI REPL + one-shot commands |
 | `src/usi.rs` | USI (Universal Shogi Interface) front-end for shogi GUIs / harnesses (bin `taikyokushogi-usi`) |
+| `src/nnue_main.rs` | NNUE tool: classes, verify, random-net, dump-positions, … (bin `nnue`) |
+| `src/python.rs` | PyO3 Python bindings (feature-gated) |
+| `src/server/` | axum router, REST handlers, JSON types (`src/main.rs` is the thin launcher) |
+| `src/cli.rs` | Interactive CLI REPL + one-shot commands |
 | `src/debug_cli.rs` | Minimal one-shot search harness |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full module
