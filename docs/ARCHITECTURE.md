@@ -170,7 +170,7 @@ taikyokushogiTei/
     selfplay.rs         # Self-play logic + TKD1 training-sample format
     nnue_main.rs        # NNUE tool entry point                     (bin: nnue)
     elo.rs              # Match / SPRT / Elo estimation (EngineConfig, threads A/B)
-    python.rs           # PyO3 Python bindings (python cfg + pyo3 feature)
+    python.rs           # PyO3 Python bindings (python feature + pyo3 dep)
     types/              # Core types (mod.rs re-exports the tree)
       constants.rs      #   board dimensions, colors, piece ranks, draw threshold
       cell.rs           #   Cell encoding
@@ -275,7 +275,7 @@ and doc-tests) and runs with `cargo test`.
 |--------|-----------|-------|
 | Public API (`lib.rs` items) | **Stable** | Breaking changes require a minor version bump |
 | Internal modules (`board/`, `movegen/`, `types/`, etc.) | **Unstable** | May change between any releases |
-| `Cargo.toml` features | **Stable** | `cpu`, `gpu-*`, `pyo3` semantics preserved (the unused `nnue` feature was removed) |
+| `Cargo.toml` features | **Stable** | `cpu`, `gpu-*`, `python` semantics preserved (the unused `nnue` feature was removed) |
 | CLI flags and REPL commands | **Stable** | Documented in `cli.rs` and `--help` |
 | TSFEN format | **Stable** | Round-trip guaranteed for all legal positions |
 | `.tkn` network file format | **Stable** | TKN1 v2, defined in `src/eval/nnue/format.rs` and `docs/NNUE.md` |

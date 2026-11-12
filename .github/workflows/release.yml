@@ -105,7 +105,12 @@ jobs:
             ls "$SRC" >&2 || true
             exit 1
           fi
-          cp README.md LICENSE "$STAGE/"
+          cp README.md LICENSE PIECES.md "$STAGE/"
+          # Files the bundled README links: web frontend, docs, licenses.
+          mkdir -p "$STAGE/web"
+          cp -R web/dist "$STAGE/web/dist"
+          cp -R docs "$STAGE/docs"
+          cp -R LICENSES "$STAGE/LICENSES"
           echo "STAGE=$STAGE" >> "$GITHUB_ENV"
           echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
 

@@ -9,6 +9,12 @@ cargo run --release --features server --bin taikyokushogi-server
 # Then open http://localhost:8000 in your browser
 ```
 
+> **Note:** the server keeps a **single shared `GameState`** — every visitor
+> sees the same board, move history and side panels, and the CORS config
+> reflects the request origin. It is designed for local play and analysis;
+> presenting it publicly as a multi-user demo would mix everyone's games.
+> Per-session state would require a server change.
+
 The compiled frontend (`web/dist/`) is committed in the repository, so you
 can run the server immediately after building — no npm required. Rebuild it
 only after modifying `web/src/`:
@@ -61,7 +67,7 @@ whole router in-process).
 | `/api/legal-moves` | GET | Every legal move of the side to move (with origins) |
 | `/api/engine-info` | GET | Version, backend, hash size, threads, search techniques |
 | `/api/evaluate` | GET | Static evaluation and material balance |
-| `/api/pieces` | GET | Full piece database (301 movement classes) |
+| `/api/pieces` | GET | Full piece database (301 piece types) |
 | `/api/piece-info/{abbrev}` | GET | Piece metadata incl. Betza and royal flag (404 if unknown) |
 | `/api/position` | GET/POST | Read/set the position in TSFEN format |
 | `/api/new-game` | POST | Reset to the initial position |

@@ -5,7 +5,7 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 - **36 x 36** board (1,296 squares)
 - **804 pieces** (402 per side)
 - **209 initial piece types** with distinct movement patterns
-- **92 additional promoted forms** (301 movement classes in total)
+- **92 additional promoted forms** (301 piece types in total)
 
 | I want to… | Go to |
 |---|---|
@@ -38,7 +38,9 @@ native runners and published on the repository's GitHub Releases page:
 Linux x86_64 (glibc and a fully static musl build), Windows x86_64 (`.zip`)
 and macOS (Apple Silicon + Intel). Each archive contains the six binaries
 (`taikyokushogi-server`, `taikyokushogi-cli`, `taikyokushogi-usi`, `nnue`,
-`debug-cli`, `selfplay`) plus `README.md` and `LICENSE`. The workflow can
+`debug-cli`, `selfplay`), the prebuilt web frontend (`web/dist/`), `docs/`,
+`PIECES.md` and the license files — everything the bundled README links to.
+The workflow can
 also be run manually ("Run workflow") to build archives without creating a
 release.
 
@@ -60,13 +62,12 @@ network is attached to a board at runtime (`board.set_network(Some(net))`).
 Optional features are described under [Cargo Features](#cargo-features) —
 note that the GPU features currently have no consuming code.
 
-**Python bindings (optional):** `src/python.rs` is gated on the `python`
-cfg (set by the pyo3 build via `RUSTFLAGS` — it is NOT a Cargo feature),
-together with the `pyo3` dependency:
+**Python bindings (optional):** the `python` Cargo feature
+(`python = ["dep:pyo3"]`) compiles the PyO3 extension module:
 
 ```bash
 pip install maturin
-RUSTFLAGS='--cfg feature="python"' maturin build --release --cargo-extra-args "--features pyo3"
+maturin build --release --features python
 ```
 
 **Web frontend (optional):** the compiled `web/dist/` is tracked in git
@@ -215,18 +216,19 @@ module-by-module developer's guide:
 - `gpu-cuda`, `gpu-metal`, `gpu-wgpu`, `gpu-vulkan` — enable the optional
   GPU crates (`burn`/`wgpu`). No code in this tree consumes them yet, so
   these features currently change nothing at runtime.
-- `pyo3` (implicit feature of the optional `pyo3` dependency) — required to
-  *compile* the Python extension module; the module itself
-  (`src/python.rs`) is gated on the `python` cfg, which cargo does not know
-  about and must be passed via `RUSTFLAGS='--cfg feature="python"'`
+- `python` — enables the optional `pyo3` dependency and compiles the Python
+  extension module (`src/python.rs` is gated on `cfg(feature = "python")`).
+  Build it with maturin: `maturin build --release --features python`
   (see the build section above).
 
 ## Credits and copyright
 
-This was a *fork* of **[taikyokushogi](https://github.com/jh85/taikyokushogi)**, a complete engine for Taikyoku Shogi originally developed by **[jh85](https://github.com/jh85)** due to the differences I decided to make this project independent but I'm really grateful to the creator and recommend take a see I. he's project.
+This project started as a fork of **[taikyokushogi](https://github.com/jh85/taikyokushogi)** by **[jh85](https://github.com/jh85)**. I decided to continue it independently because I wanted to make different changes to the code. I'm grateful to the original creator and encourage readers to check out the original project.
 
-The original base code was released under the MIT License. The engine source
-in this repository is distributed under the [GNU General Public License v3.0
+The code this project derives from was MIT-licensed by its author; that
+original permission notice is preserved verbatim in
+[LICENSES/MIT-ORIGINAL.txt](LICENSES/MIT-ORIGINAL.txt). The engine source in
+this repository is distributed under the [GNU General Public License v3.0
 or later](LICENSE). The NNUE network files and the data they encode are a
 separate work distributed under the [Open Database License (ODbL)
 1.0](nets/LICENSE-ODbL.md). We thank the original author for his excellent

@@ -5,7 +5,7 @@
 //!
 //! - **36 x 36** board (1,296 squares)
 //! - **804 pieces** (402 per side)
-//! - **209 initial piece types** / **92 promoted forms** (301 movement classes)
+//! - **209 initial piece types** / **92 promoted forms** (301 piece types)
 //!
 //! ## Quick Start
 //!
@@ -57,7 +57,6 @@
 //! let mb = taikyokushogi::set_hash_mb(64);
 //! ```
 
-#![allow(unexpected_cfgs)] // `python` cfg is set via RUSTFLAGS by the pyo3 build
 mod attack;
 mod board;
 mod eval;

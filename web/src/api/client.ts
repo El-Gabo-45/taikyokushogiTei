@@ -150,7 +150,7 @@ export function pieceInfo(abbrev: string): Promise<PieceInfo> {
   return get<PieceInfo>(`/api/piece-info/${encodeURIComponent(abbrev)}`);
 }
 
-/** Full piece database (301 movement classes). */
+/** Full piece database (301 piece types). */
 export function fetchPieces(): Promise<PieceListResponse> {
   return get<PieceListResponse>('/api/pieces');
 }
