@@ -1,0 +1,144 @@
+name: Release
+
+# Builds the engine for the three desktop platforms on native runners
+# (macOS cannot be cross-compiled from Linux — it needs Apple's SDK, so it
+# gets its own runner). Triggered by pushing a `v*` tag or manually
+# ("Run workflow"); a GitHub Release with all archives is created on tags.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x86_64-gnu
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+            packages: ''
+          # Fully static Linux binary: no glibc version requirements,
+          # runs on any distro (and old ones).
+          - os: ubuntu-latest
+            name: linux-x86_64-musl
+            target: x86_64-unknown-linux-musl
+            archive: tar.gz
+            packages: 'musl-tools'
+          - os: windows-latest
+            name: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            archive: zip
+            packages: ''
+          # macOS arm64 and x86_64 are both built on the arm64 runner;
+          # macOS cross-compiles between its own architectures for free.
+          - os: macos-latest
+            name: macos-aarch64
+            target: aarch64-apple-darwin
+            archive: tar.gz
+            packages: ''
+          - os: macos-latest
+            name: macos-x86_64
+            target: x86_64-apple-darwin
+            archive: tar.gz
+            packages: ''
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system packages
+        if: matrix.packages != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.packages }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ matrix.name }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binaries
+        run: cargo build --release --bins --features server --target ${{ matrix.target }}
+
+      - name: Stage files
+        shell: bash
+        run: |
+          # Tag name (v0.1.0) on tag pushes; Cargo.toml version on manual runs.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VER="$GITHUB_REF_NAME"
+          else
+            VER="v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          fi
+          STAGE="taikyokushogi-${VER}-${{ matrix.name }}"
+          SRC="target/${{ matrix.target }}/release"
+          mkdir "$STAGE"
+          copied=0
+          for bin in taikyokushogi-server taikyokushogi-cli taikyokushogi-usi nnue debug-cli selfplay; do
+            for f in "$SRC/$bin" "$SRC/$bin.exe"; do
+              if [ -f "$f" ]; then cp "$f" "$STAGE/"; copied=$((copied+1)); fi
+            done
+          done
+          if [ "$copied" -lt 6 ]; then
+            echo "ERROR: expected the 6 binaries in $SRC, only $copied copied" >&2
+            ls "$SRC" >&2 || true
+            exit 1
+          fi
+          cp README.md LICENSE "$STAGE/"
+          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: tar -czf "${{ env.STAGE }}.tar.gz" "${{ env.STAGE }}"
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: Compress-Archive -Path "${{ env.STAGE }}" -DestinationPath "${{ env.STAGE }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.STAGE }}.*
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

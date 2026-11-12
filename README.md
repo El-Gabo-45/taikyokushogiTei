@@ -30,6 +30,18 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 - **Python 3.9+** only for the NNUE training pipeline in `training/` (see
   [training/README.md](training/README.md)).
 
+### Prebuilt binaries
+
+Every tagged version (`v*` tag, e.g. `git tag v0.1.0 && git push origin
+v0.1.0`) is built automatically by `.github/workflows/release.yml` on
+native runners and published on the repository's GitHub Releases page:
+Linux x86_64 (glibc and a fully static musl build), Windows x86_64 (`.zip`)
+and macOS (Apple Silicon + Intel). Each archive contains the six binaries
+(`taikyokushogi-server`, `taikyokushogi-cli`, `taikyokushogi-usi`, `nnue`,
+`debug-cli`, `selfplay`) plus `README.md` and `LICENSE`. The workflow can
+also be run manually ("Run workflow") to build archives without creating a
+release.
+
 ### Build
 
 ```bash
