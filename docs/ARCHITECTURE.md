@@ -36,9 +36,10 @@
 │   mod.rs    │   │   mod.rs    │   │   selfplay.rs │
 │   families  │   │   pvs.rs    │   │   cli.rs      │
 │   psqt.rs   │   │   root.rs   │   │   main.rs     │
-│   zones.rs  │   │   smp.rs    │   │   python.rs   │
-│   nnue/     │   │   tt.rs     │   │   debugging/  │
-└─────────────┘   └─────────────┘   └───────────────┘
+│   zones.rs  │   │   smp.rs    │   │   usi.rs      │
+│   nnue/     │   │   tt.rs     │   │   python.rs   │
+└─────────────┘   └─────────────┘   │   debugging/  │
+                                    └───────────────┘
 ```
 
 ### Crate boundary rules
@@ -79,8 +80,10 @@ All external access goes through the public facade in `lib.rs`.
   - `mod.rs` — re-exports from all submodules so `use crate::types::*`
     continues to work
 - `src/search/`: search algorithms.
-  - `mod.rs` — iterative deepening + aspiration windows; the `search` and
-    `search_threads` (Lazy SMP) entry points; hash-size configuration.
+  - `mod.rs` — iterative deepening + aspiration windows; the `search`,
+    `search_threads` (Lazy SMP) and `search_with_stop` (stop flag +
+    per-iteration info callback, consumed by the USI front-end) entry
+    points; hash-size configuration.
   - `pvs.rs` — PVS core: null-window re-search, LMR, null-move pruning,
     razoring / reverse-futility / futility / static-eval prune, IID, staged movegen.
   - `root.rs` — root iteration (the historical depth 1–3 material-delta
@@ -110,6 +113,13 @@ All external access goes through the public facade in `lib.rs`.
   game generation for the NNUE training pipeline.
 - `src/debug_cli.rs` → bin `debug-cli`: minimal one-shot search harness
   (`debug-cli <depth> <time_ms> [--debug]`).
+- `src/usi.rs` + `src/usi_main.rs` → bin `taikyokushogi-usi`: USI
+  (Universal Shogi Interface) front-end so shogi GUIs (ShogiGUI,
+  ShogiHome, …) and USI harnesses can drive the engine. The protocol lives
+  in the library (`taikyokushogi::usi`, unit-tested) and the bin is a thin
+  launcher: TSFEN positions, 36×36 coordinate move tokens, clock handling
+  (`wtime`/`btime`/`winc`/`byoyomi`/`movetime`), `stop`/`ponder` support
+  and the `Threads`/`Hash`/`DepthLimit`/`NetworkFile` options.
 - `training/`: PyTorch pipeline to train and export `.tkn` networks.
 - `web/`: TypeScript + Vite frontend and REST client
   (`web/src/api/client.ts`).
@@ -138,8 +148,8 @@ Integration notes:
   `Board::search_threads`), defaults to 1 worker, and is capped at 64;
   workers share one lock-free TT and results with `threads > 1` are not
   bit-reproducible.
-- Main binaries: `taikyokushogi-server`, `taikyokushogi-cli`, `debug-cli`
-  and `selfplay`.
+- Main binaries: `taikyokushogi-server`, `taikyokushogi-cli`,
+  `taikyokushogi-usi`, `debug-cli` and `selfplay`.
 
 ## Modularization notes (v0.1.0)
 

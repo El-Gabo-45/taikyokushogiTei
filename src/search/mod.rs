@@ -43,7 +43,7 @@ use crate::board::Board;
 use crate::eval::{evaluate, MATE_SCORE};
 use crate::types::Move;
 use std::cell::RefCell;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -54,6 +54,25 @@ pub struct SearchResult {
     pub score: i32,
     pub nodes: u64,
     pub time_ms: u64,
+}
+
+/// Snapshot of one completed iterative-deepening iteration, delivered to the
+/// optional per-iteration callback of [`Searcher::search_with_stop`] /
+/// [`Searcher::search_threads_with_stop`]. Protocol front-ends (USI) use it to
+/// emit `info depth ... score ... nodes ... time ... pv ...` lines while the
+/// search is still running.
+#[derive(Debug, Clone)]
+pub struct IterInfo {
+    /// Depth of the iteration that just completed.
+    pub depth: u32,
+    /// Score of the iteration, side-to-move perspective, centipawns.
+    pub score: i32,
+    /// Nodes searched so far in the WHOLE search (all iterations so far).
+    pub nodes: u64,
+    /// Wall-clock time of the whole search so far, in milliseconds.
+    pub time_ms: u64,
+    /// Best move of this iteration.
+    pub best_move: Option<crate::Move>,
 }
 
 /// A complete search engine in a box: transposition table, killer/history
@@ -158,17 +177,59 @@ impl Searcher {
         // A searcher used on its own owns its stop flag; the workers of a Lazy
         // SMP group share the master's instead (see `search_threads`).
         let stop = AtomicBool::new(false);
-        self.search_impl(board, depth, time_limit_ms, deadline, &stop, None)
+        let mut no_info = |_: &IterInfo| {};
+        self.search_impl(
+            board,
+            depth,
+            time_limit_ms,
+            deadline,
+            &stop,
+            None,
+            &mut no_info,
+        )
+        .0
+    }
+
+    /// [`Searcher::search`] with a caller-owned cooperative stop flag and an
+    /// optional per-iteration callback.
+    ///
+    /// The stop flag is polled every ~64 nodes (~10-15 ms), so setting it from
+    /// another thread aborts the search promptly — this is what a USI front-end
+    /// drives with the `stop` command and with ponder timeouts. When the flag
+    /// fires, the same result-adoption policy as an expired deadline applies:
+    /// a partially-searched iteration is only kept if no earlier iteration
+    /// completed. With `time_limit_ms == 0` the search runs until the flag is
+    /// set (USI `go infinite`).
+    ///
+    /// `on_iter` receives an [`IterInfo`] after every completed iteration
+    /// (skip it with `None`); the callback runs on the calling thread.
+    pub fn search_with_stop(
+        &mut self,
+        board: &mut Board,
+        depth: u32,
+        time_limit_ms: u64,
+        stop: &AtomicBool,
+        on_iter: Option<&mut dyn FnMut(&IterInfo)>,
+    ) -> SearchResult {
+        let deadline = deadline_from(time_limit_ms);
+        let mut no_info = |_: &IterInfo| {};
+        let on_iter = on_iter.unwrap_or(&mut no_info);
+        self.search_impl(board, depth, time_limit_ms, deadline, stop, None, on_iter)
             .0
     }
 
-    /// The iterative-deepening loop behind [`Searcher::search`] and
-    /// [`Searcher::search_threads`].
+    /// The iterative-deepening loop behind [`Searcher::search`],
+    /// [`Searcher::search_with_stop`] and [`Searcher::search_threads`].
     ///
-    /// `stop` is supplied by the caller so Lazy SMP workers can share one flag,
-    /// and `publish` receives every completed iteration so the SMP master can
-    /// adopt a worker's deeper result. Returns the result plus the depth of the
-    /// last completed iteration (0 when none finished).
+    /// `stop` is supplied by the caller so Lazy SMP workers and protocol
+    /// front-ends can share one flag, `publish` receives every completed
+    /// iteration so the SMP master can adopt a worker's deeper result, and
+    /// `on_iter` (a no-op for the plain entry points) reports each completed
+    /// iteration on the calling thread. Returns the result plus the depth of
+    /// the last completed iteration (0 when none finished).
+    // One arg over the clippy default: the per-iteration report callback is
+    // orthogonal to the rest and the plain entry points pass a no-op.
+    #[allow(clippy::too_many_arguments)]
     fn search_impl(
         &mut self,
         board: &mut Board,
@@ -177,6 +238,7 @@ impl Searcher {
         deadline: Option<Instant>,
         stop: &AtomicBool,
         publish: Option<&SharedBest>,
+        on_iter: &mut dyn FnMut(&IterInfo),
     ) -> (SearchResult, u32) {
         let start = Instant::now();
         // env::var takes a global lock — cache it once per search, not per iteration.
@@ -211,6 +273,12 @@ impl Searcher {
         }
 
         for current_depth in 1..=depth {
+            // A cooperative stop (a USI `stop`, an SMP master winding its
+            // workers down) acts like an expired deadline: no new iteration
+            // starts.
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
             if let Some(dl) = deadline {
                 if Instant::now() >= dl {
                     break;
@@ -305,12 +373,15 @@ impl Searcher {
                 local_result
             };
 
-            // A time limit (or a stop) can cut an iteration short. Its partial
-            // result is only adopted when there is nothing better to return: the
-            // FIRST iteration running out of budget mid-way still ranks the root
-            // moves it reached, while for later iterations the last COMPLETED
-            // iteration is the more reliable answer.
-            if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) {
+            // A time limit or a cooperative stop can cut an iteration short.
+            // Its partial result is only adopted when there is nothing better
+            // to return: the FIRST iteration running out of budget mid-way
+            // still ranks the root moves it reached, while for later
+            // iterations the last COMPLETED iteration is the more reliable
+            // answer.
+            let out_of_time = stop.load(Ordering::Relaxed)
+                || deadline.map(|dl| Instant::now() >= dl).unwrap_or(false);
+            if out_of_time {
                 if best_result.best_move.is_none() && result.best_move.is_some() {
                     best_result = result;
                 }
@@ -329,6 +400,15 @@ impl Searcher {
             prev_iter_ms = result.time_ms;
             best_result = result;
             last_depth = current_depth;
+            // Report the completed iteration to the caller (protocol
+            // front-ends emit their `info` lines from here).
+            on_iter(&IterInfo {
+                depth: current_depth,
+                score: best_result.score,
+                nodes,
+                time_ms: start.elapsed().as_millis() as u64,
+                best_move: best_result.best_move.map(|m| crate::Move { inner: m }),
+            });
             // Tell the Lazy SMP master that this iteration is done, so it can adopt
             // our result if it is deeper than what the master has reached itself.
             if let Some(shared) = publish {

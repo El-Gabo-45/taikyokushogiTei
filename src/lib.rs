@@ -101,6 +101,11 @@ pub mod selfplay;
 pub mod server;
 mod tsfen;
 
+/// USI (Universal Shogi Interface) front-end: the [`usi`] module speaks the
+/// standard USI command set over stdin/stdout so the engine can be loaded by
+/// USI GUIs and test harnesses (bin `taikyokushogi-usi`).
+pub mod usi;
+
 #[cfg(feature = "python")]
 mod python;
 
@@ -481,6 +486,14 @@ pub fn num_piece_types() -> usize {
 
 pub use eval::nnue;
 pub use eval::nnue::{Network, NnueError};
+
+/// Score bound the search reserves for a forced win: a score `s` with
+/// `|s| >= MATE_SCORE - plies` means the side to move (positive `s`) forces
+/// the capture of the opponent's last royal piece `plies` plies away
+/// (negative: it is getting captured). Protocol front-ends map this to
+/// `score mate <moves>`; this variant has no checks, so "mate" here is always
+/// the direct royal-capture line.
+pub use eval::MATE_SCORE;
 
 /// Resize the transposition table to `mb` MiB (see `search::set_hash_mb`).
 /// Returns the size actually allocated, which is rounded down to a

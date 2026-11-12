@@ -21,6 +21,7 @@ src/
   tsfen.rs        — TSFEN position encoding/decoding
   elo.rs          — Engine-vs-engine matches, Elo, SPRT
   selfplay.rs     — Self-play game generation for NNUE training
+  usi.rs          — USI (Universal Shogi Interface) front-end
   python.rs       — PyO3 bindings (feature-gated)
   debugging/      — Debug helpers for eval and search
   main.rs         — axum HTTP server (+ web GUI)
@@ -83,7 +84,7 @@ prise.
 
 | File | Contents |
 |------|----------|
-| `mod.rs` | `Searcher` struct, iterative deepening, aspiration windows, `search()`, `search_threads()`, `set_hash_mb()`, `DEFAULT_THREADS=1`, `MAX_THREADS=64` |
+| `mod.rs` | `Searcher` struct, iterative deepening, aspiration windows, `search()`, `search_threads()`, `search_with_stop()` (stop flag + per-iteration `IterInfo` callback, used by the USI front-end), `set_hash_mb()`, `DEFAULT_THREADS=1`, `MAX_THREADS=64` |
 | `pvs.rs` | PVS core: null-window re-search, LMR, null-move pruning, razoring, reverse-futility, futility, static-eval prune, IID, staged movegen |
 | `root.rs` | Root iteration |
 | `smp.rs` | Lazy SMP: `SharedBest`, per-worker root-order rotation |
@@ -99,6 +100,33 @@ prise.
 - Adding a new search technique → `params.rs` (toggle) + relevant file (implementation)
 - Tuning search constants → `params.rs`
 - Fixing search bugs → the relevant algorithm file (`pvs.rs`, `root.rs`, etc.)
+
+## `src/usi.rs` — USI protocol front-end
+
+| File | Contents |
+|------|----------|
+| `usi.rs` | The whole USI command surface: `usi` / `isready` / `setoption` / `usinewgame` / `position` / `go` / `stop` / `ponderhit` / `gameover` / `quit`, `GoParams` parsing + time-budget policy, TSFEN/coordinate notation parsing & formatting, `info` formatting (cp / mate / nps / pv), plus unit tests |
+| `usi_main.rs` | Thin bin wrapper (`taikyokushogi-usi`) around `taikyokushogi::usi::run()` |
+
+The module header docs define the **Taikyoku Shogi USI profile** (TSFEN
+positions, 36×36 coordinate notation, supported `go` parameters, options);
+keep it in sync with the implementation.
+
+### When to touch `usi.rs`
+
+- Adding or changing a USI command / option → `usi.rs`
+- Time-management policy → `budget_from_params`
+- Move-text notation → `usi_move_str` / `parse_move`; note
+  `split_two_squares` — squares are variable length (`e34`, `A12`), so
+  never assume fixed-width 4-char move tokens
+- The search thread owns the `Searcher` (moved in/out of a
+  `JoinHandle<Searcher>`) so the TT stays warm between moves; `usinewgame`
+  clears it
+
+**Note**: `usi` is one of the few `pub mod` declarations in `lib.rs`
+(alongside `search`, `elo`, `selfplay`, `server`) because the
+`taikyokushogi-usi` binary is a separate crate that calls
+`taikyokushogi::usi::run()`. Everything else stays crate-internal.
 
 ## `src/lib.rs` — Public API facade
 
@@ -124,10 +152,12 @@ pub struct Board {  // in src/board/core.rs
 
 ### Rule: never add `pub mod` for internal code
 
-All internal modules (`board`, `movegen`, `types`, `eval`, `search`,
-`bitboard`, `pieces`, `tsfen`, `attack`) are declared as plain `mod` in
-`lib.rs`, never `pub mod`. This ensures external crates cannot depend on
-implementation details.
+All internal modules (`board`, `movegen`, `types`, `eval`, `bitboard`,
+`pieces`, `tsfen`, `attack`) are declared as plain `mod` in `lib.rs`, never
+`pub mod`. This ensures external crates cannot depend on implementation
+details. The exceptions — `search`, `elo`, `selfplay`, `usi` and
+`server` — expose stable, testable entry points (binaries live in separate
+crates, e.g. `usi_main.rs`, and external tooling drives `search`/`elo`).
 
 ## Adding a new file: checklist
 

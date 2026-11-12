@@ -45,6 +45,20 @@ jobs:
       - name: Compile all targets
         run: cargo check --all-targets --features server
 
+      - name: USI protocol smoke test
+        run: |
+          cargo build --bin taikyokushogi-usi
+          {
+            printf 'usi\n'; sleep 2
+            printf 'isready\n'; sleep 2
+            printf 'position startpos\ngo depth 1\n'; sleep 20
+            printf 'quit\n'
+          } | ./target/debug/taikyokushogi-usi > usi_smoke.log
+          grep -q '^id name TaikyokuShogi' usi_smoke.log
+          grep -q '^usiok$' usi_smoke.log
+          grep -q '^readyok$' usi_smoke.log
+          grep -q '^bestmove ' usi_smoke.log
+
       - name: Run library unit tests
         run: cargo test --features server --lib
 

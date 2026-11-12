@@ -103,13 +103,32 @@ impl Searcher {
         time_limit_ms: u64,
         threads: usize,
     ) -> super::SearchResult {
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        self.search_threads_with_stop(board, depth, time_limit_ms, threads, &stop, None)
+    }
+
+    /// [`Searcher::search_threads`] with a caller-owned cooperative stop flag
+    /// and an optional per-iteration callback (see
+    /// [`Searcher::search_with_stop`]). USI front-ends drive pondering and
+    /// `stop` through the flag while still getting full Lazy SMP.
+    pub fn search_threads_with_stop(
+        &mut self,
+        board: &mut super::Board,
+        depth: u32,
+        time_limit_ms: u64,
+        threads: usize,
+        stop: &std::sync::atomic::AtomicBool,
+        on_iter: Option<&mut dyn FnMut(&super::IterInfo)>,
+    ) -> super::SearchResult {
         let threads = threads.clamp(1, super::params::MAX_THREADS);
         if threads == 1 {
-            return self.search(board, depth, time_limit_ms);
+            return self.search_with_stop(board, depth, time_limit_ms, stop, on_iter);
         }
         let deadline = deadline_from(time_limit_ms);
-        let stop = std::sync::atomic::AtomicBool::new(false);
         let shared = SharedBest::new();
+        // Only the master reports per-iteration info; workers stay silent.
+        let mut no_info = |_: &super::IterInfo| {};
+        let on_iter = on_iter.unwrap_or(&mut no_info);
 
         let (master, master_depth) = std::thread::scope(|scope| {
             for i in 1..threads {
@@ -123,7 +142,8 @@ impl Searcher {
                     // A worker runs the same deepening loop but never owns the
                     // stop flag: it keeps going until the master (or the
                     // deadline) stops it, publishing every iteration it
-                    // completes.
+                    // completes. Workers report no per-iteration info.
+                    let mut no_info = |_: &super::IterInfo| {};
                     worker.search_impl(
                         &mut worker_board,
                         depth,
@@ -131,11 +151,19 @@ impl Searcher {
                         deadline,
                         stop,
                         Some(shared),
+                        &mut no_info,
                     );
                 });
             }
-            let result =
-                self.search_impl(board, depth, time_limit_ms, deadline, &stop, Some(&shared));
+            let result = self.search_impl(
+                board,
+                depth,
+                time_limit_ms,
+                deadline,
+                stop,
+                Some(&shared),
+                on_iter,
+            );
             // Workers poll this flag on every clock check and unwind promptly.
             stop.store(true, Ordering::Relaxed);
             result
