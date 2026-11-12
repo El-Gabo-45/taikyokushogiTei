@@ -17,7 +17,7 @@ Black (先手) moves first. Players alternate moving exactly one piece per turn.
 Pieces move orthogonally or diagonally. Most pieces have unique movement patterns combining:
 
 | Type | Description |
-|------|-------------|
+| ------ | ------------- |
 | **Step** | Move exactly 1 square |
 | **Slide** | Move any number of empty squares in a line |
 | **Limited** | Move up to N squares in a line (2-7) |

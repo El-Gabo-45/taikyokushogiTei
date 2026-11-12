@@ -45,7 +45,7 @@
 ### Crate boundary rules
 
 | Layer | Visibility | Can depend on |
-|-------|-----------|---------------|
+| ------- | ----------- | --------------- |
 | `lib.rs` public items | `pub` (external users) | Anything in `crate` |
 | `board/`, `movegen/`, `types/`, `eval/`, `search/` | `mod` (crate-internal) | Other internal modules via `crate::` |
 | Examples, tests, binaries | External to `crate` | Only `taikyokushogi` public API |
@@ -102,12 +102,15 @@ All external access goes through the public facade in `lib.rs`.
   (`--depth`, `--movetime`, `--threads`, `--hash`, `--position`, `--go`,
   `--perft`, `--help`) and `&&`-chained one-shot commands.
 - `src/main.rs` → bin `taikyokushogi-server` (feature `server`): thin
-  launcher (`--sessions`, `--bind`, `--net` flags); the axum router, handlers
+  launcher (`--sessions`, `--anon`, `--bind`, `--net` flags); the axum router,
+  handlers
   and JSON types live in `src/server/{mod,handlers,types}.rs` inside the
   library so integration tests can drive the whole API in-process. Serves
   the REST API and the static web GUI (port 8000; `TAIKYOKU_BIND`, optional
   `TAIKYOKU_NET`; `--sessions`/`TAIKYOKU_SESSIONS` switches the single
-  shared `GameState` for one isolated game per visitor).
+  shared `GameState` for one isolated game per visitor, with
+  `TAIKYOKU_ANON` choosing what id-less `/api/*` requests get — a fresh
+  session by default, never the shared board).
 - `src/elo.rs`: engine-vs-engine matches, Elo + 95% CI, SPRT
   (`EngineConfig { depth, time_ms, net, threads }` per side; `net` is an
   optional `Arc<Network>`).
@@ -161,7 +164,7 @@ taikyokushogiTei/
     lib.rs              # Public crate API (Board, Move, PieceInfo, search, TSFEN, elo, ...)
     main.rs             # Thin launcher for the HTTP server        (bin: taikyokushogi-server)
     server/
-      mod.rs            #   AppState (shared or per-session games), router, static serving
+      mod.rs            #   AppState (shared or per-session games), anon policy, router, static serving
       handlers.rs       #   REST handlers + status codes
       types.rs          #   JSON request/response types
     cli.rs              # Full user-facing CLI: REPL + argv flags   (bin: taikyokushogi-cli)
@@ -231,7 +234,7 @@ The following internal modules were split from single large files into
 module trees to improve maintainability and testability:
 
 | Before | After | Rationale |
-|--------|-------|-----------|
+| -------- | ------- | ----------- |
 | `src/types.rs` | `src/types/{constants,cell,square,mv,movement,tables}.rs` | Separate constants, cell encoding, square math, move struct, movement rules, and precomputed tables |
 | `src/board.rs` | `src/board/{core,mod}.rs` | `Board` struct in `core.rs`; `mod.rs` re-exports for `crate::board::Board` |
 | `src/movegen.rs` | `src/movegen/{core,mod}.rs` | Move generation logic in `core.rs`; `mod.rs` re-exports |
@@ -274,7 +277,7 @@ and doc-tests) and runs with `cargo test`.
 ## Stability policy
 
 | Aspect | Stability | Notes |
-|--------|-----------|-------|
+| -------- | ----------- | ------- |
 | Public API (`lib.rs` items) | **Stable** | Breaking changes require a minor version bump |
 | Internal modules (`board/`, `movegen/`, `types/`, etc.) | **Unstable** | May change between any releases |
 | `Cargo.toml` features | **Stable** | `cpu`, `gpu-*`, `python` semantics preserved (the unused `nnue` feature was removed) |

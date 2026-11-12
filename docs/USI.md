@@ -37,7 +37,7 @@ with the engine's own position format (documented in full in the
 `taikyokushogi::usi` module docs):
 
 | Concept | This engine |
-|---------|-------------|
+| --------- | ------------- |
 | `position startpos` | the initial 804-piece position |
 | `position sfen <FEN>` | the engine's **TSFEN** notation (same as `Board::to_tsfen()`); a 9×9 SFEN is rejected with `info string` |
 | move tokens | engine coordinate notation: `from`+`to` with files `a`–`z` (columns 1–26), `A`–`J` (columns 27–36) and ranks `1`–`36` counted from the top, e.g. `r33r2`; a trailing `+` promotes; igui (capture without moving) is `from`==`to` (`c5c5`, `c5=c5` also accepted) |
@@ -46,7 +46,7 @@ with the engine's own position format (documented in full in the
 ## Time control and `go` parameters
 
 | `go` parameter | Support |
-|----------------|---------|
+| ---------------- | --------- |
 | `wtime` / `btime` / `winc` / `binc` / `byoyomi` | Standard clock policy: 200 ms is always reserved; with < 1 s usable the engine spends 90 % of the clock, otherwise usable/30 + 90 % of the increment; byoyomi only stretches the budget within what the main clock can still afford |
 | `depth <N>` | fixed-depth search |
 | `movetime <MS>` | convenience extension: fixed time per move |
@@ -58,7 +58,7 @@ with the engine's own position format (documented in full in the
 ## Options
 
 | Option | Default | Meaning |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | `Threads` | 1 | Lazy SMP workers (1–64) |
 | `Hash` | 256 | transposition table in MiB (16–4096) |
 | `DepthLimit` | 0 | cap the search depth (0 = the time budget decides) |

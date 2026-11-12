@@ -59,7 +59,7 @@ are also `pub` (the binaries and external tooling drive them directly).
 Everything else is crate-internal.
 
 | Directory | Responsibility |
-|-----------|---------------|
+| ----------- | --------------- |
 | `src/lib.rs` | Public API facade: thin wrappers over internal types |
 | `src/board/` | Board state, `apply`/`undo`, incremental scores, `game_result()` |
 | `src/movegen/` | Move generation: sliding, jumping, range capture, igui, promotion |

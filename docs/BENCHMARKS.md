@@ -9,7 +9,7 @@ release-mode benchmarks (`cargo run --release --example bench_nps` and
 ±10–20 % run-to-run variance depending on machine load.
 
 | Metric | Value |
-|---|---|
+| --- | --- |
 | Legal moves from the initial position | 512 |
 | Move generation (`legal_moves`) | ~76 µs/call |
 | Static evaluation (`evaluate`) | ~51 µs/call |
@@ -99,7 +99,7 @@ are deterministic for a given invocation (seeded openings).
 All examples run with `cargo run --release --example <name>`:
 
 | Example | Purpose |
-|---|---|
+| --- | --- |
 | `bench_fixed` | Deterministic fixed-depth search benchmark (depths as args) |
 | `bench_nps` | NPS + component timing (movegen, eval, apply/undo) + bottleneck analysis |
 | `check_movecounts` | Legal move count from the initial position |

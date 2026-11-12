@@ -54,7 +54,7 @@ Web server: `TAIKYOKU_NET=nets/tk.tkn cargo run --release --features server
 ## Architecture "S"
 
 | Part | Definition |
-|---|---|
+| --- | --- |
 | Input features | one per *(plane, square)*, per perspective. `plane = class` for the perspective's own pieces, `C + class` for enemy pieces. `index = plane * 1296 + square`. **No king anchor, no hashing.** |
 | Perspective | 0 = Black, 1 = White. White sees the board rotated 180° (`square → 1295 − square`). |
 | Piece classes | the 301 piece types are folded into `C` classes (27 now) by movement pattern and value tier, see below. |
@@ -142,7 +142,7 @@ Float → integer scales (the trainer's float model reproduces the integer
 inference up to rounding, see `training/model.py`):
 
 | Tensor | Scale | Type |
-|---|---|---|
+| --- | --- | --- |
 | feature transformer weights and bias | ×64 | `i16`, `i32` |
 | `fc0`, `fc1` weights and biases | ×64 | `i8`, `i32` |
 | PSQT | ×16 | `i32` |
@@ -206,7 +206,7 @@ make nnue-bench
 ## What is verified
 
 | Check | Where |
-|---|---|
+| --- | --- |
 | incremental accumulator == full refresh over random walks, also for every legal lion/igui move, null moves and undo beyond the ring | `src/eval/nnue/tests.rs` |
 | White perspective is a 180° rotation; feature indices unique and in range | Rust and Python tests |
 | class map and class values equal the frozen JSON | `class_map_matches_frozen_arch` |

@@ -42,7 +42,7 @@ arguments the CLI reads commands from stdin (REPL). Examples:
 ## Commands (REPL or one-shot)
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `new`, `startpos`, `position <tsfen>` | reset / load a TSFEN position |
 | `board`, `status`, `fen` | show board, status line, or TSFEN |
 | `legal [<square>]` | list legal moves |

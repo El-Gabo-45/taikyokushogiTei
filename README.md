@@ -8,7 +8,7 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 - **92 additional promoted forms** (301 piece types in total)
 
 | I want to… | Go to |
-|---|---|
+| --- | --- |
 | Install and build the engine | [Installation](#installation) |
 | Read the full rules | [docs/RULES.md](docs/RULES.md) · [PIECES.md](PIECES.md) |
 | Play in the browser / use the REST API | [docs/WEB.md](docs/WEB.md) |
@@ -42,7 +42,7 @@ variants**, all containing the six binaries (`taikyokushogi-server`,
 plus `docs/`, `PIECES.md` and the license files:
 
 | Variant | Web frontend | Server game state |
-|---|---|---|
+| --- | --- | --- |
 | `-full` | ✅ `web/dist/` | shared board (one game per process) |
 | `-engine` | — | shared board |
 | `-monolithic` | ✅ `web/dist/` | **per-session**: every visitor gets an isolated game (bundled `start-server-monolithic` launchers run `taikyokushogi-server --sessions`) |
@@ -89,7 +89,7 @@ cd web && npm install && npm run build && cd ..
 The web GUI supports two piece-symbol modes: traditional Japanese kanji and English abbreviations.
 
 | Interface view | English names | Kanji / Japanese |
-|---------------------------|------------------|-----------------|
+| --------------------------- | ------------------ | ----------------- |
 | ![Interfaz completa](docs/screenshots/Screenshot_2026-10-31_14-30-08.png) | ![Siglas en inglés](docs/screenshots/Screenshot_2026-10-31_14-30-37.png) | ![Kanji / Japonés](docs/screenshots/Screenshot_2026-10-31_14-38-29.png) |
 
 ## Rules in brief
@@ -112,7 +112,9 @@ cargo run --release --features server --bin taikyokushogi-server
 
 By default every visitor shares one board (local use). Start it with
 `--sessions` (or `TAIKYOKU_SESSIONS=1`) to give every visitor an **isolated
-game** instead — per-session state, no shared board.
+game** instead — per-session state, no shared board. Id-less `/api/*`
+requests get a fresh session by default (`TAIKYOKU_ANON=auto`), never the
+shared board.
 
 Game modes (human/human/AI), piece inspector, analysis mode, TSFEN panel,
 material chart, JSON/PGN game export. Screenshots above. Feature list, the
@@ -159,7 +161,7 @@ The crate is also a Python extension module (build with maturin, see
 ### Command-line tools
 
 | Binary | Purpose |
-|---|---|
+| --- | --- |
 | `taikyokushogi-server` | HTTP server + web GUI (REST API in `src/server/`; build with `--features server`; `--sessions` gives each visitor an isolated game) |
 | `taikyokushogi-cli` | Full user-facing CLI: REPL + argv flags |
 | `taikyokushogi-usi` | USI protocol engine for shogi GUIs / test harnesses |
@@ -174,7 +176,7 @@ the search-technique list and the examples catalog:
 **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**.
 
 | Metric | Value |
-|---|---|
+| --- | --- |
 | Legal moves from the initial position | 512 |
 | Perft(2) | 260,917 nodes @ ~10–18 M nodes/s |
 | Search — depth 1 / 3 / 5 | ~13 ms / ~100 ms / ~2.8 s |
@@ -198,7 +200,7 @@ separate work licensed under ODbL 1.0
 ## Project structure
 
 | Path | Contents |
-|---|---|
+| --- | --- |
 | `src/` | Engine library (`lib.rs`) + binaries: server, CLI, USI, selfplay, nnue, debug-cli |
 | `tests/` | Integration suites: `smoke.rs` (engine), `server_api.rs` (HTTP router) |
 | `examples/` | Benchmarks and tooling ([examples/README.md](examples/README.md)) |

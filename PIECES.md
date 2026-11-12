@@ -20,7 +20,7 @@ Diagrams show movement from **Black's perspective** (forward = up).
 **Special abilities** (not fully shown in diagrams):
 
 | Symbol | Meaning |
-|--------|---------|
+| -------- | --------- |
 | **Hook** | Slides along a line, then optionally turns 90 degrees and continues sliding |
 | **Area** | Takes multiple steps per turn (like a Lion in Chu Shogi) |
 | **Range capture** | Flies over any number of pieces, capturing all of lower rank |

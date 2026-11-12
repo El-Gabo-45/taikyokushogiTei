@@ -17,22 +17,38 @@ cargo run --release --features server --bin taikyokushogi-server
 ## Server modes: shared board vs. per-session games
 
 | Mode | Start with | Behaviour |
-|------|------------|-----------|
+| ------ | ------------ | ----------- |
 | **Shared** (default) | `taikyokushogi-server` | One `GameState` per process: every visitor sees the same board and history. Meant for local play/analysis. |
-| **Sessions** | `taikyokushogi-server --sessions` or `TAIKYOKU_SESSIONS=1` | Every visitor that presents a session id gets an **isolated game** (own board, move log, undo history, AI). Requests without an id keep using the shared board. |
+| **Sessions** | `taikyokushogi-server --sessions` or `TAIKYOKU_SESSIONS=1` | Every visitor that presents a session id gets an **isolated game** (own board, move log, undo history, AI). Requests without a valid id are handled according to `TAIKYOKU_ANON` (below); by default they get a **fresh session**, never the shared board. |
 
 In session mode the id is looked up, in order, in the `X-Session-Id` header,
 the `taikyoku_session` cookie and the `?session=` query parameter. Ids are
-limited to `[A-Za-z0-9_-]{1,64}`; missing or invalid ids fall back to the
-shared board. The bundled web frontend generates one id per browser tab and
-always sends the header, so two tabs = two independent games.
+limited to `[A-Za-z0-9_-]{1,64}`. The bundled web frontend generates one id
+per browser tab and always sends the header, so two tabs = two independent
+games.
+
+### Anonymous requests (`TAIKYOKU_ANON`)
+
+What happens to `/api/*` requests that carry no valid session id while
+session mode is on:
+
+| `TAIKYOKU_ANON` | Behaviour |
+| ----------------- | ----------- |
+| `auto` *(default)* | The request is answered with a **brand-new session**: the response carries `Set-Cookie: taikyoku_session=…; Path=/; SameSite=Lax` and an `X-Session-Id` header, and the client keeps using that id for its next requests. The shared board is never touched. |
+| `error` | The request is rejected with `400 {ok:false, error:…}`. Valid ids keep working as usual. Useful for deployments whose clients always send an id (e.g. script-driven, cookie-less callers). |
+| `shared` | Legacy v1.0 behaviour: the request is served on the **shared board**. Only opt in when something else guarantees ids (e.g. an authenticating reverse proxy), or for v1.0 compatibility. |
+
+Invalid ids (wrong charset/length) count as "no id" and follow the same
+policy. Static assets (`/`, `/assets/*`) are never affected — the frontend
+loads without minting cookies.
 
 Settings (environment variables; the server binary also accepts `--sessions`,
-`--bind ADDR` and `--net PATH` flags):
+`--anon auto|error|shared`, `--bind ADDR` and `--net PATH` flags):
 
 | Variable | Default | Meaning |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `TAIKYOKU_SESSIONS` | unset | `1`/`true`/`on`/`yes` enables session mode |
+| `TAIKYOKU_ANON` | `auto` | Session-mode policy for id-less `/api/*` requests: `auto` mints a fresh session (cookie + `X-Session-Id`), `error` rejects with 400, `shared` serves the legacy shared board |
 | `TAIKYOKU_MAX_SESSIONS` | `64` | Live session games before the least recently used one is evicted (its next request simply starts a fresh game) |
 | `TAIKYOKU_CORS_ORIGIN` | *(mirror)* | Comma-separated exact origins to allow; unset = the CORS layer mirrors the request origin (permissive, fine locally) |
 | `TAIKYOKU_BIND` | `127.0.0.1:8000` | Bind address |
@@ -41,7 +57,9 @@ Settings (environment variables; the server binary also accepts `--sessions`,
 
 For a **public deployment**, run in session mode *and* set
 `TAIKYOKU_CORS_ORIGIN=https://your-frontend.example` (a comma-separated
-allow-list) instead of the permissive default.
+allow-list) instead of the permissive default. With the default
+`TAIKYOKU_ANON=auto` anonymous callers can never reach the shared board;
+`TAIKYOKU_ANON=error` additionally refuses to mint sessions for them.
 
 The release packages ship these modes preconfigured: the `-full` package
 starts in shared mode, the `-monolithic` package includes
@@ -94,7 +112,7 @@ The server exposes a JSON REST API — consumed by the frontend in
 whole router in-process).
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/health` | GET | Liveness, engine version, board size, piece-type count |
 | `/api/state` | GET | Full board state + TSFEN, eval score, material, version counter |
 | `/api/status` | GET | Compact summary (result, ply count, piece counts, TSFEN) |

@@ -34,7 +34,7 @@ src/
 ## `src/board/` — Board state and rules
 
 | File | Contents |
-|------|----------|
+| ------ | ---------- |
 | `core.rs` | `Board` struct (~50 fields), `Clone`, `new()`, `setup_initial()`, `place_piece()`, `at()`, `clone_without_history()`, `apply_move()`, `undo_move()`, `null_move()`, `undo_null_move()`, `king_square()`, `game_result()`, `display()`, bitboard occupancy maintenance, `set_network()`, NNUE accumulator updates |
 | `mod.rs` | Re-exports `Board` as `crate::board::Board` |
 
@@ -50,7 +50,7 @@ src/
 ## `src/movegen/` — Move generation
 
 | File | Contents |
-|------|----------|
+| ------ | ---------- |
 | `core.rs` | All move generation: `generate_legal_moves()`, sliding, jumping, range capture, igui, promotion, dedup (`dedup_piece_range()`, `push_move_raw()`) |
 | `mod.rs` | Re-exports everything from `core` |
 
@@ -69,7 +69,7 @@ prise.
 ## `src/eval/` — Evaluation
 
 | File | Contents |
-|------|----------|
+| ------ | ---------- |
 | `mod.rs` | `evaluate()` entry point (uses the NNUE network attached to the board, if any), `material_score()`, `MATE_SCORE`, king safety |
 | `families.rs` | `Family` enum, `classify()`, `classify_fast()`, `family_value()`, `family_value_fast()`, precomputed tables |
 | `psqt.rs` | Piece-Square Tables, `psqt()`, `psqt_score()`, `psqt_delta()`, precomputed PSQT table |
@@ -85,7 +85,7 @@ prise.
 ## `src/search/` — Search algorithms
 
 | File | Contents |
-|------|----------|
+| ------ | ---------- |
 | `mod.rs` | `Searcher` struct, iterative deepening, aspiration windows, `search()`, `search_threads()`, `search_with_stop()` (stop flag + per-iteration `IterInfo` callback, used by the USI front-end), `set_hash_mb()`, `DEFAULT_THREADS=1`, `MAX_THREADS=64` |
 | `pvs.rs` | PVS core: null-window re-search, LMR, null-move pruning, razoring, reverse-futility, futility, static-eval prune, IID, staged movegen |
 | `root.rs` | Root iteration |
@@ -106,7 +106,7 @@ prise.
 ## `src/usi.rs` — USI protocol front-end
 
 | File | Contents |
-|------|----------|
+| ------ | ---------- |
 | `usi.rs` | The whole USI command surface: `usi` / `isready` / `setoption` / `usinewgame` / `position` / `go` / `stop` / `ponderhit` / `gameover` / `quit`, `GoParams` parsing + time-budget policy, TSFEN/coordinate notation parsing & formatting, `info` formatting (cp / mate / nps / pv), plus unit tests |
 | `usi_main.rs` | Thin bin wrapper (`taikyokushogi-usi`) around `taikyokushogi::usi::run()` |
 
@@ -196,7 +196,7 @@ crates, e.g. `usi_main.rs`, and external tooling drives `search`/`elo`).
 ## Stability boundaries
 
 | Boundary | Stability | Can change? |
-|----------|-----------|-------------|
+| ---------- | ----------- | ------------- |
 | `taikyokushogi` public API (`lib.rs` items) | Stable | Only with minor version bump |
 | Internal module file layout | Unstable | Any release |
 | Internal struct fields | Unstable | Any release |
