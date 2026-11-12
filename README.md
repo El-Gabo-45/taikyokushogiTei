@@ -7,11 +7,57 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 - **209 initial piece types** with distinct movement patterns
 - **92 additional promoted forms** (301 movement classes in total)
 
+## Installation
+
+### Requirements
+
+- A recent stable **Rust toolchain** (edition 2021). **Cargo 1.82+** is
+  required because `Cargo.lock` is written in version 4 format.
+- **Node.js + npm** only if you want to rebuild the `web/` frontend
+  (TypeScript + Vite; a prebuilt `dist/` is committed).
+- **Python 3.9+** only for the NNUE training pipeline in `training/` (see
+  [training/README.md](training/README.md)).
+
+### Build
+
+```bash
+git clone https://github.com/El-Gabo-45/taikyokushogiTei.git
+cd taikyokushogiTei
+
+# Engine, CLI, USI front-end, self-play and NNUE tools, in release mode
+cargo build --release
+
+# The HTTP server lives behind the `server` feature:
+cargo build --release --features server --bin taikyokushogi-server
+```
+
+NNUE needs **no feature flag**: the evaluator is always compiled and a
+network is attached to a board at runtime (`board.set_network(Some(net))`).
+Optional features are described under [Cargo Features](#cargo-features) —
+note that the GPU features currently have no consuming code.
+
+**Python bindings (optional):** `src/python.rs` is gated on the `python`
+cfg (set by the pyo3 build via `RUSTFLAGS` — it is NOT a Cargo feature),
+together with the `pyo3` dependency:
+
+```bash
+pip install maturin
+RUSTFLAGS='--cfg feature="python"' maturin build --release --cargo-extra-args "--features pyo3"
+```
+
+**Web frontend (optional):** the compiled `web/dist/` is tracked in git
+(`!web/dist/` in `.gitignore`), so the server runs without npm. Rebuild it
+only after modifying `web/src/`:
+
+```bash
+cd web && npm install && npm run build && cd ..
+```
+
 ## Screenshots
 
 The web GUI supports two piece-symbol modes: traditional Japanese kanji and English abbreviations.
 
-| Interface view | English names | Kanji / Japonese |
+| Interface view | English names | Kanji / Japanese |
 |---------------------------|------------------|-----------------|
 | ![Interfaz completa](docs/screenshots/Screenshot_2026-10-31_14-30-08.png) | ![Siglas en inglés](docs/screenshots/Screenshot_2026-10-31_14-30-37.png) | ![Kanji / Japonés](docs/screenshots/Screenshot_2026-10-31_14-38-29.png) |
 
@@ -295,31 +341,7 @@ Elo math follows the standard logistic model (`expected_score`,
 `±ln((1-β)/α)` in the Gaussian approximation used by fishtest.
 
 
-## Getting Started
-
-### Requirements
-
-- A recent stable **Rust toolchain** (edition 2021). **Cargo 1.82+** is
-  required because `Cargo.lock` is written in version 4 format.
-- **Node.js + npm** only if you want to rebuild the `web/` frontend
-  (TypeScript + Vite; a prebuilt `dist/` is committed).
-- **Python 3.9+** only for the NNUE training pipeline in `training/` (see
-  [training/README.md](training/README.md)).
-
-### Build
-
-```bash
-git clone https://github.com/El-Gabo-45/taikyokushogiTei.git
-cd taikyokushogiTei
-
-# Build the engine, CLI tools and examples in release mode
-cargo build --release
-
-# The HTTP server lives behind the `server` feature:
-cargo build --release --features server --bin taikyokushogi-server
-```
-
-### Web GUI
+## Web GUI
 
 The compiled frontend (`web/dist/`) is committed in the repository, so you can run the server immediately after building:
 
@@ -329,15 +351,7 @@ cargo run --release --features server --bin taikyokushogi-server
 # Then open http://localhost:8000 in your browser
 ```
 
-If you modify `web/src/` and need to rebuild the frontend:
-
-```bash
-cd web && npm install && npm run build && cd ..
-```
-
-> **Note:** `web/dist/` is tracked in git (`!web/dist/` in `.gitignore`). If you clone and the directory is missing, run `cd web && npm install && npm run build` before starting the server.
-
-### Web GUI Features
+### Features
 
 - **Game modes**: Human vs Random, Human vs AI, Random vs Random, AI vs AI
 - Play as **Black or White**; pick the AI strength (Random, D1–D3)
@@ -392,7 +406,7 @@ Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
 `400` for invalid coordinates/TSFEN, `404` for unknown pieces/endpoints and
 `409` when a move conflicts with the current game state.
 
-### Command-Line Tools
+## Command-Line Tools
 
 | Binary | Purpose |
 |---|---|
@@ -418,7 +432,7 @@ cargo run --release --bin selfplay 100 3 0 4 200
 `selfplay` takes `<num_games> <depth> <max_moves> <num_workers> <time_limit_ms>`
 (defaults: 10 / 2 / 0 = unlimited / 4 / 500).
 
-### Examples and Benchmarks
+## Examples and Benchmarks
 
 All examples run with `cargo run --release --example <name>`:
 
@@ -449,6 +463,8 @@ cargo run --release --example check_movecounts    # -> 512 legal moves
 cargo run --release --example bench_nps           # full benchmark report
 ```
 
+See `examples/README.md` for more details on examples and flags.
+
 ## Project Structure
 
 ```
@@ -466,11 +482,21 @@ taikyokushogiTei/
     debug_cli.rs        # Minimal CLI search harness                (bin: debug-cli)
     selfplay_main.rs    # Self-play entry point                     (bin: selfplay)
     selfplay.rs         # Self-play logic + TKD1 training-sample format
+    nnue_main.rs        # NNUE tool entry point                     (bin: nnue)
     elo.rs              # Match / SPRT / Elo estimation (EngineConfig, threads A/B)
-    types.rs            # Core types, constants, ray tables
+    python.rs           # PyO3 Python bindings (python cfg + pyo3 feature)
+    types/              # Core types (mod.rs re-exports the tree)
+      constants.rs      #   board dimensions, colors, piece ranks, draw threshold
+      cell.rs           #   Cell encoding
+      square.rs         #   Square math + lookup tables
+      mv.rs             #   Move / UndoInfo structs
+      movement.rs       #   Movement struct + HookType
+      tables.rs         #   Ray table, Zobrist keys, promotion-zone tables
     pieces.rs           # 301 piece types, Betza notation parser, initial setup ranks
-    board.rs            # Board representation, apply/undo, game rules
-    movegen.rs          # Legal move generation (no check filtering — variant has no check)
+    board/              # Board representation, apply/undo, game rules
+      core.rs           #   Board struct, apply_move/undo_move, game_result(), NNUE accumulator
+    movegen/            # Legal move generation (no check filtering — variant has no check)
+      core.rs           #   sliding, jumping, range capture, igui, promotion, dedup
     attack.rs           # Attack / ray bitboards
     bitboard.rs         # Bitboard helpers
     search/             # PVS + TT + move ordering + pruning + quiescence + Lazy SMP
@@ -484,7 +510,6 @@ taikyokushogiTei/
       tt.rs             #   Lock-free bucketed transposition table
       heuristics.rs     #   Killers / butterfly history / counter moves
       ordering.rs       #   Move scoring
-    correctness_tests.rs #   Correctness suite (cargo test; internal because release uses panic=abort)
     tsfen.rs            # TSFEN position notation (encode / parse)
     eval/
       mod.rs            # Evaluator dispatcher (hand-crafted <-> NNUE)
@@ -493,8 +518,12 @@ taikyokushogiTei/
       zones.rs          # Threat zones and king-safety heuristics
       nnue/             # NNUE "S" evaluator, TKN1 loader, tools (see docs/NNUE.md)
     debugging/          # Search/eval introspection utilities
+    correctness_tests.rs #  Correctness suite (cargo test)
+  tests/                # Integration suites: smoke.rs (engine), server_api.rs (HTTP router)
   examples/             # Benchmarks, smoke tests and tooling (see examples/README.md)
-  docs/                 # ARCHITECTURE.md
+  docs/                 # ARCHITECTURE.md, MODULE_GUIDE.md, NNUE.md + screenshots
+  rules/                # nnue_arch.json — NNUE architecture spec (Rust <-> Python source of truth)
+  nets/                 # NNUE network files + ODbL license (see nets/README.md)
   web/                  # TypeScript + Vite frontend (served by the Rust server)
     src/
       main.ts           #   Entry point
@@ -508,50 +537,13 @@ taikyokushogiTei/
   Cargo.toml            # Rust project config (bins, features, examples)
 ```
 
-There is **no `tests/` directory**: the integration-style suite lives inside
-the crate as `src/correctness_tests.rs` (plus unit tests in the modules and
-9 doc-tests), all run by plain `cargo test`. External `tests/*.rs` targets
-are deliberately not used because the release profile sets `panic = "abort"`.
-
-## Quick Start — Build & Run
-
-Build (release):
-
-```bash
-git clone https://github.com/El-Gabo-45/taikyokushogiTei.git
-cd taikyokushogiTei
-cargo build --release
-```
-
-NNUE needs **no feature flag**: the evaluator is always compiled and a
-network is attached to a board at runtime (`board.set_network(Some(net))`). Optional
-features are described under [Cargo Features](#cargo-features) below — note
-that the GPU features currently have no consuming code.
-
-Build Python bindings (optional):
-
-```bash
-pip install maturin
-# src/python.rs is gated on the `python` cfg (set by the pyo3 build via
-# RUSTFLAGS — it is NOT a Cargo feature), together with the pyo3 dependency:
-RUSTFLAGS='--cfg feature="python"' maturin build --release --cargo-extra-args "--features pyo3"
-```
-
-Run the HTTP server (REST API + static frontend):
-
-```bash
-cargo run --release --features server --bin taikyokushogi-server
-# open http://localhost:8000
-```
-
-Run examples/benchmarks:
-
-```bash
-cargo run --release --example bench_fixed -- 4 5 6
-cargo run --release --example bench_nps
-```
-
-See `examples/README.md` for more details on examples and flags.
+The test suites run with plain `cargo test`: the integration suites in
+`tests/` — `smoke.rs` (engine smoke tests) and `server_api.rs` (the whole
+HTTP router exercised in-process, needs `--features server`) — plus the
+in-crate correctness suite `src/correctness_tests.rs`, per-module unit
+tests and doc-tests. The release profile sets `panic = "abort"`, but that
+only affects release binaries: integration tests always build with the
+`test` profile, so they link the crate normally.
 
 ## Performance
 
@@ -611,12 +603,10 @@ a deeper iteration than the master did. Results with `threads > 1` are
 
 ### Strength testing
 
-```bash
-cargo run --release --example match_race -- 20 3 2 5000 4   # depth 3 vs depth 2, 20 games
-
-# Lazy SMP vs single-thread at equal depth and equal time budget
-./target/release/taikyokushogi-cli match 20 3 3 movetime 300 threadsA 4 threadsB 1
-```
+Strength changes are measured with the built-in `elo` module — see
+[ELO measurement](#elo-measurement) for the `match` / `sprt` commands, and
+`cargo run --release --example match_race -- 20 3 2 5000 4` for the
+head-to-head example (depth 3 vs depth 2, 20 games).
 
 Head-to-head matches between any two search configurations (depths, time
 budgets, handcrafted vs NNUE via the eval toggle) with alternating colors
@@ -671,11 +661,9 @@ cargo run --release --features server --bin taikyokushogi-server`
 (`TAIKYOKU_NET=none` disables it); the GUI engine panel then shows
 `Backend: nnue`.
 
-The engine source is licensed under GPL-3.0-or-later. The NNUE network files
-and the data they encode are a separate work licensed under the
-[Open Database License (ODbL) 1.0](nets/LICENSE-ODbL.md). See
-[`nets/README.md`](nets/README.md) for the release assets and the attribution
-notice.
+The `nets/` files are a separate work licensed under the
+[Open Database License (ODbL) 1.0](nets/LICENSE-ODbL.md) — see
+[`nets/README.md`](nets/README.md) and [Credits](#credits-and-copyright).
 
 The accumulator is maintained incrementally by `Board::apply_move` with no
 king anchor (no move forces a full refresh) and restored from a fixed ring of
@@ -784,7 +772,7 @@ println!("{}: value={} area={} igui={}",
 
 ## Credits and copyright
 
-This was a *fork* of **[taikyokushogi](https://github.com/jh85/taikyokushogi)**, a complete engine for Taikyoku Shogi originally developed by **[jh85](https://github.com/jh85)** due to the differences I decided to make this project independent but I'm really grateful with the creator and recommend take a see I. he's project.
+This was a *fork* of **[taikyokushogi](https://github.com/jh85/taikyokushogi)**, a complete engine for Taikyoku Shogi originally developed by **[jh85](https://github.com/jh85)** due to the differences I decided to make this project independent but I'm really grateful to the creator and recommend take a see I. he's project.
 
 The original base code was released under the MIT License. The engine source
 in this repository is distributed under the [GNU General Public License v3.0
