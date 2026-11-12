@@ -2,7 +2,7 @@
 name = "taikyokushogi"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.85"
 description = "Taikyoku Shogi engine — the largest known shogi variant (36x36 board, 804 pieces, 301 piece types: 209 initial + 92 promoted)"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/El-Gabo-45/taikyokushogiTei"
@@ -41,19 +41,19 @@ path = "src/usi_main.rs"
 [features]
 default = ["cpu"]
 cpu = []
-server = ["axum", "tokio", "tower-http", "async-trait"]
+server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-trait"]
 python = ["dep:pyo3"]
-gpu-cuda = ["burn/cuda"]
-gpu-metal = ["burn/metal"]
-gpu-wgpu = ["burn/wgpu"]
-gpu-vulkan = ["burn/wgpu", "wgpu/vulkan-portability"]
-nnue = ["burn", "ndarray"]
+# GPU backends are future work: no code consumes these crates yet, so the
+# features are placeholders (they only affect the dependency graph).
+gpu-cuda = ["dep:burn", "burn/cuda"]
+gpu-metal = ["dep:burn", "burn/metal"]
+gpu-wgpu = ["dep:burn", "burn/wgpu"]
+gpu-vulkan = ["dep:burn", "burn/wgpu", "dep:wgpu", "wgpu/vulkan-portability"]
 
 [dependencies]
-pyo3 = { version = "0.24", features = ["extension-module"], optional = true }
+pyo3 = { version = "0.30", features = ["extension-module"], optional = true }
 rand = "0.8"
 burn = { version = "0.21", default-features = false, features = ["ndarray", "autodiff"], optional = true }
-ndarray = { version = "0.16", optional = true }
 axum = { version = "0.7", optional = true }
 # axum 0.7's `FromRequestParts` is an `#[async_trait]` trait; custom
 # extractors need the same attribute on their impl.

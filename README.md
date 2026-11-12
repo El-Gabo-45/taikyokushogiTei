@@ -23,7 +23,7 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 
 ### Requirements
 
-- A recent stable **Rust toolchain** (edition 2021). **Cargo 1.82+** is
+- A recent stable **Rust toolchain** (edition 2021). **Cargo 1.85+** is
   required because `Cargo.lock` is written in version 4 format.
 - **Node.js + npm** only if you want to rebuild the `web/` frontend
   (TypeScript + Vite; a prebuilt `dist/` is committed).

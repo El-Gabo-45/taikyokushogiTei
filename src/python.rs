@@ -103,7 +103,7 @@ impl PyBoard {
         })
     }
 
-    fn piece_positions(&self, py: Python, color: u8) -> PyResult<PyObject> {
+    fn piece_positions(&self, py: Python, color: u8) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
         let c = color as usize;
         for i in 0..self.inner.piece_list_len[c] {
@@ -115,24 +115,24 @@ impl PyBoard {
             if cell == EMPTY_CELL {
                 continue;
             }
-            let key = PyTuple::new(py, &[sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])
+            let key = PyTuple::new(py, [sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])
                 .expect("tuple");
             dict.set_item(key, pieces::abbrev(cell_piece(cell)))?;
         }
-        Ok(dict.into())
+        Ok(dict.into_any().unbind())
     }
 
-    fn royal_positions(&self, py: Python, color: u8) -> PyResult<PyObject> {
+    fn royal_positions(&self, py: Python, color: u8) -> PyResult<Py<PyAny>> {
         let list = PyList::empty(py);
         let c = color as usize;
         for i in 0..self.inner.royal_count[c] {
             let sq = self.inner.royal_list[c][i];
             list.append(
-                PyTuple::new(py, &[sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])
+                PyTuple::new(py, [sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])
                     .expect("tuple"),
             )?;
         }
-        Ok(list.into())
+        Ok(list.into_any().unbind())
     }
 
     fn score(&self) -> i32 {
@@ -181,7 +181,7 @@ impl PyBoard {
         self.inner.undo_move()
     }
 
-    fn legal_moves_py(&self, py: Python) -> PyResult<PyObject> {
+    fn legal_moves_py(&self, py: Python) -> PyResult<Py<PyAny>> {
         let moves = movegen::generate_legal_moves(&self.inner);
         let list = PyList::empty(py);
         for m in &moves {
@@ -209,10 +209,10 @@ impl PyBoard {
             )?;
             list.append(d)?;
         }
-        Ok(list.into())
+        Ok(list.into_any().unbind())
     }
 
-    fn moves_from_py(&self, py: Python, r: usize, c: usize) -> PyResult<PyObject> {
+    fn moves_from_py(&self, py: Python, r: usize, c: usize) -> PyResult<Py<PyAny>> {
         let sq = sq_index(r, c) as u16;
         let moves = movegen::generate_legal_moves(&self.inner);
         let list = PyList::empty(py);
@@ -240,7 +240,7 @@ impl PyBoard {
                 }
             }
         }
-        Ok(list.into())
+        Ok(list.into_any().unbind())
     }
 
     fn random_move_py(&self) -> Option<(usize, usize, usize, usize, bool)> {
@@ -266,7 +266,7 @@ impl PyBoard {
         depth: u32,
         time_limit_ms: u64,
     ) -> (Option<(usize, usize, usize, usize, bool)>, i32, u64, u64) {
-        let result = py.allow_threads(|| search::search(&mut self.inner, depth, time_limit_ms));
+        let result = py.detach(|| search::search(&mut self.inner, depth, time_limit_ms));
         let mv = result.best_move.map(|m| {
             (
                 m.from_sq as usize / BOARD_SIZE,
@@ -306,7 +306,7 @@ fn piece_promotes_to_py(abbrev: &str) -> Option<String> {
 }
 
 #[pyfunction]
-fn piece_info_py(py: Python, abbrev: &str) -> PyResult<PyObject> {
+fn piece_info_py(py: Python, abbrev: &str) -> PyResult<Py<PyAny>> {
     let d = PyDict::new(py);
     d.set_item("abbrev", abbrev)?;
     if let Some(pt) = pieces::find_by_abbrev(abbrev) {
@@ -342,7 +342,7 @@ fn piece_info_py(py: Python, abbrev: &str) -> PyResult<PyObject> {
         let empty: Vec<&str> = vec![];
         d.set_item("specials", empty)?;
     }
-    Ok(d.into())
+    Ok(d.into_any().unbind())
 }
 
 /// Register all Python-visible items on the module.
