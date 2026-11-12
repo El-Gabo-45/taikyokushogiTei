@@ -39,10 +39,30 @@ var ApiError = class extends Error {
 		this.status = status;
 	}
 };
+/**
+* Per-tab session id sent as `X-Session-Id`. Shared-mode servers ignore it;
+* a server started with `--sessions`/`TAIKYOKU_SESSIONS=1` uses it to give
+* every visitor (browser tab) an isolated game. See docs/WEB.md.
+*
+* `sessionStorage` is deliberately used (not localStorage): two tabs of the
+* same browser are two separate games. Ids are restricted to
+* [A-Za-z0-9_-], the charset the server accepts.
+*/
+function sessionId() {
+	const store = typeof sessionStorage !== "undefined" ? sessionStorage : null;
+	if (!store) return "anonymous";
+	let id = store.getItem("taikyoku_session");
+	if (!id) {
+		id = globalThis.crypto?.randomUUID?.() ?? `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+		store.setItem("taikyoku_session", id);
+	}
+	return id;
+}
 async function request(path, init) {
 	const res = await fetch(`${BASE}${path}`, {
 		headers: {
 			Accept: "application/json",
+			"X-Session-Id": sessionId(),
 			...init?.body ? { "Content-Type": "application/json" } : {}
 		},
 		...init

@@ -36,13 +36,19 @@ Every tagged version (`v*` tag, e.g. `git tag v0.1.0 && git push origin
 v0.1.0`) is built automatically by `.github/workflows/release.yml` on
 native runners and published on the repository's GitHub Releases page:
 Linux x86_64 (glibc and a fully static musl build), Windows x86_64 (`.zip`)
-and macOS (Apple Silicon + Intel). Each archive contains the six binaries
-(`taikyokushogi-server`, `taikyokushogi-cli`, `taikyokushogi-usi`, `nnue`,
-`debug-cli`, `selfplay`), the prebuilt web frontend (`web/dist/`), `docs/`,
-`PIECES.md` and the license files — everything the bundled README links to.
-The workflow can
-also be run manually ("Run workflow") to build archives without creating a
-release.
+and macOS (Apple Silicon + Intel). Each platform ships **three package
+variants**, all containing the six binaries (`taikyokushogi-server`,
+`taikyokushogi-cli`, `taikyokushogi-usi`, `nnue`, `debug-cli`, `selfplay`)
+plus `docs/`, `PIECES.md` and the license files:
+
+| Variant | Web frontend | Server game state |
+|---|---|---|
+| `-full` | ✅ `web/dist/` | shared board (one game per process) |
+| `-engine` | — | shared board |
+| `-monolithic` | ✅ `web/dist/` | **per-session**: every visitor gets an isolated game (bundled `start-server-monolithic` launchers run `taikyokushogi-server --sessions`) |
+
+The workflow can also be run manually ("Run workflow") to build archives
+without creating a release.
 
 ### Build
 
@@ -104,9 +110,14 @@ cargo run --release --features server --bin taikyokushogi-server
 # open http://localhost:8000
 ```
 
+By default every visitor shares one board (local use). Start it with
+`--sessions` (or `TAIKYOKU_SESSIONS=1`) to give every visitor an **isolated
+game** instead — per-session state, no shared board.
+
 Game modes (human/human/AI), piece inspector, analysis mode, TSFEN panel,
-material chart, JSON/PGN game export. Screenshots above. Feature list and
-the full REST API reference: **[docs/WEB.md](docs/WEB.md)**.
+material chart, JSON/PGN game export. Screenshots above. Feature list, the
+full REST API reference and the session mode details:
+**[docs/WEB.md](docs/WEB.md)**.
 
 ### CLI (`taikyokushogi-cli`)
 
@@ -149,7 +160,7 @@ The crate is also a Python extension module (build with maturin, see
 
 | Binary | Purpose |
 |---|---|
-| `taikyokushogi-server` | HTTP server + web GUI (REST API in `src/server/`; build with `--features server`) |
+| `taikyokushogi-server` | HTTP server + web GUI (REST API in `src/server/`; build with `--features server`; `--sessions` gives each visitor an isolated game) |
 | `taikyokushogi-cli` | Full user-facing CLI: REPL + argv flags |
 | `taikyokushogi-usi` | USI protocol engine for shogi GUIs / test harnesses |
 | `nnue` | NNUE tool: classes, verify, random-net, dump-positions, … |

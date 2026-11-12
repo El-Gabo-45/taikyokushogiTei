@@ -13,7 +13,9 @@ use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use taikyokushogi::server::{build_router, new_state, AppState};
+use taikyokushogi::server::{
+    build_router, new_state, new_state_with_config, AppState, AppStateConfig,
+};
 use tower::ServiceExt;
 
 // ============================================================
@@ -27,7 +29,21 @@ fn game() -> (Arc<AppState>, Router) {
 }
 
 async fn call(app: &Router, method: Method, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
+    call_as(app, None, method, uri, body).await
+}
+
+/// [`call`] with an `X-Session-Id` header (session-mode tests).
+async fn call_as(
+    app: &Router,
+    session: Option<&str>,
+    method: Method,
+    uri: &str,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
     let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(id) = session {
+        builder = builder.header("x-session-id", id);
+    }
     let body = match body {
         Some(v) => {
             builder = builder.header(header::CONTENT_TYPE, "application/json");
@@ -59,14 +75,49 @@ async fn get(app: &Router, uri: &str) -> (StatusCode, Value) {
     call(app, Method::GET, uri, None).await
 }
 
+async fn get_as(app: &Router, session: &str, uri: &str) -> (StatusCode, Value) {
+    call_as(app, Some(session), Method::GET, uri, None).await
+}
+
 async fn post(app: &Router, uri: &str, body: Value) -> (StatusCode, Value) {
     call(app, Method::POST, uri, Some(body)).await
+}
+
+async fn post_as(app: &Router, session: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+    call_as(app, Some(session), Method::POST, uri, Some(body)).await
+}
+
+/// Router with session mode enabled and the given live-session cap
+/// (`TAIKYOKU_SESSIONS=1` equivalent, without touching the process env).
+fn sessions_game(max: usize) -> (Arc<AppState>, Router) {
+    let cfg = AppStateConfig {
+        sessions: true,
+        max_sessions: Some(max),
+        cors_origins: Vec::new(),
+    };
+    let state = new_state_with_config(None, cfg);
+    let app = build_router(state.clone());
+    (state, app)
 }
 
 /// First move from `GET /api/legal-moves`, as a `{from,to,promotion,mid_sq}`
 /// request body for `/api/move`.
 async fn first_legal_move(app: &Router) -> Value {
     let (status, body) = get(app, "/api/legal-moves").await;
+    assert_eq!(status, StatusCode::OK);
+    let moves = body["moves"].as_array().expect("moves array");
+    assert!(!moves.is_empty(), "expected at least one legal move");
+    json!({
+        "from": moves[0]["from"],
+        "to": moves[0]["to"],
+        "promotion": moves[0]["promotion"],
+        "mid_sq": moves[0]["mid_sq"],
+    })
+}
+
+/// [`first_legal_move`] as a specific session id.
+async fn first_legal_move_as(app: &Router, session: &str) -> Value {
+    let (status, body) = get_as(app, session, "/api/legal-moves").await;
     assert_eq!(status, StatusCode::OK);
     let moves = body["moves"].as_array().expect("moves array");
     assert!(!moves.is_empty(), "expected at least one legal move");
@@ -709,4 +760,173 @@ async fn malformed_json_body_is_rejected() {
         "malformed JSON must be a 4xx, got {}",
         response.status()
     );
+}
+
+// ============================================================
+// session mode (TAIKYOKU_SESSIONS / --sessions)
+// ============================================================
+
+#[tokio::test]
+async fn shared_mode_ignores_session_ids() {
+    // Default server: two different session ids still share one board.
+    let (_, app) = game();
+    let mv = first_legal_move(&app).await;
+    let (_, a) = post_as(&app, "alice", "/api/move", mv).await;
+    assert_eq!(a["ok"], true);
+
+    let (_, bob) = get_as(&app, "bob", "/api/state").await;
+    assert_eq!(bob["version"], a["board"]["version"]);
+    assert_eq!(bob["move_log"], a["board"]["move_log"]);
+}
+
+#[tokio::test]
+async fn sessions_isolate_clients() {
+    let (_, app) = sessions_game(8);
+
+    // Alice moves in her own session game.
+    let mv = first_legal_move_as(&app, "alice").await;
+    let (_, a) = post_as(&app, "alice", "/api/move", mv).await;
+    assert_eq!(a["ok"], true);
+
+    // Bob's session is a different game: initial position, no moves.
+    let (_, bob) = get_as(&app, "bob", "/api/state").await;
+    assert_eq!(bob["version"], 0);
+    assert_eq!(bob["move_log"], json!([]));
+
+    // Alice still sees her own game.
+    let (_, alice) = get_as(&app, "alice", "/api/state").await;
+    assert_eq!(alice["version"], a["board"]["version"]);
+    assert_eq!(alice["move_log"], a["board"]["move_log"]);
+}
+
+#[tokio::test]
+async fn sessions_fall_back_to_shared_board_without_id() {
+    let (state, app) = sessions_game(8);
+
+    // A request without a session id mutates the shared board...
+    let mv = first_legal_move(&app).await;
+    let (_, r) = post(&app, "/api/move", mv).await;
+    assert_eq!(r["ok"], true);
+
+    // ...which is exactly what the AppState holds.
+    let (_, anon) = get(&app, "/api/state").await;
+    assert_eq!(anon["version"], r["board"]["version"]);
+    assert_eq!(state.shared.lock().unwrap().version, anon["version"]);
+}
+
+#[tokio::test]
+async fn invalid_session_ids_fall_back_to_shared_board() {
+    let (state, app) = sessions_game(8);
+
+    // Mutate the shared board so the fallback is observable.
+    let mv = first_legal_move(&app).await;
+    let (_, r) = post(&app, "/api/move", mv).await;
+    assert_eq!(r["ok"], true);
+
+    // Ids with characters outside [A-Za-z0-9_-] are rejected and hit the
+    // shared board instead.
+    let (_, bad) = get_as(&app, "evil id", "/api/state").await;
+    assert_eq!(bad["version"], r["board"]["version"]);
+    assert_eq!(state.shared.lock().unwrap().version, bad["version"]);
+}
+
+#[tokio::test]
+async fn session_id_via_cookie_and_query_param() {
+    let (_, app) = sessions_game(8);
+
+    // Move as `carol` using the X-Session-Id header.
+    let mv = first_legal_move_as(&app, "carol").await;
+    let (_, moved) = post_as(&app, "carol", "/api/move", mv).await;
+    assert_eq!(moved["ok"], true);
+
+    // The `taikyoku_session` cookie resolves to the same session game.
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/state")
+        .header(header::COOKIE, "theme=dark; taikyoku_session=carol")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body collect failed")
+        .to_bytes();
+    let via_cookie: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(via_cookie["version"], moved["board"]["version"]);
+    assert_eq!(via_cookie["move_log"], moved["board"]["move_log"]);
+
+    // So does the `?session=` query parameter.
+    let (_, via_query) = get(&app, "/api/state?session=carol").await;
+    assert_eq!(via_query["version"], moved["board"]["version"]);
+}
+
+#[tokio::test]
+async fn session_cap_evicts_least_recently_used() {
+    let (_, app) = sessions_game(1);
+
+    // alice fills the only session slot and moves.
+    let mv = first_legal_move_as(&app, "alice").await;
+    let (_, a) = post_as(&app, "alice", "/api/move", mv).await;
+    assert_eq!(a["ok"], true);
+
+    // bob takes the slot; alice's game is evicted.
+    let mv_bob = first_legal_move_as(&app, "bob").await;
+    let (_, b) = post_as(&app, "bob", "/api/move", mv_bob).await;
+    assert_eq!(b["ok"], true);
+
+    // alice's next request starts a fresh game (no trace of her move).
+    let (_, alice) = get_as(&app, "alice", "/api/state").await;
+    assert_eq!(alice["version"], 0);
+    assert_eq!(alice["move_log"], json!([]));
+}
+
+// ============================================================
+// CORS restriction (TAIKYOKU_CORS_ORIGIN)
+// ============================================================
+
+#[tokio::test]
+async fn cors_origin_list_restricts_allowed_origins() {
+    let state = new_state_with_config(
+        None,
+        AppStateConfig {
+            cors_origins: vec!["https://example.org".into()],
+            ..AppStateConfig::default()
+        },
+    );
+    let app = build_router(state);
+
+    // An origin outside the list is not echoed back.
+    let request = Request::builder()
+        .method(Method::OPTIONS)
+        .uri("/api/state")
+        .header(header::ORIGIN, "https://evil.example")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert!(
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none(),
+        "origins outside the allow-list must not be echoed"
+    );
+
+    // The listed origin is allowed.
+    let request = Request::builder()
+        .method(Method::OPTIONS)
+        .uri("/api/state")
+        .header(header::ORIGIN, "https://example.org")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "GET")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    let origin = response
+        .headers()
+        .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+        .expect("allow-origin header");
+    assert_eq!(origin, "https://example.org");
 }

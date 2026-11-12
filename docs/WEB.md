@@ -9,11 +9,47 @@ cargo run --release --features server --bin taikyokushogi-server
 # Then open http://localhost:8000 in your browser
 ```
 
-> **Note:** the server keeps a **single shared `GameState`** — every visitor
-> sees the same board, move history and side panels, and the CORS config
-> reflects the request origin. It is designed for local play and analysis;
-> presenting it publicly as a multi-user demo would mix everyone's games.
-> Per-session state would require a server change.
+> **Note:** by default the server keeps a **single shared `GameState`** —
+> every visitor sees the same board, move history and side panels. It is
+> designed for local play and analysis; for several people playing at the
+> same time use **session mode** (below).
+
+## Server modes: shared board vs. per-session games
+
+| Mode | Start with | Behaviour |
+|------|------------|-----------|
+| **Shared** (default) | `taikyokushogi-server` | One `GameState` per process: every visitor sees the same board and history. Meant for local play/analysis. |
+| **Sessions** | `taikyokushogi-server --sessions` or `TAIKYOKU_SESSIONS=1` | Every visitor that presents a session id gets an **isolated game** (own board, move log, undo history, AI). Requests without an id keep using the shared board. |
+
+In session mode the id is looked up, in order, in the `X-Session-Id` header,
+the `taikyoku_session` cookie and the `?session=` query parameter. Ids are
+limited to `[A-Za-z0-9_-]{1,64}`; missing or invalid ids fall back to the
+shared board. The bundled web frontend generates one id per browser tab and
+always sends the header, so two tabs = two independent games.
+
+Settings (environment variables; the server binary also accepts `--sessions`,
+`--bind ADDR` and `--net PATH` flags):
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `TAIKYOKU_SESSIONS` | unset | `1`/`true`/`on`/`yes` enables session mode |
+| `TAIKYOKU_MAX_SESSIONS` | `64` | Live session games before the least recently used one is evicted (its next request simply starts a fresh game) |
+| `TAIKYOKU_CORS_ORIGIN` | *(mirror)* | Comma-separated exact origins to allow; unset = the CORS layer mirrors the request origin (permissive, fine locally) |
+| `TAIKYOKU_BIND` | `127.0.0.1:8000` | Bind address |
+| `TAIKYOKU_NET` | *(none)* | NNUE network file, or `none` for the hand-crafted evaluator |
+| `TAIKYOKU_DIST` | `web/dist` | Frontend directory |
+
+For a **public deployment**, run in session mode *and* set
+`TAIKYOKU_CORS_ORIGIN=https://your-frontend.example` (a comma-separated
+allow-list) instead of the permissive default.
+
+The release packages ship these modes preconfigured: the `-full` package
+starts in shared mode, the `-monolithic` package includes
+`start-server-monolithic.sh`/`.cmd` launchers that run the server with
+`--sessions`, and the `-engine` package has no web frontend (its
+`taikyokushogi-server` still serves the REST API; browsers get a
+"Frontend not built" page unless `TAIKYOKU_DIST` points at a frontend you
+build yourself). See the README's "Prebuilt binaries".
 
 The compiled frontend (`web/dist/`) is committed in the repository, so you
 can run the server immediately after building — no npm required. Rebuild it
@@ -68,7 +104,7 @@ whole router in-process).
 | `/api/engine-info` | GET | Version, backend, hash size, threads, search techniques |
 | `/api/evaluate` | GET | Static evaluation and material balance |
 | `/api/pieces` | GET | Full piece database (301 piece types) |
-| `/api/piece-info/{abbrev}` | GET | Piece metadata incl. Betza and royal flag (404 if unknown) |
+| `/api/piece-info/:abbrev` | GET | Piece metadata incl. Betza and royal flag (404 if unknown) |
 | `/api/position` | GET/POST | Read/set the position in TSFEN format |
 | `/api/new-game` | POST | Reset to the initial position |
 | `/api/move` | POST | Apply a human move (`from`, `to`, `promotion`, `mid_sq`) |

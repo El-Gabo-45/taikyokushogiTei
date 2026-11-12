@@ -102,10 +102,12 @@ All external access goes through the public facade in `lib.rs`.
   (`--depth`, `--movetime`, `--threads`, `--hash`, `--position`, `--go`,
   `--perft`, `--help`) and `&&`-chained one-shot commands.
 - `src/main.rs` → bin `taikyokushogi-server` (feature `server`): thin
-  launcher; the axum router, handlers and JSON types live in
-  `src/server/{mod,handlers,types}.rs` inside the library so integration
-  tests can drive the whole API in-process. Serves the REST API and the
-  static web GUI (port 8000; `TAIKYOKU_BIND`, optional `TAIKYOKU_NET`).
+  launcher (`--sessions`, `--bind`, `--net` flags); the axum router, handlers
+  and JSON types live in `src/server/{mod,handlers,types}.rs` inside the
+  library so integration tests can drive the whole API in-process. Serves
+  the REST API and the static web GUI (port 8000; `TAIKYOKU_BIND`, optional
+  `TAIKYOKU_NET`; `--sessions`/`TAIKYOKU_SESSIONS` switches the single
+  shared `GameState` for one isolated game per visitor).
 - `src/elo.rs`: engine-vs-engine matches, Elo + 95% CI, SPRT
   (`EngineConfig { depth, time_ms, net, threads }` per side; `net` is an
   optional `Arc<Network>`).
@@ -159,7 +161,7 @@ taikyokushogiTei/
     lib.rs              # Public crate API (Board, Move, PieceInfo, search, TSFEN, elo, ...)
     main.rs             # Thin launcher for the HTTP server        (bin: taikyokushogi-server)
     server/
-      mod.rs            #   AppState/GameState, router, static serving
+      mod.rs            #   AppState (shared or per-session games), router, static serving
       handlers.rs       #   REST handlers + status codes
       types.rs          #   JSON request/response types
     cli.rs              # Full user-facing CLI: REPL + argv flags   (bin: taikyokushogi-cli)

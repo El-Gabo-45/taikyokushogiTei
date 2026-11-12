@@ -172,7 +172,11 @@ describe('api client — persistence', () => {
     const calls = mockJson({});
     await api.fetchState();
     await api.sendAiMove(1, 1000);
-    expect(calls[0].init?.headers).toEqual({ Accept: 'application/json' });
+    const headers0 = calls[0].init?.headers as Record<string, string>;
+    expect(headers0['Accept']).toBe('application/json');
+    // Session id present and within the charset the server accepts
+    // ([A-Za-z0-9_-]{1,64}, see docs/WEB.md).
+    expect(headers0['X-Session-Id']).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     const headers = calls[1].init?.headers as Record<string, string>;
     expect(headers['Content-Type']).toBe('application/json');
   });

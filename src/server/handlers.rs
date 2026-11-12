@@ -4,17 +4,17 @@
 //! search work to the blocking pool, and serialize snapshots. Shared state
 //! helpers live in [`crate::server`].
 
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::{Board, Color, GameResult, Move as EngineMove};
 
 use crate::server::types::*;
-use crate::server::{apply_move_to_board, record_move, AppState};
+use crate::server::{apply_move_to_board, record_move, GameState as ServerGameState, SessionGame};
 
 // ============================================================
 // Error helper — maps to HTTP status codes with a JSON body
@@ -136,8 +136,8 @@ pub async fn get_health() -> Json<HealthResponse> {
 // GET /api/state — full board snapshot
 // ============================================================
 
-pub async fn get_state(State(app): State<Arc<AppState>>) -> Json<BoardResponse> {
-    let state = app.board.lock().unwrap();
+pub async fn get_state(SessionGame(game): SessionGame) -> Json<BoardResponse> {
+    let state = game.lock().unwrap();
     Json(crate::server::board_to_response(&state))
 }
 
@@ -145,8 +145,8 @@ pub async fn get_state(State(app): State<Arc<AppState>>) -> Json<BoardResponse> 
 // GET /api/history and GET /api/status
 // ============================================================
 
-pub async fn get_history(State(app): State<Arc<AppState>>) -> Json<HistoryResponse> {
-    let state = app.board.lock().unwrap();
+pub async fn get_history(SessionGame(game): SessionGame) -> Json<HistoryResponse> {
+    let state = game.lock().unwrap();
     Json(HistoryResponse {
         move_log: state.move_log.clone(),
         half_move: state.half_move,
@@ -155,8 +155,8 @@ pub async fn get_history(State(app): State<Arc<AppState>>) -> Json<HistoryRespon
     })
 }
 
-pub async fn get_status(State(app): State<Arc<AppState>>) -> Json<StatusResponse> {
-    let state = app.board.lock().unwrap();
+pub async fn get_status(SessionGame(game): SessionGame) -> Json<StatusResponse> {
+    let state = game.lock().unwrap();
     Json(StatusResponse {
         game_over: state.game_over,
         result: game_result_string(&state.board),
@@ -175,7 +175,7 @@ pub async fn get_status(State(app): State<Arc<AppState>>) -> Json<StatusResponse
 // ============================================================
 
 pub async fn get_moves(
-    State(app): State<Arc<AppState>>,
+    SessionGame(game): SessionGame,
     Query(params): Query<MoveQuery>,
 ) -> Result<Json<MoveListResponse>, ApiError> {
     let (r, c) = (params.r, params.c);
@@ -185,7 +185,7 @@ pub async fn get_moves(
             BOARD - 1
         )));
     }
-    let state = app.board.lock().unwrap();
+    let state = game.lock().unwrap();
     let moves = crate::server::get_moves_for_square(&state, r, c);
     Ok(Json(MoveListResponse {
         moves,
@@ -197,8 +197,8 @@ pub async fn get_moves(
 // GET /api/legal-moves — every legal move of the side to move
 // ============================================================
 
-pub async fn get_legal_moves(State(app): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let state = app.board.lock().unwrap();
+pub async fn get_legal_moves(SessionGame(game): SessionGame) -> Json<serde_json::Value> {
+    let state = game.lock().unwrap();
     let stm = state.board.side_to_move() as u8;
     let moves: Vec<MoveData> = if state.game_over {
         Vec::new()
@@ -231,8 +231,8 @@ pub async fn get_legal_moves(State(app): State<Arc<AppState>>) -> Json<serde_jso
 // GET /api/evaluate — static evaluation + material balance
 // ============================================================
 
-pub async fn get_evaluate(State(app): State<Arc<AppState>>) -> Json<EvalResponse> {
-    let state = app.board.lock().unwrap();
+pub async fn get_evaluate(SessionGame(game): SessionGame) -> Json<EvalResponse> {
+    let state = game.lock().unwrap();
     Json(EvalResponse {
         eval_score: state.board.evaluate(),
         material_score: state.board.material_score(),
@@ -246,7 +246,7 @@ pub async fn get_evaluate(State(app): State<Arc<AppState>>) -> Json<EvalResponse
 // GET /api/engine-info — engine metadata for the web UI
 // ============================================================
 
-pub async fn get_engine_info(State(app): State<Arc<AppState>>) -> Json<EngineInfoResponse> {
+pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoResponse> {
     const TECHNIQUES: &[&str] = &[
         "razoring",
         "reverse_futility",
@@ -266,7 +266,7 @@ pub async fn get_engine_info(State(app): State<Arc<AppState>>) -> Json<EngineInf
     ];
     let all = crate::all_pieces();
     let royal = all.iter().filter(|p| p.is_royal).count();
-    let state = app.board.lock().unwrap();
+    let state = game.lock().unwrap();
     let using_nnue = state.board.network().is_some();
     Json(EngineInfoResponse {
         name: "taikyokushogi",
@@ -309,7 +309,7 @@ fn piece_response(p: &crate::PieceInfo) -> PieceInfoResponse {
     }
 }
 
-pub async fn get_pieces(State(_app): State<Arc<AppState>>) -> Json<PieceListResponse> {
+pub async fn get_pieces() -> Json<PieceListResponse> {
     let all = crate::all_pieces();
     Json(PieceListResponse {
         count: all.len(),
@@ -337,8 +337,8 @@ pub async fn api_not_found() -> ApiError {
 // TSFEN: GET/POST /api/position, GET/POST /api/save, POST /api/load
 // ============================================================
 
-pub async fn get_position(State(app): State<Arc<AppState>>) -> Json<PositionResponse> {
-    let state = app.board.lock().unwrap();
+pub async fn get_position(SessionGame(game): SessionGame) -> Json<PositionResponse> {
+    let state = game.lock().unwrap();
     Json(PositionResponse {
         tsfen: state.board.to_tsfen(),
         side_to_move: state.board.side_to_move() as u8,
@@ -350,17 +350,17 @@ pub async fn get_position(State(app): State<Arc<AppState>>) -> Json<PositionResp
 /// TSFEN. The change counter advances and history restarts from the
 /// imported position.
 pub async fn post_position(
-    State(app): State<Arc<AppState>>,
+    SessionGame(game): SessionGame,
     Json(body): Json<LoadBody>,
 ) -> Result<Json<BoardResponse>, ApiError> {
-    let mut state = app.board.lock().unwrap();
+    let mut state = game.lock().unwrap();
     let board = Board::from_tsfen(&body.tsfen).map_err(ApiError::bad_request)?;
     state.set_board(board);
     Ok(Json(crate::server::board_to_response(&state)))
 }
 
-pub async fn get_save(State(app): State<Arc<AppState>>) -> Json<SaveBody> {
-    let state = app.board.lock().unwrap();
+pub async fn get_save(SessionGame(game): SessionGame) -> Json<SaveBody> {
+    let state = game.lock().unwrap();
     Json(SaveBody {
         ok: true,
         tsfen: state.board.to_tsfen(),
@@ -370,23 +370,23 @@ pub async fn get_save(State(app): State<Arc<AppState>>) -> Json<SaveBody> {
 }
 
 /// POST variant of `/api/save` for clients that prefer a single verb set.
-pub async fn post_save(State(app): State<Arc<AppState>>) -> Json<SaveBody> {
-    get_save(State(app)).await
+pub async fn post_save(sess: SessionGame) -> Json<SaveBody> {
+    get_save(sess).await
 }
 
 pub async fn post_load(
-    State(app): State<Arc<AppState>>,
+    sess: SessionGame,
     Json(body): Json<LoadBody>,
 ) -> Result<Json<BoardResponse>, ApiError> {
-    post_position(State(app), Json(body)).await
+    post_position(sess, Json(body)).await
 }
 
 // ============================================================
 // POST /api/new-game
 // ============================================================
 
-pub async fn post_new_game(State(app): State<Arc<AppState>>) -> Json<NewGameResponse> {
-    let mut state = app.board.lock().unwrap();
+pub async fn post_new_game(SessionGame(game): SessionGame) -> Json<NewGameResponse> {
+    let mut state = game.lock().unwrap();
     state.reset();
     Json(NewGameResponse {
         ok: true,
@@ -399,7 +399,7 @@ pub async fn post_new_game(State(app): State<Arc<AppState>>) -> Json<NewGameResp
 // ============================================================
 
 pub async fn post_move(
-    State(app): State<Arc<AppState>>,
+    SessionGame(game): SessionGame,
     Json(body): Json<MoveBody>,
 ) -> Result<Json<MoveResponse>, ApiError> {
     let (fr, fc, tr, tc) = (body.from[0], body.from[1], body.to[0], body.to[1]);
@@ -418,7 +418,7 @@ pub async fn post_move(
         }
     }
 
-    let mut state = app.board.lock().unwrap();
+    let mut state = game.lock().unwrap();
     if state.game_over {
         return Err(ApiError::conflict("Game is over"));
     }
@@ -456,8 +456,8 @@ pub async fn post_move(
 /// Snapshot (board clone + counter) taken under the app lock and released
 /// before the CPU-bound search, so the async runtime keeps serving the
 /// other endpoints. The counter lets callers detect a stale position.
-fn snapshot_for_search(app: &AppState) -> Result<(Board, u64), ApiError> {
-    let state = app.board.lock().unwrap();
+fn snapshot_for_search(game: &Arc<Mutex<ServerGameState>>) -> Result<(Board, u64), ApiError> {
+    let state = game.lock().unwrap();
     if state.game_over {
         return Err(ApiError::conflict("Game is over"));
     }
@@ -526,18 +526,18 @@ async fn execute_search(snapshot: Board, depth: u32, time_limit: u64) -> SearchO
 // ============================================================
 
 pub async fn post_ai_move(
-    State(app): State<Arc<AppState>>,
+    SessionGame(game): SessionGame,
     Json(body): Json<AiMoveBody>,
 ) -> Result<Json<MoveResponse>, ApiError> {
     let (depth, time_limit) = search_plan(body.depth, body.time_limit);
 
-    let (snapshot, snapshot_version) = snapshot_for_search(&app)?;
+    let (snapshot, snapshot_version) = snapshot_for_search(&game)?;
     let outcome = execute_search(snapshot, depth, time_limit).await;
 
     if outcome.no_moves {
         // Distinguish a terminal position from a search that stopped early
         // (e.g. a very short time limit): only the former ends the game.
-        let mut state = app.board.lock().unwrap();
+        let mut state = game.lock().unwrap();
         if state.board.legal_moves().is_empty() {
             state.game_over = true;
             return Err(ApiError::conflict("No legal moves"));
@@ -553,7 +553,7 @@ pub async fn post_ai_move(
     };
     let (fr, fc, tr, tc, promotion, mid_sq) = coords_of(&mv);
 
-    let mut state = app.board.lock().unwrap();
+    let mut state = game.lock().unwrap();
 
     // ── CONCURRENCY GUARD ──
     // If another request changed the board while the AI was thinking
@@ -613,12 +613,12 @@ pub async fn post_ai_move(
 // ============================================================
 
 pub async fn post_search(
-    State(app): State<Arc<AppState>>,
+    SessionGame(game): SessionGame,
     Json(body): Json<SearchBody>,
 ) -> Result<Json<SearchResponse>, ApiError> {
     let (depth, time_limit) = search_plan(body.depth, body.time_limit);
 
-    let (snapshot, _) = snapshot_for_search(&app)?;
+    let (snapshot, _) = snapshot_for_search(&game)?;
     let tsfen_of_snapshot = snapshot.to_tsfen();
 
     let outcome = execute_search(snapshot, depth, time_limit).await;
@@ -639,12 +639,12 @@ pub async fn post_search(
 // ============================================================
 
 pub async fn post_undo(
-    State(app): State<Arc<AppState>>,
+    SessionGame(game): SessionGame,
     body: Option<Json<UndoBody>>,
 ) -> Json<UndoResponse> {
     let plies = body.and_then(|b| b.plies).unwrap_or(1).clamp(1, 100);
 
-    let mut state = app.board.lock().unwrap();
+    let mut state = game.lock().unwrap();
     let mut undone = 0u32;
     while undone < plies {
         if !state.board.undo() {

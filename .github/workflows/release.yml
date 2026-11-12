@@ -4,6 +4,9 @@ name: Release
 # (macOS cannot be cross-compiled from Linux — it needs Apple's SDK, so it
 # gets its own runner). Triggered by pushing a `v*` tag or manually
 # ("Run workflow"); a GitHub Release with all archives is created on tags.
+# Each platform ships three package variants: `-full` (web GUI included),
+# `-engine` (binaries + docs only) and `-monolithic` (web GUI + a launcher
+# running the server with --sessions, one isolated game per visitor).
 on:
   push:
     tags: ['v*']
@@ -91,44 +94,88 @@ jobs:
           else
             VER="v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
           fi
-          STAGE="taikyokushogi-${VER}-${{ matrix.name }}"
+          BASE="taikyokushogi-${VER}-${{ matrix.name }}"
           SRC="target/${{ matrix.target }}/release"
-          mkdir "$STAGE"
-          copied=0
-          for bin in taikyokushogi-server taikyokushogi-cli taikyokushogi-usi nnue debug-cli selfplay; do
-            for f in "$SRC/$bin" "$SRC/$bin.exe"; do
-              if [ -f "$f" ]; then cp "$f" "$STAGE/"; copied=$((copied+1)); fi
+
+          # Three package variants per platform (see README "Prebuilt binaries"):
+          #   full       — everything, web GUI included (shared-board server)
+          #   engine     — binaries + docs, no web frontend
+          #   monolithic — like full, and its launcher starts the server
+          #                with --sessions: every visitor gets an isolated
+          #                game state instead of one shared board.
+          # Every variant ships the docs and license files.
+          for variant in full engine monolithic; do
+            STAGE="${BASE}-${variant}"
+            mkdir "$STAGE"
+            copied=0
+            for bin in taikyokushogi-server taikyokushogi-cli taikyokushogi-usi nnue debug-cli selfplay; do
+              for f in "$SRC/$bin" "$SRC/$bin.exe"; do
+                if [ -f "$f" ]; then cp "$f" "$STAGE/"; copied=$((copied+1)); fi
+              done
             done
+            if [ "$copied" -lt 6 ]; then
+              echo "ERROR: expected the 6 binaries in $SRC, only $copied copied" >&2
+              ls "$SRC" >&2 || true
+              exit 1
+            fi
+            cp README.md LICENSE PIECES.md "$STAGE/"
+            cp -R docs "$STAGE/docs"
+            cp -R LICENSES "$STAGE/LICENSES"
           done
-          if [ "$copied" -lt 6 ]; then
-            echo "ERROR: expected the 6 binaries in $SRC, only $copied copied" >&2
-            ls "$SRC" >&2 || true
-            exit 1
-          fi
-          cp README.md LICENSE PIECES.md "$STAGE/"
-          # Files the bundled README links: web frontend, docs, licenses.
-          mkdir -p "$STAGE/web"
-          cp -R web/dist "$STAGE/web/dist"
-          cp -R docs "$STAGE/docs"
-          cp -R LICENSES "$STAGE/LICENSES"
-          echo "STAGE=$STAGE" >> "$GITHUB_ENV"
-          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
+
+          # full and monolithic additionally carry the prebuilt web frontend.
+          for variant in full monolithic; do
+            STAGE="${BASE}-${variant}"
+            mkdir -p "$STAGE/web"
+            cp -R web/dist "$STAGE/web/dist"
+          done
+
+          # monolithic: turnkey launcher isolating every visitor.
+          cat > "${BASE}-monolithic/start-server-monolithic.sh" <<'EOF'
+          #!/usr/bin/env bash
+          # Monolithic package launcher: per-session game state (no shared
+          # board) — every visitor gets an isolated game.
+          exec "$(dirname "$0")/taikyokushogi-server" --sessions "$@"
+          EOF
+          chmod +x "${BASE}-monolithic/start-server-monolithic.sh"
+          printf '%s\n' \
+            '@echo off' \
+            'rem Monolithic package launcher: per-session game state (no shared' \
+            'rem board) - every visitor gets an isolated game.' \
+            '"%~dp0taikyokushogi-server.exe" --sessions %*' \
+            > "${BASE}-monolithic/start-server-monolithic.cmd"
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: Package (tar.gz)
         if: matrix.archive == 'tar.gz'
         shell: bash
-        run: tar -czf "$STAGE.tar.gz" "$STAGE"
+        run: |
+          for variant in full engine monolithic; do
+            tar -czf "${BASE}-${variant}.tar.gz" "${BASE}-${variant}"
+          done
 
       - name: Package (zip)
         if: matrix.archive == 'zip'
         shell: pwsh
-        run: Compress-Archive -Path "$env:STAGE" -DestinationPath "$env:STAGE.zip"
+        run: |
+          foreach ($variant in 'full', 'engine', 'monolithic') {
+            Compress-Archive -Path "${env:BASE}-$variant" -DestinationPath "${env:BASE}-$variant.zip"
+          }
 
-      - name: Upload artifact
+      - name: Upload artifacts (tar.gz)
+        if: matrix.archive == 'tar.gz'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ steps.stage-files.outputs.stage }}.*
+          path: ${{ steps.stage-files.outputs.base }}-*.tar.gz
+
+      - name: Upload artifacts (zip)
+        if: matrix.archive == 'zip'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ steps.stage-files.outputs.base }}-*.zip
 
   release:
     name: GitHub release

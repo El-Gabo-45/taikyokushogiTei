@@ -15,10 +15,13 @@
 pub mod handlers;
 pub mod types;
 
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
 use axum::http::{header, HeaderValue, Method};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::ServeDir;
@@ -31,30 +34,250 @@ use types::{BoardResponse, CellData, MoveData};
 // State
 // ============================================================
 
-/// Shared application state: one game per server process.
-///
-/// WARNING: All clients share the same `GameState`. This is fine for local
-/// use (default bind `127.0.0.1:8000`) but unsuitable for a public demo:
-/// different visitors would share the same board, moves, undo history, etc.
-/// For a public deployment you need per-session game state (e.g. keyed by
-/// session cookie or token) and a restricted CORS policy.
-pub struct AppState {
-    pub board: Mutex<GameState>,
+/// Configuration for [`AppState`] (env-driven builders fill it from the
+/// `TAIKYOKU_*` variables; tests and embedders can set it explicitly).
+#[derive(Debug, Clone, Default)]
+pub struct AppStateConfig {
+    /// Give every session id its own isolated [`GameState`] instead of the
+    /// single shared board (`TAIKYOKU_SESSIONS` in the env-driven builders).
+    pub sessions: bool,
+    /// Maximum number of live session games before the least recently used
+    /// one is evicted. `None` = default ([`DEFAULT_MAX_SESSIONS`]).
+    pub max_sessions: Option<usize>,
+    /// Exact CORS origins to allow. Empty = mirror the request origin (the
+    /// historical, permissive behaviour meant for local use).
+    pub cors_origins: Vec<String>,
 }
 
-/// Create the initial [`AppState`] used by [`build_router`] and [`run`].
+/// Default cap on the number of live session games.
+pub const DEFAULT_MAX_SESSIONS: usize = 64;
+
+/// Shared application state.
+///
+/// Two modes:
+///
+/// - **shared** (default): one [`GameState`] per server process. Fine for
+///   local play (default bind `127.0.0.1:8000`), but every visitor shares
+///   the same board, move history and undo stack — not a multi-user demo.
+/// - **sessions** (`TAIKYOKU_SESSIONS=1` or `taikyokushogi-server
+///   --sessions`): clients that present a session id ([`SessionGame`] lists
+///   where it can come from) each get their own isolated game. Requests
+///   without an id keep using the shared board, and the session cap
+///   (`TAIKYOKU_MAX_SESSIONS`, default [`DEFAULT_MAX_SESSIONS`]) evicts the
+///   least recently used session games.
+pub struct AppState {
+    /// The single game in shared mode; the fallback for id-less requests in
+    /// sessions mode.
+    pub shared: Arc<Mutex<GameState>>,
+    /// Per-session game slots, `None` in shared mode.
+    sessions: Option<SessionMap>,
+    /// Network attached to every game created by this state (survives
+    /// `new game`, TSFEN loads and undo within each game).
+    network: Option<Arc<Network>>,
+    /// Exact CORS origins for [`build_router`] (empty = mirror request).
+    pub cors_origins: Vec<String>,
+}
+
+impl AppState {
+    /// The game a request with the given (optional) session id operates on.
+    fn game_for(&self, session: Option<&str>) -> Arc<Mutex<GameState>> {
+        match (&self.sessions, session) {
+            (Some(map), Some(id)) => map.get_or_create(id, self.network.clone()),
+            _ => Arc::clone(&self.shared),
+        }
+    }
+}
+
+/// Per-session game slots, active only in session mode.
+struct SessionMap {
+    games: Mutex<HashMap<String, SessionEntry>>,
+    max: usize,
+}
+
+struct SessionEntry {
+    game: Arc<Mutex<GameState>>,
+    last_used: std::time::Instant,
+}
+
+impl SessionMap {
+    /// The caller's session game: reused when the id is known, otherwise
+    /// created. At capacity the least recently used session is evicted (its
+    /// next request simply starts a fresh game).
+    fn get_or_create(&self, id: &str, net: Option<Arc<Network>>) -> Arc<Mutex<GameState>> {
+        let now = std::time::Instant::now();
+        let mut games = self.games.lock().unwrap();
+        if let Some(entry) = games.get_mut(id) {
+            entry.last_used = now;
+            return entry.game.clone();
+        }
+        if games.len() >= self.max {
+            if let Some(oldest) = games
+                .iter()
+                .min_by_key(|(_, e)| e.last_used)
+                .map(|(k, _)| k.clone())
+            {
+                games.remove(&oldest);
+            }
+        }
+        let game = Arc::new(Mutex::new(GameState::new_with_network(net)));
+        games.insert(
+            id.to_string(),
+            SessionEntry {
+                game: game.clone(),
+                last_used: now,
+            },
+        );
+        game
+    }
+}
+
+/// Create the initial [`AppState`] used by [`build_router`] and [`run`]
+/// (configuration comes from the `TAIKYOKU_*` environment variables).
 pub fn new_state() -> Arc<AppState> {
     new_state_with_network(None)
 }
 
-/// Create the initial [`AppState`] with an NNUE network attached.
+/// [`new_state`] with an NNUE network attached.
 ///
 /// The network is stored in the game state (not just on the initial board) so
 /// it survives `new game`, TSFEN loads and undo.
 pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
+    new_state_with_config(
+        net,
+        AppStateConfig {
+            sessions: sessions_enabled(),
+            max_sessions: max_sessions(),
+            cors_origins: cors_origins_env(),
+        },
+    )
+}
+
+/// [`new_state`] with fully explicit configuration (tests and embedders that
+/// must not depend on the process environment).
+pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> Arc<AppState> {
+    let sessions = cfg.sessions.then(|| SessionMap {
+        games: Mutex::new(HashMap::new()),
+        max: cfg.max_sessions.unwrap_or(DEFAULT_MAX_SESSIONS).max(1),
+    });
     Arc::new(AppState {
-        board: Mutex::new(GameState::new_with_network(net)),
+        shared: Arc::new(Mutex::new(GameState::new_with_network(net.clone()))),
+        sessions,
+        network: net,
+        cors_origins: cfg.cors_origins,
     })
+}
+
+/// Whether per-session games are requested: `TAIKYOKU_SESSIONS` set to a
+/// truthy value (`1`, `true`, `on`, `yes` — case-insensitive).
+pub fn sessions_enabled() -> bool {
+    match std::env::var("TAIKYOKU_SESSIONS") {
+        Ok(v) => matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "on" | "yes"
+        ),
+        Err(_) => false,
+    }
+}
+
+fn max_sessions() -> Option<usize> {
+    std::env::var("TAIKYOKU_MAX_SESSIONS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+}
+
+fn cors_origins_env() -> Vec<String> {
+    std::env::var("TAIKYOKU_CORS_ORIGIN")
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+// ============================================================
+// Session routing
+// ============================================================
+
+/// Per-request handle to the caller's game: the shared board in shared mode,
+/// the caller's own session game in session mode.
+///
+/// Handlers take this as an extractor. The session id is looked up in the
+/// `X-Session-Id` header first, then the `taikyoku_session` cookie, then the
+/// `?session=` query parameter; requests without a (valid) id operate on the
+/// shared board. Ids are limited to `[A-Za-z0-9_-]{1,64}`.
+#[derive(Clone)]
+pub struct SessionGame(pub Arc<Mutex<GameState>>);
+
+// axum 0.7 declares `FromRequestParts` through `#[async_trait]`, so the impl
+// needs the same attribute (it desugars to a boxed-future signature).
+#[async_trait::async_trait]
+impl FromRequestParts<Arc<AppState>> for SessionGame {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let id = session_id_from_parts(parts);
+        Ok(SessionGame(state.game_for(id.as_deref())))
+    }
+}
+
+/// Maximum accepted session id length (defensive cap on map keys).
+const MAX_SESSION_ID_LEN: usize = 64;
+
+/// Accept only sane session ids; anything else falls back to the shared
+/// board (this also rejects URL-encoded query values instead of decoding
+/// them — ids are caller-chosen, never generated by the server).
+fn sanitize_session_id(raw: &str) -> Option<String> {
+    let id = raw.trim();
+    let ok = !id.is_empty()
+        && id.len() <= MAX_SESSION_ID_LEN
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    ok.then(|| id.to_string())
+}
+
+/// Extract the caller's session id, if any: `X-Session-Id` header first,
+/// then the `taikyoku_session` cookie, then the `?session=` query parameter.
+fn session_id_from_parts(parts: &Parts) -> Option<String> {
+    if let Some(v) = parts
+        .headers
+        .get("x-session-id")
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(id) = sanitize_session_id(v) {
+            return Some(id);
+        }
+    }
+    if let Some(cookies) = parts
+        .headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+    {
+        for pair in cookies.split(';') {
+            if let Some(val) = pair.trim().strip_prefix("taikyoku_session=") {
+                if let Some(id) = sanitize_session_id(val) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    if let Some(query) = parts.uri.query() {
+        for pair in query.split('&') {
+            if let Some(val) = pair.strip_prefix("session=") {
+                if let Some(id) = sanitize_session_id(val) {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Authoritative game state behind the API mutex.
@@ -283,12 +506,7 @@ pub fn record_move(
 /// Public so integration tests and embedders can drive it without binding a
 /// TCP socket.
 pub fn build_router(state: Arc<AppState>) -> Router {
-    // NOTE: For a public-facing deployment, restrict allow_origin to the
-    // specific frontend origin(s) instead of mirroring all requests.
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::mirror_request())
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any);
+    let cors = cors_layer(&state.cors_origins);
 
     Router::new()
         // ── Game state & moves ──
@@ -329,6 +547,23 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
+/// CORS policy: mirrors the request origin by default (permissive, meant
+/// for local use). A non-empty origin list restricts responses to those
+/// exact origins instead — recommended together with session mode for
+/// public deployments (`TAIKYOKU_CORS_ORIGIN`, comma-separated).
+fn cors_layer(origins: &[String]) -> CorsLayer {
+    let parsed: Vec<HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+    let allow_origin = if parsed.is_empty() {
+        AllowOrigin::mirror_request()
+    } else {
+        AllowOrigin::list(parsed)
+    };
+    CorsLayer::new()
+        .allow_origin(allow_origin)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any)
+}
+
 /// Directory holding the built frontend (`TAIKYOKU_DIST` overrides).
 pub fn dist_dir() -> std::path::PathBuf {
     std::env::var("TAIKYOKU_DIST")
@@ -359,7 +594,10 @@ async fn serve_frontend() -> impl IntoResponse {
 /// Start the HTTP server. Bind address defaults to `127.0.0.1:8000` and can
 /// be overridden with `TAIKYOKU_BIND`. Set `TAIKYOKU_NET` to a `.tkn` or
 /// zstd-compressed `.tkn.zst` file to evaluate with NNUE, or to `none` for the
-/// hand-crafted evaluator.
+/// hand-crafted evaluator. Set `TAIKYOKU_SESSIONS=1` to give every visitor
+/// an isolated game instead of one shared board (see [`AppState`]), with
+/// `TAIKYOKU_MAX_SESSIONS` capping the live games and `TAIKYOKU_CORS_ORIGIN`
+/// restricting the CORS policy to exact origins.
 pub async fn run() {
     let net = match std::env::var("TAIKYOKU_NET")
         .ok()
@@ -386,6 +624,12 @@ pub async fn run_with_network(net: Option<Arc<Network>>) {
         .await
         .unwrap_or_else(|e| panic!("cannot bind {bind_addr}: {e}"));
     println!("Taikyoku Shogi Server listening on http://{bind_addr}");
+    if sessions_enabled() {
+        println!(
+            "Session mode: every visitor gets an isolated game (TAIKYOKU_SESSIONS=1, cap {})",
+            max_sessions().unwrap_or(DEFAULT_MAX_SESSIONS)
+        );
+    }
     axum::serve(listener, build_router(new_state_with_network(net)))
         .await
         .unwrap();
