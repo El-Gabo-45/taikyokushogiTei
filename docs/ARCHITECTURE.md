@@ -151,6 +151,78 @@ Integration notes:
 - Main binaries: `taikyokushogi-server`, `taikyokushogi-cli`,
   `taikyokushogi-usi`, `debug-cli` and `selfplay`.
 
+## Repository layout
+
+```
+taikyokushogiTei/
+  src/
+    lib.rs              # Public crate API (Board, Move, PieceInfo, search, TSFEN, elo, ...)
+    main.rs             # Thin launcher for the HTTP server        (bin: taikyokushogi-server)
+    server/
+      mod.rs            #   AppState/GameState, router, static serving
+      handlers.rs       #   REST handlers + status codes
+      types.rs          #   JSON request/response types
+    cli.rs              # Full user-facing CLI: REPL + argv flags   (bin: taikyokushogi-cli)
+    usi_main.rs         # Thin USI protocol launcher                (bin: taikyokushogi-usi)
+    usi.rs              # USI protocol engine: commands, clocks, notation
+    debug_cli.rs        # Minimal CLI search harness                (bin: debug-cli)
+    selfplay_main.rs    # Self-play entry point                     (bin: selfplay)
+    selfplay.rs         # Self-play logic + TKD1 training-sample format
+    nnue_main.rs        # NNUE tool entry point                     (bin: nnue)
+    elo.rs              # Match / SPRT / Elo estimation (EngineConfig, threads A/B)
+    python.rs           # PyO3 Python bindings (python cfg + pyo3 feature)
+    types/              # Core types (mod.rs re-exports the tree)
+      constants.rs      #   board dimensions, colors, piece ranks, draw threshold
+      cell.rs           #   Cell encoding
+      square.rs         #   Square math + lookup tables
+      mv.rs             #   Move / UndoInfo structs
+      movement.rs       #   Movement struct + HookType
+      tables.rs         #   Ray table, Zobrist keys, promotion-zone tables
+    pieces.rs           # 301 piece types, Betza notation parser, initial setup ranks
+    board/              # Board representation, apply/undo, game rules
+      core.rs           #   Board struct, apply_move/undo_move, game_result(), NNUE accumulator
+    movegen/            # Legal move generation (no check filtering — variant has no check)
+      core.rs           #   sliding, jumping, range capture, igui, promotion, dedup
+    attack.rs           # Attack / ray bitboards
+    bitboard.rs         # Bitboard helpers
+    search/             # PVS + TT + move ordering + pruning + quiescence + Lazy SMP
+      mod.rs            #   Entry point: iterative deepening + aspiration windows + search_threads
+      params.rs         #   Every tunable constant in one place (incl. DEFAULT_THREADS/MAX_THREADS)
+      pvs.rs            #   PVS core (pruning stages, staged movegen, beams)
+      root.rs           #   Root iteration (the old depth-1..3 material fast path was removed)
+      smp.rs            #   Lazy SMP: shared best result across worker threads
+      buffers.rs        #   Pooled per-node scratch buffers (no allocs on the hot path)
+      qsearch.rs        #   Capture-only quiescence
+      tt.rs             #   Lock-free bucketed transposition table
+      heuristics.rs     #   Killers / butterfly history / counter moves
+      ordering.rs       #   Move scoring
+    tsfen.rs            # TSFEN position notation (encode / parse)
+    eval/
+      mod.rs            # Evaluator dispatcher (hand-crafted <-> NNUE)
+      families.rs       # Piece-family material values
+      psqt.rs           # Piece-square tables
+      zones.rs          # Threat zones and king-safety heuristics
+      nnue/             # NNUE "S" evaluator, TKN1 loader, tools (see docs/NNUE.md)
+    debugging/          # Search/eval introspection utilities
+    correctness_tests.rs #  Correctness suite (cargo test)
+  tests/                # Integration suites: smoke.rs (engine), server_api.rs (HTTP router)
+  examples/             # Benchmarks, smoke tests and tooling (see examples/README.md)
+  docs/                 # ARCHITECTURE.md, MODULE_GUIDE.md, RULES.md, CLI.md, USI.md, WEB.md, BENCHMARKS.md, LIBRARY.md, NNUE.md + screenshots
+  rules/                # nnue_arch.json — NNUE architecture spec (Rust <-> Python source of truth)
+  nets/                 # NNUE network files + ODbL license (see nets/README.md)
+  web/                  # TypeScript + Vite frontend (served by the Rust server)
+    src/
+      main.ts           #   Entry point
+      game/state.ts     #   Game state machine + modes
+      api/client.ts     #   REST client
+      ui/               #   Canvas renderer, input controller, sidebar panels
+      data/kanji.ts     #   Piece kanji glyphs
+  training/             # NNUE PyTorch pipeline — see training/README.md
+  training_data/        # Generated self-play .bin samples + games.db
+  PIECES.md             # Complete piece movement reference
+  Cargo.toml            # Rust project config (bins, features, examples)
+```
+
 ## Modularization notes (v0.1.0)
 
 The following internal modules were split from single large files into

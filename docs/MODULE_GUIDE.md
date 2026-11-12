@@ -25,6 +25,8 @@ src/
   python.rs       — PyO3 bindings (feature-gated)
   debugging/      — Debug helpers for eval and search
   main.rs         — axum HTTP server (+ web GUI)
+  server/         — axum router, handlers, JSON types (library module; driven by tests/server_api.rs)
+  nnue_main.rs    — NNUE tool entry point (bin nnue; see docs/NNUE.md)
   cli.rs          — Interactive CLI REPL
   debug_cli.rs    — Minimal one-shot search harness
 ```
