@@ -32,8 +32,8 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 
 ### Prebuilt binaries
 
-Every tagged version (`v*` tag, e.g. `git tag v0.1.0 && git push origin
-v0.1.0`) is built automatically by `.github/workflows/release.yml` on
+Every tagged version (`v*` tag, e.g. `git tag v1.0.0 && git push origin
+v1.0.0`) is built automatically by `.github/workflows/release.yml` on
 native runners and published on the repository's GitHub Releases page:
 Linux x86_64 (glibc and a fully static musl build), Windows x86_64 (`.zip`)
 and macOS (Apple Silicon + Intel). Each platform ships **three package
