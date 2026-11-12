@@ -15,12 +15,13 @@
 pub mod handlers;
 pub mod types;
 
-use axum::extract::FromRequestParts;
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
-use axum::http::{header, HeaderValue, Method};
-use axum::response::IntoResponse;
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Router;
+use axum::{Json, Router};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
@@ -34,6 +35,51 @@ use types::{BoardResponse, CellData, MoveData};
 // State
 // ============================================================
 
+/// What the server does with `/api/*` requests that carry no valid session
+/// id while session mode is active ([`AppStateConfig::anon`],
+/// `TAIKYOKU_ANON` in the env-driven builders).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AnonPolicy {
+    /// Mint a fresh session for the request: it is answered with a brand-new
+    /// isolated game and the id is returned in the `taikyoku_session` cookie
+    /// plus the `X-Session-Id` response header (clients just keep using it).
+    /// The shared board stays untouched. This is the default so a public
+    /// deployment can never hand its shared state to anonymous callers.
+    /// Script-driven clients that ignore cookies mint a new session per
+    /// request — prefer [`AnonPolicy::Error`] for such deployments.
+    #[default]
+    Auto,
+    /// Reject the request with `400 {ok:false, error}`. Requests that do
+    /// present a valid id (header, cookie or query parameter) work as usual.
+    Error,
+    /// Legacy behaviour: serve the request on the shared board (v1.0
+    /// compatibility; opt in explicitly, e.g. behind an authenticating
+    /// reverse proxy that injects ids).
+    Shared,
+}
+
+impl AnonPolicy {
+    /// Parse a policy name (`auto`, `error` or `shared`,
+    /// case-insensitive). `None` for anything else.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(Self::Auto),
+            "error" => Some(Self::Error),
+            "shared" => Some(Self::Shared),
+            _ => None,
+        }
+    }
+
+    /// Canonical name of this policy (`TAIKYOKU_ANON` value).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Error => "error",
+            Self::Shared => "shared",
+        }
+    }
+}
+
 /// Configuration for [`AppState`] (env-driven builders fill it from the
 /// `TAIKYOKU_*` variables; tests and embedders can set it explicitly).
 #[derive(Debug, Clone, Default)]
@@ -44,6 +90,9 @@ pub struct AppStateConfig {
     /// Maximum number of live session games before the least recently used
     /// one is evicted. `None` = default ([`DEFAULT_MAX_SESSIONS`]).
     pub max_sessions: Option<usize>,
+    /// What id-less requests get in session mode ([`AnonPolicy`]; ignored
+    /// when `sessions` is off). Default: [`AnonPolicy::Auto`].
+    pub anon: AnonPolicy,
     /// Exact CORS origins to allow. Empty = mirror the request origin (the
     /// historical, permissive behaviour meant for local use).
     pub cors_origins: Vec<String>,
@@ -61,13 +110,14 @@ pub const DEFAULT_MAX_SESSIONS: usize = 64;
 ///   the same board, move history and undo stack — not a multi-user demo.
 /// - **sessions** (`TAIKYOKU_SESSIONS=1` or `taikyokushogi-server
 ///   --sessions`): clients that present a session id ([`SessionGame`] lists
-///   where it can come from) each get their own isolated game. Requests
-///   without an id keep using the shared board, and the session cap
-///   (`TAIKYOKU_MAX_SESSIONS`, default [`DEFAULT_MAX_SESSIONS`]) evicts the
-///   least recently used session games.
+///   where it can come from) each get their own isolated game, and the
+///   session cap (`TAIKYOKU_MAX_SESSIONS`, default [`DEFAULT_MAX_SESSIONS`])
+///   evicts the least recently used session games. Requests without a valid
+///   id are handled according to the [`AnonPolicy`] (`TAIKYOKU_ANON`) — by
+///   default they are given a fresh session, never the shared board.
 pub struct AppState {
-    /// The single game in shared mode; the fallback for id-less requests in
-    /// sessions mode.
+    /// The single game in shared mode; in session mode only used by the
+    /// [`AnonPolicy::Shared`] legacy fallback.
     pub shared: Arc<Mutex<GameState>>,
     /// Per-session game slots, `None` in shared mode.
     sessions: Option<SessionMap>,
@@ -86,12 +136,23 @@ impl AppState {
             _ => Arc::clone(&self.shared),
         }
     }
+
+    /// The anonymous-request policy in session mode. `Shared` when session
+    /// mode is off (the policy never applies there).
+    fn anon_policy(&self) -> AnonPolicy {
+        match &self.sessions {
+            Some(map) => map.anon,
+            None => AnonPolicy::Shared,
+        }
+    }
 }
 
 /// Per-session game slots, active only in session mode.
 struct SessionMap {
     games: Mutex<HashMap<String, SessionEntry>>,
     max: usize,
+    /// Anonymous-request policy (`TAIKYOKU_ANON`).
+    anon: AnonPolicy,
 }
 
 struct SessionEntry {
@@ -147,6 +208,7 @@ pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
         AppStateConfig {
             sessions: sessions_enabled(),
             max_sessions: max_sessions(),
+            anon: anon_policy_env(),
             cors_origins: cors_origins_env(),
         },
     )
@@ -158,6 +220,7 @@ pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> 
     let sessions = cfg.sessions.then(|| SessionMap {
         games: Mutex::new(HashMap::new()),
         max: cfg.max_sessions.unwrap_or(DEFAULT_MAX_SESSIONS).max(1),
+        anon: cfg.anon,
     });
     Arc::new(AppState {
         shared: Arc::new(Mutex::new(GameState::new_with_network(net.clone()))),
@@ -186,6 +249,16 @@ fn max_sessions() -> Option<usize> {
         .filter(|&n| n > 0)
 }
 
+/// Anonymous-request policy for session mode from `TAIKYOKU_ANON`
+/// (`auto` | `error` | `shared`). Unset or unrecognized values fall back to
+/// the safe default [`AnonPolicy::Auto`].
+pub fn anon_policy_env() -> AnonPolicy {
+    std::env::var("TAIKYOKU_ANON")
+        .ok()
+        .and_then(|v| AnonPolicy::parse(&v))
+        .unwrap_or_default()
+}
+
 fn cors_origins_env() -> Vec<String> {
     std::env::var("TAIKYOKU_CORS_ORIGIN")
         .map(|v| {
@@ -207,8 +280,11 @@ fn cors_origins_env() -> Vec<String> {
 ///
 /// Handlers take this as an extractor. The session id is looked up in the
 /// `X-Session-Id` header first, then the `taikyoku_session` cookie, then the
-/// `?session=` query parameter; requests without a (valid) id operate on the
-/// shared board. Ids are limited to `[A-Za-z0-9_-]{1,64}`.
+/// `?session=` query parameter. In session mode, requests without a valid id
+/// are subject to the [`AnonPolicy`] (`TAIKYOKU_ANON`): by default the
+/// sessions middleware mints a fresh session and injects it as a request
+/// header, so this extractor keeps resolving it infallibly. Ids are limited
+/// to `[A-Za-z0-9_-]{1,64}`.
 #[derive(Clone)]
 pub struct SessionGame(pub Arc<Mutex<GameState>>);
 
@@ -222,7 +298,7 @@ impl FromRequestParts<Arc<AppState>> for SessionGame {
         parts: &mut Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let id = session_id_from_parts(parts);
+        let id = session_id_from(&parts.headers, &parts.uri);
         Ok(SessionGame(state.game_for(id.as_deref())))
     }
 }
@@ -230,9 +306,10 @@ impl FromRequestParts<Arc<AppState>> for SessionGame {
 /// Maximum accepted session id length (defensive cap on map keys).
 const MAX_SESSION_ID_LEN: usize = 64;
 
-/// Accept only sane session ids; anything else falls back to the shared
-/// board (this also rejects URL-encoded query values instead of decoding
-/// them — ids are caller-chosen, never generated by the server).
+/// Accept only sane session ids; anything else counts as "no id", so the
+/// anonymous-request policy applies (this also rejects URL-encoded query
+/// values instead of decoding them — ids are caller-chosen, never generated
+/// by the server).
 fn sanitize_session_id(raw: &str) -> Option<String> {
     let id = raw.trim();
     let ok = !id.is_empty()
@@ -245,21 +322,13 @@ fn sanitize_session_id(raw: &str) -> Option<String> {
 
 /// Extract the caller's session id, if any: `X-Session-Id` header first,
 /// then the `taikyoku_session` cookie, then the `?session=` query parameter.
-fn session_id_from_parts(parts: &Parts) -> Option<String> {
-    if let Some(v) = parts
-        .headers
-        .get("x-session-id")
-        .and_then(|v| v.to_str().ok())
-    {
+fn session_id_from(headers: &HeaderMap, uri: &Uri) -> Option<String> {
+    if let Some(v) = headers.get("x-session-id").and_then(|v| v.to_str().ok()) {
         if let Some(id) = sanitize_session_id(v) {
             return Some(id);
         }
     }
-    if let Some(cookies) = parts
-        .headers
-        .get(header::COOKIE)
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(cookies) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) {
         for pair in cookies.split(';') {
             if let Some(val) = pair.trim().strip_prefix("taikyoku_session=") {
                 if let Some(id) = sanitize_session_id(val) {
@@ -268,7 +337,7 @@ fn session_id_from_parts(parts: &Parts) -> Option<String> {
             }
         }
     }
-    if let Some(query) = parts.uri.query() {
+    if let Some(query) = uri.query() {
         for pair in query.split('&') {
             if let Some(val) = pair.strip_prefix("session=") {
                 if let Some(id) = sanitize_session_id(val) {
@@ -278,6 +347,19 @@ fn session_id_from_parts(parts: &Parts) -> Option<String> {
         }
     }
     None
+}
+
+/// Mint a fresh session id: `anon-` + 128 bits of randomness as hex. The
+/// prefix marks it as server-issued and keeps it inside the accepted
+/// charset (`[A-Za-z0-9_-]{1,64}`).
+fn mint_session_id() -> String {
+    let bytes: [u8; 16] = rand::random();
+    let mut id = String::with_capacity(5 + 2 * bytes.len());
+    id.push_str("anon-");
+    for b in bytes {
+        id.push_str(&format!("{b:02x}"));
+    }
+    id
 }
 
 /// Authoritative game state behind the API mutex.
@@ -543,6 +625,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // nested Vite assets resolve and `..` cannot escape the directory.
         .nest_service("/assets", ServeDir::new(dist_dir().join("assets")))
         .fallback(get(serve_frontend))
+        // Anonymous-request policy for `/api/*` while session mode is on.
+        // CORS stays the outermost layer (added last): preflights carry no
+        // session id, so they must be answered by CORS before the policy
+        // applies, and every policy response still gets its CORS headers.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            sessions_middleware,
+        ))
         .layer(cors)
         .with_state(state)
 }
@@ -562,6 +652,64 @@ fn cors_layer(origins: &[String]) -> CorsLayer {
         .allow_origin(allow_origin)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any)
+}
+
+/// Session-mode middleware: applies the [`AnonPolicy`] to `/api/*` requests
+/// that carry no valid session id (see [`SessionGame`] for where ids come
+/// from). Static assets are passed through untouched, so loading the
+/// frontend never mints cookies.
+async fn sessions_middleware(
+    State(app): State<Arc<AppState>>,
+    req: Request,
+    next: Next,
+) -> Response {
+    // The policy only exists in session mode, and only the API uses games.
+    if app.sessions.is_none() || !req.uri().path().starts_with("/api/") {
+        return next.run(req).await;
+    }
+
+    let (mut parts, body) = req.into_parts();
+    if session_id_from(&parts.headers, &parts.uri).is_some() {
+        return next.run(Request::from_parts(parts, body)).await;
+    }
+
+    match app.anon_policy() {
+        // v1.0 behaviour, explicit opt-in: id-less requests operate on the
+        // shared board.
+        AnonPolicy::Shared => next.run(Request::from_parts(parts, body)).await,
+        // Public deployments: refuse to touch shared state.
+        AnonPolicy::Error => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "error": "missing or invalid session id: send the X-Session-Id \
+                          header, the taikyoku_session cookie or a ?session= \
+                          query parameter"
+            })),
+        )
+            .into_response(),
+        // Default: give the caller a brand-new isolated game. The minted id
+        // is injected as a request header (so [`SessionGame`] resolves it)
+        // and returned as a cookie + response header for future calls.
+        AnonPolicy::Auto => {
+            let fresh = mint_session_id();
+            parts.headers.insert(
+                "x-session-id",
+                HeaderValue::from_str(&fresh).expect("minted id is ASCII"),
+            );
+            let mut res = next.run(Request::from_parts(parts, body)).await;
+            let cookie = format!("taikyoku_session={fresh}; Path=/; SameSite=Lax");
+            res.headers_mut().append(
+                header::SET_COOKIE,
+                HeaderValue::from_str(&cookie).expect("cookie with minted ASCII id"),
+            );
+            res.headers_mut().insert(
+                "x-session-id",
+                HeaderValue::from_str(&fresh).expect("minted id is ASCII"),
+            );
+            res
+        }
+    }
 }
 
 /// Directory holding the built frontend (`TAIKYOKU_DIST` overrides).
@@ -596,8 +744,9 @@ async fn serve_frontend() -> impl IntoResponse {
 /// zstd-compressed `.tkn.zst` file to evaluate with NNUE, or to `none` for the
 /// hand-crafted evaluator. Set `TAIKYOKU_SESSIONS=1` to give every visitor
 /// an isolated game instead of one shared board (see [`AppState`]), with
-/// `TAIKYOKU_MAX_SESSIONS` capping the live games and `TAIKYOKU_CORS_ORIGIN`
-/// restricting the CORS policy to exact origins.
+/// `TAIKYOKU_MAX_SESSIONS` capping the live games, `TAIKYOKU_CORS_ORIGIN`
+/// restricting the CORS policy to exact origins and `TAIKYOKU_ANON` choosing
+/// what id-less `/api/*` requests get (default `auto`: a fresh session).
 pub async fn run() {
     let net = match std::env::var("TAIKYOKU_NET")
         .ok()
@@ -625,9 +774,19 @@ pub async fn run_with_network(net: Option<Arc<Network>>) {
         .unwrap_or_else(|e| panic!("cannot bind {bind_addr}: {e}"));
     println!("Taikyoku Shogi Server listening on http://{bind_addr}");
     if sessions_enabled() {
+        let anon = anon_policy_env();
         println!(
             "Session mode: every visitor gets an isolated game (TAIKYOKU_SESSIONS=1, cap {})",
             max_sessions().unwrap_or(DEFAULT_MAX_SESSIONS)
+        );
+        println!(
+            "Anonymous /api requests: {} — {}",
+            anon.as_str(),
+            match anon {
+                AnonPolicy::Auto => "a fresh session is minted (cookie + X-Session-Id)",
+                AnonPolicy::Error => "rejected with HTTP 400",
+                AnonPolicy::Shared => "served on the shared board (legacy)",
+            }
         );
     }
     axum::serve(listener, build_router(new_state_with_network(net)))

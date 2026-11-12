@@ -14,7 +14,7 @@ use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use taikyokushogi::server::{
-    build_router, new_state, new_state_with_config, AppState, AppStateConfig,
+    build_router, new_state, new_state_with_config, AnonPolicy, AppState, AppStateConfig,
 };
 use tower::ServiceExt;
 
@@ -89,10 +89,17 @@ async fn post_as(app: &Router, session: &str, uri: &str, body: Value) -> (Status
 
 /// Router with session mode enabled and the given live-session cap
 /// (`TAIKYOKU_SESSIONS=1` equivalent, without touching the process env).
+/// Uses the default anonymous policy (`auto`: mint fresh sessions).
 fn sessions_game(max: usize) -> (Arc<AppState>, Router) {
+    sessions_game_policy(max, AnonPolicy::Auto)
+}
+
+/// [`sessions_game`] with an explicit anonymous-request policy.
+fn sessions_game_policy(max: usize, anon: AnonPolicy) -> (Arc<AppState>, Router) {
     let cfg = AppStateConfig {
         sessions: true,
         max_sessions: Some(max),
+        anon,
         cors_origins: Vec::new(),
     };
     let state = new_state_with_config(None, cfg);
@@ -800,10 +807,11 @@ async fn sessions_isolate_clients() {
 }
 
 #[tokio::test]
-async fn sessions_fall_back_to_shared_board_without_id() {
-    let (state, app) = sessions_game(8);
+async fn shared_policy_serves_id_less_requests_on_shared_board() {
+    let (state, app) = sessions_game_policy(8, AnonPolicy::Shared);
 
-    // A request without a session id mutates the shared board...
+    // Explicit legacy opt-in (`TAIKYOKU_ANON=shared`): a request without a
+    // session id mutates the shared board...
     let mv = first_legal_move(&app).await;
     let (_, r) = post(&app, "/api/move", mv).await;
     assert_eq!(r["ok"], true);
@@ -815,19 +823,207 @@ async fn sessions_fall_back_to_shared_board_without_id() {
 }
 
 #[tokio::test]
-async fn invalid_session_ids_fall_back_to_shared_board() {
-    let (state, app) = sessions_game(8);
+async fn shared_policy_serves_invalid_ids_on_shared_board() {
+    let (state, app) = sessions_game_policy(8, AnonPolicy::Shared);
 
     // Mutate the shared board so the fallback is observable.
     let mv = first_legal_move(&app).await;
     let (_, r) = post(&app, "/api/move", mv).await;
     assert_eq!(r["ok"], true);
 
-    // Ids with characters outside [A-Za-z0-9_-] are rejected and hit the
-    // shared board instead.
+    // Ids with characters outside [A-Za-z0-9_-] count as "no id" and hit
+    // the shared board (legacy behaviour).
     let (_, bad) = get_as(&app, "evil id", "/api/state").await;
     assert_eq!(bad["version"], r["board"]["version"]);
     assert_eq!(state.shared.lock().unwrap().version, bad["version"]);
+}
+
+// ============================================================
+// Anonymous-request policy (TAIKYOKU_ANON: auto | error | shared)
+// ============================================================
+
+/// A fresh session id from the `X-Session-Id` response header of an id-less
+/// request, plus its `taikyoku_session` Set-Cookie value.
+async fn minted_id(app: &Router, uri: &str) -> (String, String) {
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let id = response
+        .headers()
+        .get("x-session-id")
+        .expect("minted X-Session-Id header")
+        .to_str()
+        .unwrap()
+        .to_string();
+    let cookie = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .expect("minted Set-Cookie header")
+        .to_str()
+        .unwrap()
+        .to_string();
+    (id, cookie)
+}
+
+#[tokio::test]
+async fn anon_auto_mints_a_fresh_session() {
+    let (state, app) = sessions_game(8);
+
+    // Default policy: an id-less request is served with its own game...
+    let (_, anon) = get(&app, "/api/state").await;
+    assert_eq!(anon["version"], 0);
+    assert_eq!(anon["move_log"], json!([]));
+
+    // ...and the shared board stays untouched.
+    assert_eq!(state.shared.lock().unwrap().version, 0);
+
+    // The minted id comes back as a cookie and an X-Session-Id header.
+    let (id, cookie) = minted_id(&app, "/api/state").await;
+    assert!(id.starts_with("anon-"));
+    assert!(
+        id[5..].bytes().all(|b| b.is_ascii_hexdigit()),
+        "id is anon- + hex: {id}"
+    );
+    assert_eq!(id.len(), 5 + 32);
+    assert_eq!(
+        cookie,
+        format!("taikyoku_session={id}; Path=/; SameSite=Lax")
+    );
+}
+
+#[tokio::test]
+async fn anon_auto_session_continuity() {
+    let (_, app) = sessions_game(8);
+
+    // First id-less request: grab the minted id.
+    let (minted, _) = minted_id(&app, "/api/state").await;
+
+    // The caller keeps using that id: make a move in the minted game...
+    let mv = first_legal_move_as(&app, &minted).await;
+    let (_, moved) = post_as(&app, &minted, "/api/move", mv).await;
+    assert_eq!(moved["ok"], true);
+
+    // ...and see it again on the next request with the same id.
+    let (_, again) = get_as(&app, &minted, "/api/state").await;
+    assert_eq!(again["version"], moved["board"]["version"]);
+    assert_eq!(again["move_log"], moved["board"]["move_log"]);
+
+    // A second id-less request mints a DIFFERENT id: another fresh game,
+    // not the caller's session and not the shared board.
+    let (minted2, _) = minted_id(&app, "/api/state").await;
+    assert_ne!(minted2, minted);
+    let (_, fresh) = get_as(&app, &minted2, "/api/state").await;
+    assert_eq!(fresh["version"], 0);
+    assert_eq!(fresh["move_log"], json!([]));
+}
+
+#[tokio::test]
+async fn anon_auto_replaces_invalid_ids_with_a_fresh_session() {
+    let (state, app) = sessions_game(8);
+
+    // An id with characters outside the accepted charset counts as no id:
+    // the caller gets a fresh mint instead of the shared board.
+    let (status, body) = get_as(&app, "evil id", "/api/state").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["version"], 0);
+    assert_eq!(state.shared.lock().unwrap().version, 0);
+
+    let (id, _) = minted_id(&app, "/api/state").await;
+    assert!(id.starts_with("anon-"));
+}
+
+#[tokio::test]
+async fn anon_error_policy_rejects_id_less_requests() {
+    let (state, app) = sessions_game_policy(8, AnonPolicy::Error);
+
+    // Id-less request: 400 with the standard error body.
+    let (status, body) = get(&app, "/api/state").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["ok"], false);
+    assert!(
+        body["error"].as_str().unwrap().contains("session"),
+        "error mentions the session id: {body}"
+    );
+
+    // The shared board is untouched...
+    assert_eq!(state.shared.lock().unwrap().version, 0);
+
+    // ...and so are invalid ids.
+    let (status, body) = get_as(&app, "evil id", "/api/state").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["ok"], false);
+
+    // Requests WITH a valid id keep working.
+    let mv = first_legal_move_as(&app, "alice").await;
+    let (_, a) = post_as(&app, "alice", "/api/move", mv).await;
+    assert_eq!(a["ok"], true);
+}
+
+#[tokio::test]
+async fn anon_preflight_survives_error_policy() {
+    let (_, app) = sessions_game_policy(8, AnonPolicy::Error);
+
+    // CORS preflights carry no session id; the CORS layer must answer them
+    // before the anonymous policy applies (guarantee that CORS stays the
+    // outermost layer).
+    let request = Request::builder()
+        .method(Method::OPTIONS)
+        .uri("/api/move")
+        .header(header::ORIGIN, "https://example.org")
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert!(
+        response.status().is_success(),
+        "preflight must not be rejected by the anon policy"
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .map(|v| v.to_str().unwrap()),
+        Some("https://example.org")
+    );
+}
+
+#[tokio::test]
+async fn anon_auto_does_not_mint_on_static_assets() {
+    let (_, app) = sessions_game(8);
+
+    // Non-API paths never mint cookies or session ids.
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/")
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+    assert!(response.headers().get("x-session-id").is_none());
+}
+
+#[tokio::test]
+async fn anon_policy_is_ignored_without_session_mode() {
+    // Even the strictest policy does nothing while session mode is off:
+    // id-less requests keep operating on the shared board.
+    let cfg = AppStateConfig {
+        sessions: false,
+        max_sessions: None,
+        anon: AnonPolicy::Error,
+        cors_origins: Vec::new(),
+    };
+    let state = new_state_with_config(None, cfg);
+    let app = build_router(state.clone());
+
+    let mv = first_legal_move(&app).await;
+    let (_, r) = post(&app, "/api/move", mv).await;
+    assert_eq!(r["ok"], true);
+    assert_eq!(state.shared.lock().unwrap().version, r["board"]["version"]);
 }
 
 #[tokio::test]
