@@ -1,6 +1,6 @@
 [package]
 name = "taikyokushogi"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Taikyoku Shogi engine — the largest known shogi variant (36x36 board, 804 pieces, 301 piece types: 209 initial + 92 promoted)"
