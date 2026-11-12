@@ -82,6 +82,7 @@ jobs:
         run: cargo build --release --bins --features server --target ${{ matrix.target }}
 
       - name: Stage files
+        id: stage-files
         shell: bash
         run: |
           # Tag name (v0.1.0) on tag pushes; Cargo.toml version on manual runs.
@@ -106,22 +107,23 @@ jobs:
           fi
           cp README.md LICENSE "$STAGE/"
           echo "STAGE=$STAGE" >> "$GITHUB_ENV"
+          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
 
       - name: Package (tar.gz)
         if: matrix.archive == 'tar.gz'
         shell: bash
-        run: tar -czf "${{ env.STAGE }}.tar.gz" "${{ env.STAGE }}"
+        run: tar -czf "$STAGE.tar.gz" "$STAGE"
 
       - name: Package (zip)
         if: matrix.archive == 'zip'
         shell: pwsh
-        run: Compress-Archive -Path "${{ env.STAGE }}" -DestinationPath "${{ env.STAGE }}.zip"
+        run: Compress-Archive -Path "$env:STAGE" -DestinationPath "$env:STAGE.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ env.STAGE }}.*
+          path: ${{ steps.stage-files.outputs.stage }}.*
 
   release:
     name: GitHub release
