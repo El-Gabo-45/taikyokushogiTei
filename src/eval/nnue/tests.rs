@@ -7,6 +7,45 @@ fn net() -> Arc<Network> {
 }
 
 #[test]
+fn explain_reports_the_forward_pass_and_refresh_parity() {
+    let n = net();
+    let mut b = PubBoard::initial();
+    b.set_network(Some(n));
+    let x = explain(&b).expect("net is attached");
+    assert_eq!(x.pieces, [402, 402]);
+    assert_eq!(x.features, 804);
+    assert_eq!(x.side_to_move, 0);
+    assert!(x.bucket < OUT_BUCKETS);
+    // The raw forward pass must be what the board evaluates to.
+    assert_eq!(x.eval, b.evaluate());
+    assert_eq!(x.refresh_eval, x.eval, "incremental == full refresh");
+    // Accumulator statistics are sane for both perspectives.
+    for s in &x.acc {
+        assert!(s.min <= s.max);
+        assert!((s.mean >= s.min as f64) && (s.mean <= s.max as f64));
+        assert!(s.clipped_lo + s.clipped_hi <= L1);
+    }
+    // A move keeps the report consistent. (The first legal move of the
+    // initial position may be an igui / range capture that removes several
+    // pieces, so only assert that the move changed the board.)
+    let mv = b.legal_moves().into_iter().next().unwrap();
+    b.apply(&mv);
+    let x2 = explain(&b).expect("net is attached");
+    assert!(
+        x2.pieces[0] + x2.pieces[1] < 804,
+        "the applied move must have moved something"
+    );
+    assert_eq!(x2.eval, b.evaluate());
+    assert_eq!(x2.refresh_eval, x2.eval);
+}
+
+#[test]
+fn explain_returns_none_without_a_network() {
+    let b = PubBoard::initial();
+    assert!(explain(&b).is_none());
+}
+
+#[test]
 fn embedded_arch_is_valid() {
     let a = ArchSpec::embedded();
     assert_eq!(a.planes(), 2 * a.num_classes);

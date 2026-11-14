@@ -93,7 +93,7 @@ pub(crate) mod test_lock {
     }
 }
 mod bitboard;
-mod debugging;
+pub mod debugging;
 pub mod elo;
 pub mod selfplay;
 #[cfg(feature = "server")]
@@ -790,6 +790,35 @@ impl Board {
         time_limit_ms: u64,
     ) -> SearchResult {
         self.search_with_threads(searcher, depth, time_limit_ms, 1)
+    }
+
+    /// [`Board::search_with_threads`] with an optional per-iteration callback:
+    /// `on_iter` receives one [`search::IterInfo`] after every completed
+    /// deepening iteration (debug tooling and protocol front-ends use this to
+    /// trace the search while it runs). Pass `None` for no callback.
+    pub fn search_with_info(
+        &mut self,
+        searcher: &mut search::Searcher,
+        depth: u32,
+        time_limit_ms: u64,
+        threads: usize,
+        on_iter: Option<&mut dyn FnMut(&search::IterInfo)>,
+    ) -> SearchResult {
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let r = searcher.search_threads_with_stop(
+            &mut self.inner,
+            depth,
+            time_limit_ms,
+            threads,
+            &stop,
+            on_iter,
+        );
+        SearchResult {
+            best_move: r.best_move.map(|m| Move { inner: m }),
+            score: r.score,
+            nodes: r.nodes,
+            time_ms: r.time_ms,
+        }
     }
 
     /// [`Board::search_with`] with Lazy SMP: `threads` workers (1 = plain

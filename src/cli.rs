@@ -28,6 +28,12 @@
 //!   eval                       static evaluation (side-to-move perspective)
 //!   perft <N>                  node count from the current position
 //!   bench                      micro-benchmark: movegen / eval / apply+undo
+//!   bench search [D]           deterministic Stockfish-style bench (nodes +
+//!                        a `bench hash` regression line over fixed positions)
+//!   debug eval                 hand-crafted evaluation breakdown + backend
+//!   debug nnue                 NNUE forward-pass breakdown (bucket, accumulator,
+//!                        PSQT, dense, incremental==refresh parity)
+//!   debug search [D]           per-iteration deepening trace (score/nodes/time)
 //!   setoption depth <N>        engine search depth (default 3)
 //!   setoption movetime <MS>    engine time budget per move (0 = no limit)
 //!   setoption threads <N>      Lazy SMP workers (1..=64, default 1)
@@ -41,8 +47,10 @@
 //!   selfplay [G D PLIES MS] [threadsA N] [threadsB N]
 //!                        engine-vs-engine games (per-side Lazy SMP workers)
 //!   match <G> <dA> <dB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]
+//!                        [open K] [seed S]
 //!                        match between two configs + Elo estimate
 //!   sprt <elo0> <elo1> [G] [dA] [dB] [MS] [threadsA N] [threadsB N]
+//!                        [open K] [seed S]
 //!                        SPRT test between two configs
 //!   about                      engine version / build info
 //!   quit
@@ -62,6 +70,8 @@ use std::io::{BufRead, Write};
 use taikyokushogi::elo::{self, EngineConfig, MatchConfig, Sprt};
 use taikyokushogi::search::params::SearchConfig;
 use taikyokushogi::{Board, Color, Move};
+
+mod bench_data;
 
 // ── Engine configuration ────────────────────────────────────────
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -438,8 +448,9 @@ fn load_game(path: &str, board: &mut Board, hist: &mut Vec<String>) -> Result<()
 
 /// Keywords shared by the `selfplay`, `match` and `sprt` commands (from the
 /// point where their positional arguments end):
-/// `movetime <MS>`, `maxplies <N>`, `threadsA <N>`, `threadsB <N>` — all
-/// case-insensitive, unknown keywords warn and are ignored.
+/// `movetime <MS>`, `maxplies <N>`, `threadsA <N>`, `threadsB <N>`,
+/// `open <K>` (random opening plies), `seed <S>` (opening randomizer seed) —
+/// all case-insensitive, unknown keywords warn and are ignored.
 ///
 /// `movetime` / `max_plies` stay `None` when absent so every command keeps
 /// its own fallback. `threads*` default to 1 (plain single-threaded search).
@@ -448,6 +459,8 @@ struct MatchKeywords {
     max_plies: Option<u32>,
     threads_a: usize,
     threads_b: usize,
+    opening: Option<u32>,
+    seed: Option<u64>,
 }
 
 fn parse_match_keywords(tokens: &[&str]) -> MatchKeywords {
@@ -456,12 +469,16 @@ fn parse_match_keywords(tokens: &[&str]) -> MatchKeywords {
         max_plies: None,
         threads_a: 1,
         threads_b: 1,
+        opening: None,
+        seed: None,
     };
     let mut it = tokens.iter();
     while let Some(k) = it.next() {
         match k.to_ascii_lowercase().as_str() {
             "movetime" => kw.movetime = it.next().and_then(|v| v.parse().ok()),
             "maxplies" => kw.max_plies = it.next().and_then(|v| v.parse().ok()),
+            "open" => kw.opening = it.next().and_then(|v| v.parse().ok()),
+            "seed" => kw.seed = it.next().and_then(|v| v.parse().ok()),
             "threadsa" => match it.next().and_then(|v| v.parse::<usize>().ok()) {
                 Some(n) if n >= 1 => kw.threads_a = n,
                 Some(_) => println!("error: threads must be >= 1 (keeping {})", kw.threads_a),
@@ -476,6 +493,264 @@ fn parse_match_keywords(tokens: &[&str]) -> MatchKeywords {
         }
     }
     kw
+}
+
+// ── Debug & research commands ──────────────────────────────────
+/// `debug eval` — evaluation breakdown: the active backend plus a full
+/// hand-crafted decomposition (material / family / zones / king safety /
+/// per-piece), cross-checked against the engine's own score.
+fn debug_eval(board: &Board) {
+    let stm_black = board.side_to_move() == Color::Black;
+    println!(
+        "=== evaluation breakdown (side to move: {}) ===",
+        if stm_black { "black" } else { "white" }
+    );
+    let over = board.game_result().is_some();
+    // Hand-crafted score of THIS position (a fresh board has no network).
+    let classic = Board::from_tsfen(&board.to_tsfen()).expect("round-trip tsfen");
+    let hand = classic.evaluate();
+    match board.network() {
+        Some(net) => {
+            let mut with_net = Board::from_tsfen(&board.to_tsfen()).expect("round-trip tsfen");
+            with_net.set_network(Some(net.clone()));
+            println!(
+                "nnue eval:         {}   (attached network; `debug nnue` for the breakdown)",
+                with_net.evaluate()
+            );
+        }
+        None => println!("backend:           hand-crafted (attach with `setoption net <path>`)"),
+    }
+    println!(
+        "hand-crafted eval: {}{}",
+        hand,
+        if over {
+            "  (position is over: mate/draw score)"
+        } else {
+            ""
+        }
+    );
+
+    println!("--- hand-crafted breakdown (black perspective) ---");
+    println!(
+        "{}",
+        taikyokushogi::debugging::eval_debug::heuristic_debug::format_heuristic_debug(board)
+    );
+    if over {
+        println!("cross-check: skipped (terminal position scores mate/draw, not the heuristic)");
+        return;
+    }
+    let report = taikyokushogi::debugging::eval_debug::heuristic_debug::debug_heuristic(board);
+    let expected = if stm_black {
+        report.total
+    } else {
+        -report.total
+    };
+    if hand == expected {
+        println!(
+            "cross-check: hand-crafted eval == material/family/zones/king-safety decomposition ({}) ✓",
+            hand
+        );
+    } else {
+        println!(
+            "cross-check: MISMATCH hand-crafted {} != decomposition {} — investigate psqt/zone updates",
+            hand, expected
+        );
+    }
+}
+
+/// `debug nnue` — Stockfish-style forward-pass report for the current
+/// position: bucket, accumulator statistics, PSQT and dense terms, and the
+/// incremental-vs-refresh parity check.
+fn debug_nnue(board: &Board) {
+    let Some(net) = board.network().cloned() else {
+        println!("error: no NNUE network attached to this position");
+        println!(
+            "       load one first: `setoption net <path>` (then `position`/`new` re-attach it)"
+        );
+        return;
+    };
+    let Some(x) = taikyokushogi::nnue::explain(board) else {
+        println!("error: no NNUE state on the board");
+        return;
+    };
+    println!(
+        "=== NNUE forward pass (arch {}, {} classes) ===",
+        hex16(net.arch_hash()),
+        net.num_classes()
+    );
+    println!(
+        "side to move: {}",
+        if x.side_to_move == 0 {
+            "black"
+        } else {
+            "white"
+        }
+    );
+    println!(
+        "pieces:       black {} + white {} = {}   bucket {}/{}",
+        x.pieces[0],
+        x.pieces[1],
+        x.features,
+        x.bucket,
+        taikyokushogi::nnue::OUT_BUCKETS
+    );
+    for (p, s) in x.acc.iter().enumerate() {
+        let tag = if p == x.side_to_move as usize {
+            "stm "
+        } else {
+            "nstm"
+        };
+        println!(
+            "acc[{}] min {:+7}  max {:+7}  mean {:+9.1}  clipped {}@0 {}@127",
+            tag, s.min, s.max, s.mean, s.clipped_lo, s.clipped_hi
+        );
+    }
+    println!(
+        "psqt:         stm {:+}  nstm {:+}  term (diff/2) {:+}",
+        x.psqt[x.side_to_move as usize],
+        x.psqt[(x.side_to_move as usize) ^ 1],
+        x.psqt_term
+    );
+    println!("dense out:    {:+}", x.dense_out);
+    println!(
+        "raw:          ({psqt:+} + {dense:+}) / {} = {raw:+}",
+        taikyokushogi::nnue::FV_SCALE,
+        psqt = x.psqt_term,
+        dense = x.dense_out,
+        raw = x.raw_total
+    );
+    println!("eval:         {}", x.eval);
+    if x.refresh_eval == x.eval {
+        println!("parity:       incremental == full refresh ({}) ✓", x.eval);
+    } else {
+        println!(
+            "parity:       MISMATCH incremental {} != refresh {} — apply/undo bookkeeping bug",
+            x.eval, x.refresh_eval
+        );
+    }
+    let classic = Board::from_tsfen(&board.to_tsfen()).expect("round-trip tsfen");
+    println!(
+        "classic:      {} (hand-crafted, for reference{})",
+        classic.evaluate(),
+        if board.game_result().is_some() {
+            "; position is over — mate/draw scores apply"
+        } else {
+            ""
+        }
+    );
+}
+
+/// `debug search [depth]` — single-threaded deepening trace: one line per
+/// completed iteration, then the final result.
+fn debug_search(board: &mut Board, depth: u32, opt: &Options) {
+    println!(
+        "=== deepening trace (depth ≤ {}, movetime {}ms, techniques: production set) ===",
+        depth, opt.movetime
+    );
+    let mut searcher = opt.searcher();
+    let result = board.search_with_info(
+        &mut searcher,
+        depth,
+        opt.movetime,
+        1,
+        Some(&mut |it| {
+            println!(
+                "depth {:>2}  score {:+7}  nodes {:>10}  time {:>6}ms  best {}",
+                it.depth,
+                it.score,
+                it.nodes,
+                it.time_ms,
+                it.best_move
+                    .as_ref()
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| "-".into())
+            );
+        }),
+    );
+    println!(
+        "best: {}  score {:+}  nodes {}  {}ms",
+        result
+            .best_move
+            .as_ref()
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "-".into()),
+        result.score,
+        result.nodes,
+        result.time_ms
+    );
+}
+
+/// Fixed regression positions for `bench search` (see `bench_data`).
+/// Never edit the list in place — the whole point is that the printed
+/// `bench hash` only changes when the engine's behaviour changes.
+use bench_data::BENCH_POSITIONS;
+
+/// FNV-1a, character by character (deterministic across platforms).
+fn fnv1a(h: &mut u64, data: &str) {
+    for b in data.as_bytes() {
+        *h ^= u64::from(*b);
+        *h = h.wrapping_mul(0x0000_0100_0000_01B3);
+    }
+    *h ^= 0x1D;
+}
+
+fn hex16(hash: &[u8; 32]) -> String {
+    hash[..8].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `bench search [depth]` — Stockfish-style deterministic bench: fixed
+/// positions, fixed depth, single-threaded, untimed. Node counts and the
+/// final `bench hash` are bit-reproducible, so diffing that one line
+/// across commits catches accidental functional changes.
+fn bench_search(max_depth: u32) {
+    let mut searcher = taikyokushogi::search::Searcher::with_config(SearchConfig::production());
+    let mut hash = 0x9E37_79B9_7F4A_7C15u64;
+    let mut total_nodes = 0u64;
+    let t0 = std::time::Instant::now();
+    for (i, tsfen) in BENCH_POSITIONS.iter().enumerate() {
+        let mut board = match Board::from_tsfen(tsfen) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("error: bench position {} is invalid: {e}", i + 1);
+                return;
+            }
+        };
+        for depth in 1..=max_depth {
+            let r = board.search_with(&mut searcher, depth, 0);
+            total_nodes += r.nodes;
+            let bm = r
+                .best_move
+                .as_ref()
+                .map(|m| m.to_string())
+                .unwrap_or_default();
+            println!(
+                "pos {} d{}  nodes {:>10}  score {:+7}  best {}",
+                i + 1,
+                depth,
+                r.nodes,
+                r.score,
+                bm
+            );
+            let d = depth.to_string();
+            let sc = r.score.to_string();
+            let nd = r.nodes.to_string();
+            for part in [*tsfen, d.as_str(), sc.as_str(), bm.as_str(), nd.as_str()] {
+                fnv1a(&mut hash, part);
+            }
+        }
+    }
+    println!("───────────────────────────────");
+    println!(
+        "{} positions x depths 1..={}   nodes {}   {:.1}s",
+        BENCH_POSITIONS.len(),
+        max_depth,
+        total_nodes,
+        t0.elapsed().as_secs_f64()
+    );
+    println!(
+        "bench hash {:016x}   (diff this line across commits: changes == functional change)",
+        hash
+    );
 }
 
 fn status(board: &Board, opt: &Options) {
@@ -677,15 +952,17 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     threads: kw.threads_b,
                 },
                 max_plies,
+                opening_plies: kw.opening.unwrap_or(0),
+                opening_seed: kw.seed.unwrap_or(0x9E37_79B9_7F4A_7C15),
                 on_game: Some(print_game_result),
             };
             let r = elo::run_match(&cfg);
             r.print();
         }
         "match" => {
-            // match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]
+            // match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N] [open K] [seed S]
             if rest.len() < 3 {
-                println!("error: usage `match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]`");
+                println!("error: usage `match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N] [open K] [seed S]`");
                 return true;
             }
             let games: usize = rest[0].parse().unwrap_or(10);
@@ -694,8 +971,10 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             let kw = parse_match_keywords(&rest[3..]);
             let movetime = kw.movetime.unwrap_or(0);
             let max_plies = kw.max_plies.unwrap_or(400);
-            println!("match: {} games — A depth {} ({} threads) vs B depth {} ({} threads) (movetime {}ms, max plies {})",
-                     games, da, kw.threads_a, db, kw.threads_b, movetime, max_plies);
+            println!("match: {} games — A depth {} ({} threads) vs B depth {} ({} threads) (movetime {}ms, max plies {}{}, seed {})",
+                     games, da, kw.threads_a, db, kw.threads_b, movetime, max_plies,
+                     if kw.opening.is_some() { format!(", {} random opening plies", kw.opening.unwrap()) } else { String::new() },
+                     kw.seed.unwrap_or(0x9E37_79B9_7F4A_7C15));
             let cfg = MatchConfig {
                 games,
                 a: EngineConfig {
@@ -711,13 +990,15 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     threads: kw.threads_b,
                 },
                 max_plies,
+                opening_plies: kw.opening.unwrap_or(0),
+                opening_seed: kw.seed.unwrap_or(0x9E37_79B9_7F4A_7C15),
                 on_game: Some(print_game_result),
             };
             let r = elo::run_match(&cfg);
             r.print();
         }
         "sprt" => {
-            // sprt <elo0> <elo1> [games] [depthA] [depthB] [movetime MS] [threadsA N] [threadsB N]
+            // sprt <elo0> <elo1> [games] [depthA] [depthB] [movetime MS] [threadsA N] [threadsB N] [open K] [seed S]
             let elo0: f64 = rest.first().and_then(|s| s.parse().ok()).unwrap_or(0.0);
             let elo1: f64 = rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(10.0);
             let games: usize = rest.get(2).and_then(|s| s.parse().ok()).unwrap_or(50);
@@ -729,8 +1010,8 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 .or_else(|| rest.get(5).and_then(|s| s.parse().ok()))
                 .unwrap_or(0);
             let max_plies = kw.max_plies.unwrap_or(400);
-            println!("SPRT: H0 ≤ {:+.0} vs H1 ≥ {:+.0}, max {} games (A depth {} {} threads, B depth {} {} threads)",
-                     elo0, elo1, games, da, kw.threads_a, db, kw.threads_b);
+            println!("SPRT: H0 ≤ {:+.0} vs H1 ≥ {:+.0}, max {} games (A depth {} {} threads, B depth {} {} threads, {} random opening plies)",
+                     elo0, elo1, games, da, kw.threads_a, db, kw.threads_b, kw.opening.unwrap_or(0));
             let cfg = MatchConfig {
                 games,
                 a: EngineConfig {
@@ -746,6 +1027,8 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     threads: kw.threads_b,
                 },
                 max_plies,
+                opening_plies: kw.opening.unwrap_or(0),
+                opening_seed: kw.seed.unwrap_or(0x9E37_79B9_7F4A_7C15),
                 on_game: Some(print_game_result),
             };
             let sprt = Sprt {
@@ -826,6 +1109,30 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         "eval" => {
             println!("eval = {}", board.evaluate());
         }
+        "debug" => {
+            // debug eval | debug nnue | debug search [depth]
+            match rest
+                .first()
+                .copied()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "eval" => debug_eval(board),
+                "nnue" => debug_nnue(board),
+                "search" => {
+                    let d = rest
+                        .get(1)
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(opt.depth)
+                        .min(8);
+                    debug_search(board, d, opt);
+                }
+                other => println!(
+                    "error: `debug eval` | `debug nnue` | `debug search [depth]` (got `{other}`)"
+                ),
+            }
+        }
         "perft" => {
             let depth: u32 = rest.first().and_then(|s| s.parse().ok()).unwrap_or(2);
             let t = std::time::Instant::now();
@@ -840,6 +1147,10 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             );
         }
         "bench" => {
+            if rest.first().map(|s| *s == "search").unwrap_or(false) {
+                bench_search(rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(4).min(8));
+                return true;
+            }
             const ITERS: usize = 50;
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
@@ -953,13 +1264,19 @@ fn print_help() {
   eval                        evaluación estática
   perft <N>                   conteo de nodos desde la posición actual
   bench                       micro-benchmark (movegen/eval/apply+undo)
+  bench search [D]            bench determinista estilo Stockfish (nodos + hash)
+  debug eval                  desglose de la evaluación clásica (y NNUE si hay red)
+  debug nnue                  desglose del forward pass NNUE (bucket, acc, PSQT, paridad)
+  debug search [D]            traza de iterative deepening (profundidad a profundidad)
   save <archivo.json>         guardar la partida (TSFEN + jugadas, JSON)
   load <archivo.json>         cargar una partida guardada
   selfplay [G D PLIES MS] [threadsA N] [threadsB N]
                               partidas motor contra motor (hilos SMP por lado)
   match <G> <dA> <dB> [movetime MS] [maxplies N] [threadsA N] [threadsB N]
+                              [open K] [seed S]
                               match entre 2 configs + estimación de ELO
   sprt <elo0> <elo1> [G] [dA] [dB] [MS] [threadsA N] [threadsB N]
+                              [open K] [seed S]
                               test SPRT entre 2 configs
   setoption depth <N>         profundidad del motor (por defecto 3)
   setoption movetime <MS>     presupuesto de tiempo por jugada (0 = sin límite)

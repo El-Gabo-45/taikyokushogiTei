@@ -160,14 +160,76 @@ fn apply_best(board: &mut Board, cfg: &EngineConfig) -> Option<Move> {
     r.best_move
 }
 
+/// Tiny LCG for the randomized openings (same sequence on every platform).
+struct OpeningRng(u64);
+
+impl OpeningRng {
+    /// Uniform in `0..n`.
+    fn below(&mut self, n: usize) -> usize {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        if n == 0 {
+            0
+        } else {
+            ((self.0 >> 33) as usize) % n
+        }
+    }
+}
+
+/// Which side config plays the side whose `side_to_move` value is `stm`.
+/// `WHITE == 1` plays the `white` config, `BLACK == 0` the `black` one —
+/// this tiny indirection exists so the colour→config mapping is testable
+/// (see `side_configs_follow_the_colour_constants`).
+fn cfg_for_side<'a>(stm: u8, white: &'a EngineConfig, black: &'a EngineConfig) -> &'a EngineConfig {
+    if stm == crate::types::WHITE {
+        white
+    } else {
+        black
+    }
+}
+
 /// Play a single engine-vs-engine game from the initial position.
 ///
-/// `white` and `black` describe the engine settings for each side. The game
-/// ends when the rules end it, or after `max_plies` plies (`0` = unlimited),
-/// in which case it is scored as a draw.
+/// `white` and `black` describe the engine settings for each side; the
+/// `white` config plays the White pieces (`side_to_move == 1`), `black`
+/// the Black ones. The game ends when the rules end it, or after
+/// `max_plies` plies (`0` = unlimited), in which case it is scored as a
+/// draw.
 pub fn play_game(white: &EngineConfig, black: &EngineConfig, max_plies: u32) -> GameOutcome {
+    play_game_seeded(white, black, max_plies, 0, 0, 0)
+}
+
+/// [`play_game`] with a randomized opening: `opening_plies` uniformly random
+/// legal moves are played before the engines take over. The randomizer is
+/// seeded with `opening_seed` mixed with `game_index`, so a match is
+/// reproducible while its games still diverge (a fixed single-threaded
+/// match without openings would otherwise replay the same game over and
+/// over — with `opening_plies = 0` the behaviour is exactly that).
+pub fn play_game_seeded(
+    white: &EngineConfig,
+    black: &EngineConfig,
+    max_plies: u32,
+    opening_plies: u32,
+    opening_seed: u64,
+    game_index: u64,
+) -> GameOutcome {
     let mut board = Board::new();
     board.setup_initial();
+    if opening_plies > 0 {
+        let mut rng = OpeningRng(opening_seed ^ game_index.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        for _ in 0..opening_plies {
+            if board.game_result().is_some() {
+                break;
+            }
+            let moves = crate::movegen::generate_legal_moves(&board);
+            if moves.is_empty() {
+                break;
+            }
+            board.apply_move(&moves[rng.below(moves.len())]);
+        }
+    }
     let mut plies: u32 = 0;
     loop {
         if let Some(r) = board.game_result() {
@@ -182,11 +244,7 @@ pub fn play_game(white: &EngineConfig, black: &EngineConfig, max_plies: u32) -> 
                 plies,
             };
         }
-        let cfg = if board.side_to_move == 0 {
-            white
-        } else {
-            black
-        };
+        let cfg = cfg_for_side(board.side_to_move, white, black);
         match apply_best(&mut board, cfg) {
             Some(m) => board.apply_move(&m),
             None => {
@@ -240,6 +298,11 @@ pub struct MatchConfig {
     pub b: EngineConfig,
     /// Hard ply cap per game (0 = unlimited).
     pub max_plies: u32,
+    /// Uniformly random opening moves before the engines take over
+    /// (0 = every game starts from the initial position).
+    pub opening_plies: u32,
+    /// Base seed for the opening randomizer, mixed with the game index.
+    pub opening_seed: u64,
     /// Optional progress callback (e.g. for streaming reports from the CLI).
     pub on_game: Option<GameCallback>,
 }
@@ -251,6 +314,8 @@ impl Default for MatchConfig {
             a: EngineConfig::depth(2),
             b: EngineConfig::depth(3),
             max_plies: 400,
+            opening_plies: 0,
+            opening_seed: 0x9E37_79B9_7F4A_7C15,
             on_game: None,
         }
     }
@@ -302,7 +367,14 @@ pub fn run_match(cfg: &MatchConfig) -> MatchReport {
         } else {
             (cfg.b.clone(), cfg.a.clone())
         };
-        let outcome = play_game(&white, &black, cfg.max_plies);
+        let outcome = play_game_seeded(
+            &white,
+            &black,
+            cfg.max_plies,
+            cfg.opening_plies,
+            cfg.opening_seed,
+            g as u64,
+        );
         let (w, d, l) = points_from_a(outcome.result, a_was_white);
         wdl.wins += w;
         wdl.draws += d;
@@ -436,7 +508,14 @@ pub fn run_sprt(cfg: &MatchConfig, sprt: &Sprt) -> SprtReport {
         } else {
             (cfg.b.clone(), cfg.a.clone())
         };
-        let outcome = play_game(&white, &black, cfg.max_plies);
+        let outcome = play_game_seeded(
+            &white,
+            &black,
+            cfg.max_plies,
+            cfg.opening_plies,
+            cfg.opening_seed,
+            g as u64,
+        );
         let (w, d, l) = points_from_a(outcome.result, a_was_white);
         wdl.wins += w;
         wdl.draws += d;
@@ -654,7 +733,7 @@ mod tests {
             a: EngineConfig::depth(1),
             b: EngineConfig::depth(1),
             max_plies: 4,
-            on_game: None,
+            ..MatchConfig::default()
         };
         let r = run_match(&cfg);
         assert_eq!(r.games, 2);
@@ -681,6 +760,7 @@ mod tests {
             b: EngineConfig::depth(1),
             max_plies: 2,
             on_game: Some(cb),
+            ..MatchConfig::default()
         };
         let before = COUNT.load(Ordering::SeqCst);
         let r = run_match(&cfg);
@@ -697,7 +777,7 @@ mod tests {
             a: EngineConfig::depth(1),
             b: EngineConfig::depth(1),
             max_plies: 2, // every game is a 2-ply draw → SPRT converges to H0 fast
-            on_game: None,
+            ..MatchConfig::default()
         };
         let r = run_sprt(&cfg, &Sprt::default());
         assert!(
@@ -707,5 +787,117 @@ mod tests {
         );
         assert_eq!(r.decision, SprtDecision::AcceptH0);
         assert_eq!(r.wdl.total(), r.games as u64);
+    }
+
+    #[test]
+    fn randomized_openings_are_reproducible() {
+        // See play_game_returns_valid_outcome: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
+        let cfg = |seed| MatchConfig {
+            games: 3,
+            a: EngineConfig::depth(1),
+            b: EngineConfig::depth(1),
+            max_plies: 24,
+            opening_plies: 6,
+            opening_seed: seed,
+            on_game: None,
+        };
+        let r1 = run_match(&cfg(0xAB_CD_12_34));
+        let r2 = run_match(&cfg(0xAB_CD_12_34));
+        assert_eq!(r1.plies, r2.plies, "same seed must replay the same games");
+        assert_eq!(r1.elo, r2.elo);
+    }
+
+    #[test]
+    fn randomized_openings_diverge_by_seed() {
+        // See play_game_returns_valid_outcome: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
+        let cfg = |seed| MatchConfig {
+            games: 3,
+            a: EngineConfig::depth(1),
+            b: EngineConfig::depth(1),
+            max_plies: 24,
+            opening_plies: 6,
+            opening_seed: seed,
+            on_game: None,
+        };
+        let r1 = run_match(&cfg(1));
+        let r2 = run_match(&cfg(2));
+        assert_ne!(
+            r1.plies, r2.plies,
+            "different seeds must produce different games"
+        );
+    }
+
+    /// Guards the colour→seat mapping of `play_game_seeded`: the `white`
+    /// config must play the White side (`side_to_move == WHITE == 1`) and
+    /// the attribution in `points_from_a` must agree. The pre-fix bug
+    /// applied the "white" config to the black side, silently inverting
+    /// every decisive game's attribution (a depth-2-vs-depth-1 match
+    /// reported 1-28-11 instead of 11-28-1).
+    #[test]
+    fn side_configs_follow_the_colour_constants() {
+        let w = EngineConfig::depth(3);
+        let b = EngineConfig::depth(1);
+        // WHITE == 1, BLACK == 0 (types/constants.rs; also documented on
+        // every `side_to_move`/`stm` field).
+        assert_eq!(crate::types::BLACK, 0);
+        assert_eq!(crate::types::WHITE, 1);
+        assert!(
+            std::ptr::eq(cfg_for_side(1, &w, &b), &w),
+            "white config plays White (stm 1)"
+        );
+        assert!(
+            std::ptr::eq(cfg_for_side(0, &w, &b), &b),
+            "black config plays Black (stm 0)"
+        );
+        // Attribution: BlackWins with A on White is a LOSS for A.
+        assert_eq!(points_from_a(GameResult::BlackWins, true), (0, 0, 1));
+        assert_eq!(points_from_a(GameResult::WhiteWins, true), (1, 0, 0));
+        assert_eq!(points_from_a(GameResult::BlackWins, false), (1, 0, 0));
+        assert_eq!(points_from_a(GameResult::WhiteWins, false), (0, 0, 1));
+        assert_eq!(points_from_a(GameResult::Draw, true), (0, 1, 0));
+    }
+
+    /// End-to-end sanity of the seat mapping with a *randomized* opening:
+    /// with `open 8` the games are not colour-symmetric, so the much
+    /// stronger config must come out ahead of the depth-1 baseline across
+    /// the frozen seed set. Constants frozen after verifying the set
+    /// contains decisive games (see the commit history for the first
+    /// ladder run that exposed the mapping bug: depth 2 vs depth 1 was
+    /// reported as 1-28-11 instead of 11-28-1).
+    #[test]
+    fn stronger_config_wins_a_seeded_match() {
+        // See play_game_returns_valid_outcome: run alone (crate::test_lock).
+        let _serial = crate::test_lock::lock();
+        let cfg = MatchConfig {
+            games: 8,
+            a: EngineConfig {
+                depth: 2,
+                time_ms: 100,
+                ..EngineConfig::default()
+            },
+            b: EngineConfig {
+                depth: 1,
+                time_ms: 100,
+                ..EngineConfig::default()
+            },
+            max_plies: 250,
+            opening_plies: 8,
+            opening_seed: 0xC0_FF_EE_12_34_56_78_9A,
+            on_game: None,
+        };
+        let r = run_match(&cfg);
+        assert!(
+            r.wdl.wins + r.wdl.losses > 0,
+            "frozen seed set must contain decisive games, else this test is vacuous"
+        );
+        assert!(
+            r.wdl.wins > r.wdl.losses,
+            "depth 2 must beat depth 1 head-to-head, got W-D-L {}-{}-{}",
+            r.wdl.wins,
+            r.wdl.draws,
+            r.wdl.losses
+        );
     }
 }

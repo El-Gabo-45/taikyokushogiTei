@@ -768,10 +768,35 @@ impl Board {
 
     pub fn king_square(&self, color: u8) -> u16 {
         let c = color as usize;
-        if self.royal_count[c] > 0 {
+        let n = self.royal_count[c] as usize;
+        if n == 0 {
+            return INVALID_SQ;
+        }
+        // Canonical choice, independent of how the position was built
+        // (`setup_initial` and TSFEN loading fill `royal_list` in different
+        // orders): the King piece when present among the royals, otherwise
+        // the lowest square. `king_safety` therefore scores the same
+        // position identically whether it was constructed or loaded.
+        let king_type = crate::pieces::find_by_abbrev("K");
+        let mut lowest = INVALID_SQ;
+        for i in 0..n {
+            let sq = self.royal_list[c][i];
+            if sq == INVALID_SQ {
+                continue;
+            }
+            if sq < lowest {
+                lowest = sq;
+            }
+            if let Some(kt) = king_type {
+                if cell_piece(self.cells[sq as usize]) == kt {
+                    return sq;
+                }
+            }
+        }
+        if lowest == INVALID_SQ {
             self.royal_list[c][0]
         } else {
-            INVALID_SQ
+            lowest
         }
     }
 

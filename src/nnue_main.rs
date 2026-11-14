@@ -11,6 +11,11 @@
 //!                                           JSONL for training/parity_gate.py
 //!                                           (--thin removes random pieces so every
 //!                                           output bucket is exercised)
+//! nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]
+//!                                           Stockfish-style breakdown of one
+//!                                           evaluation (bucket, accumulator
+//!                                           stats, PSQT term, dense output,
+//!                                           incremental==refresh parity)
 //! nnue bench [<net>]                        evals/s, apply+undo overhead
 //! ```
 //!
@@ -248,6 +253,145 @@ fn cmd_dump(args: &[String]) {
     eprintln!("wrote {written} positions");
 }
 
+/// One line of the `nnue explain` report.
+fn explain_line(label: &str, value: &str) {
+    println!("{:<10}{}", label, value);
+}
+
+/// `nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]` — Stockfish-style
+/// breakdown of one evaluation: bucket, accumulator statistics, PSQT term,
+/// dense output and the incremental-vs-refresh parity check.
+fn cmd_explain(args: &[String]) {
+    let net_path = args
+        .first()
+        .filter(|a| !a.starts_with("--"))
+        .map(|s| s.as_str())
+        .unwrap_or_else(|| die("usage: nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]"));
+    let net = Arc::new(load(net_path));
+    let mut board = Board::initial();
+    if let Some(fen) = flag(args, "--tsfen") {
+        board = Board::from_tsfen(fen).unwrap_or_else(|e| die(format!("bad --tsfen: {e}")));
+    }
+    board.set_network(Some(net.clone()));
+    // Walk a few random moves so the incrementally-maintained accumulator
+    // (not just the from-scratch refresh) is what gets explained.
+    let plies: usize =
+        flag(args, "--plies").map_or(0, |v| v.parse().unwrap_or_else(|_| die("bad --plies")));
+    if plies > 0 {
+        let seed: u64 =
+            flag(args, "--seed").map_or(7, |v| v.parse().unwrap_or_else(|_| die("bad --seed")));
+        let mut rng = Rng(seed);
+        let mut walked = 0usize;
+        for _ in 0..plies {
+            if !step(&mut board, &mut rng) {
+                break;
+            }
+            walked += 1;
+        }
+        eprintln!("(walked {walked} random plies, seed {seed})");
+    }
+
+    let x = taikyokushogi::nnue::explain(&board)
+        .unwrap_or_else(|| die("no network attached to the board"));
+    let side = if x.side_to_move == 0 {
+        "black"
+    } else {
+        "white"
+    };
+    explain_line(
+        "net",
+        &format!(
+            "{net_path} ({}, arch hash {})",
+            if net_path.ends_with(".zst") {
+                "zstd-compressed"
+            } else {
+                "raw"
+            },
+            hex(net.arch_hash())[..16].to_string()
+        ),
+    );
+    explain_line("position", &board.to_tsfen());
+    explain_line(
+        "pieces",
+        &format!(
+            "black {}  white {}  ({} total)",
+            x.pieces[0], x.pieces[1], x.features
+        ),
+    );
+    explain_line("side", &format!("{side} to move"));
+    explain_line(
+        "bucket",
+        &format!(
+            "{}/{}  (thresholds {:?})",
+            x.bucket,
+            taikyokushogi::nnue::OUT_BUCKETS,
+            net.thresholds()
+        ),
+    );
+    for (p, s) in x.acc.iter().enumerate() {
+        let name = if p == x.side_to_move as usize {
+            "acc[stm]"
+        } else {
+            "acc[nstm]"
+        };
+        explain_line(
+            name,
+            &format!(
+                "min {}  max {}  mean {:+.1}  clipped {}@0 {}@127",
+                s.min, s.max, s.mean, s.clipped_lo, s.clipped_hi
+            ),
+        );
+    }
+    explain_line(
+        "psqt",
+        &format!(
+            "stm {:+}  nstm {:+}  term (diff/2) {:+}",
+            x.psqt[x.side_to_move as usize],
+            x.psqt[(x.side_to_move as usize) ^ 1],
+            x.psqt_term
+        ),
+    );
+    explain_line("dense", &format!("out {:+}", x.dense_out));
+    explain_line(
+        "raw",
+        &format!(
+            "({psqt} + {dense}) / {} = {raw}",
+            taikyokushogi::nnue::FV_SCALE,
+            psqt = x.psqt_term,
+            dense = x.dense_out,
+            raw = x.raw_total
+        ),
+    );
+    explain_line("eval", &format!("{}", x.eval));
+    if x.refresh_eval == x.eval {
+        explain_line("parity", &format!("incremental == refresh ({})", x.eval));
+    } else {
+        explain_line(
+            "parity",
+            &format!(
+                "MISMATCH: incremental {} != refresh {}",
+                x.eval, x.refresh_eval
+            ),
+        );
+    }
+    // Hand-crafted evaluator on the same position, for reference.
+    let mut classic = board.clone();
+    classic.set_network(None);
+    let over = board.game_result().is_some();
+    explain_line(
+        "classic",
+        &format!(
+            "{} (hand-crafted{})",
+            classic.evaluate(),
+            if over {
+                "; position is over — mate/draw scores"
+            } else {
+                ""
+            }
+        ),
+    );
+}
+
 fn cmd_bench(path: Option<&str>) {
     let net = Arc::new(path.map_or_else(|| Network::random(1), load));
     let mut board = Board::initial();
@@ -327,10 +471,11 @@ fn main() {
             println!("wrote {out} (random weights, seed {seed}; NOT a playing network)");
         }
         Some("dump-positions") => cmd_dump(rest),
+        Some("explain") => cmd_explain(rest),
         Some("bench") => cmd_bench(rest.first().map(|s| s.as_str())),
         _ => {
             eprintln!(
-                "usage: nnue <classes|gen-classes|info|verify|random-net|dump-positions|bench> ..."
+                "usage: nnue <classes|gen-classes|info|verify|random-net|dump-positions|explain|bench> ..."
             );
             std::process::exit(if args.is_empty() { 0 } else { 2 });
         }

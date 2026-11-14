@@ -2,11 +2,12 @@
 
 ## Performance
 
-Measured on the development machine (Intel Xeon E3-1230 V2, 4c/8t) with the
-release-mode benchmarks (`cargo run --release --example bench_nps` and
-`--example bench_fixed 1 2 3 4`). All search rows are **single-threaded**
-(`threads = 1`). These are single-run measurements — expect roughly
-±10–20 % run-to-run variance depending on machine load.
+Measured on the development machine (Intel Xeon E3-1230 V2, 4c/8t,
+16 GB RAM) with the release-mode benchmarks (`cargo run --release
+--example bench_nps` and `--example bench_fixed 1 2 3 4`). All search
+rows are **single-threaded** (`threads = 1`). These are single-run
+measurements — expect roughly ±10–20 % run-to-run variance depending on
+machine load.
 
 | Metric | Value |
 | --- | --- |
@@ -63,6 +64,10 @@ Strength changes are measured with the built-in `elo` module — see
 `cargo run --release --example match_race -- 20 3 2 5000 4` for the
 head-to-head example (depth 3 vs depth 2, 20 games).
 
+The engine's **current absolute strength** (self-referential Elo depth
+ladder, anchored at depth 1 = 0) lives in
+**[STRENGTH.md](STRENGTH.md)** and is refreshed with `make strength`.
+
 Head-to-head matches between any two search configurations (depths, time
 budgets, handcrafted vs NNUE via the eval toggle) with alternating colors
 and deterministic opening randomization. For publishable Elo claims, run
@@ -110,6 +115,7 @@ All examples run with `cargo run --release --example <name>`:
 | `play` | Minimal command-line game loop |
 | `check_db` | Self-play SQLite database sanity checks |
 | `match_race` | Head-to-head Elo/SPRT matches between two configs |
+| `elo_report` | Stockfish-style **Elo depth ladder**: measures the engine's current strength and writes the markdown/JSON report (refreshes `docs/STRENGTH.md`) |
 | `perft`, `perft_breakdown` | Perft counts / perft(1) breakdown by piece type |
 | `oracle_walk` | Random-walk invariant oracle (apply/undo round-trip checks) |
 | `nnue_speed` | NNUE incremental `evaluate()` vs full refresh speed |

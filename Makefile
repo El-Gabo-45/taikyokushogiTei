@@ -68,3 +68,30 @@ version-race:
 	cd $(WT) && cargo build --release --bin taikyokushogi-cli || (git worktree remove --force $(WT); exit 1)
 	cargo run --release --example version_race -- $(RACE_GAMES) $(RACE_DEPTH) $(RACE_MOVETIME) $(RACE_OPEN) $(RACE_MAXPLIES) engineA=target/release/taikyokushogi-cli engineB=$(WT)/target/release/taikyokushogi-cli $(if $(RACE_NET),netA=$(RACE_NET) netB=$(RACE_NET),) $(RACE_ARGS)
 	git worktree remove --force $(WT)
+
+# ── Elo ladder / strength report ────────────────────────────────
+# Measures the engine's CURRENT strength on its self-referential depth
+# ladder (depth d vs d-1, anchored at depth 1 = 0) and refreshes
+# docs/STRENGTH.md (the <!-- elo-report:begin/end --> block) plus
+# bench/elo.json for scripts/CI. See docs/STRENGTH.md and
+# examples/elo_report.rs for the methodology.
+#   make strength                              # defaults below
+#   make strength STRENGTH_GAMES=100 STRENGTH_MAXDEPTH=4
+STRENGTH_GAMES   ?= 40
+STRENGTH_MAXDEPTH ?= 3
+STRENGTH_MOVETIME?= 300
+STRENGTH_MAXPLIES?= 250
+STRENGTH_OPEN    ?= 8
+STRENGTH_THREADS ?= 1
+STRENGTH_NET     ?=
+
+.PHONY: strength
+
+strength:
+	cargo build --release --example elo_report
+	cargo run --release --example elo_report -- \
+		--games $(STRENGTH_GAMES) --max-depth $(STRENGTH_MAXDEPTH) \
+		--movetime $(STRENGTH_MOVETIME) --maxplies $(STRENGTH_MAXPLIES) \
+		--open $(STRENGTH_OPEN) --threads $(STRENGTH_THREADS) \
+		$(if $(STRENGTH_NET),--net $(STRENGTH_NET),) \
+		--md docs/STRENGTH.md --json bench/elo.json

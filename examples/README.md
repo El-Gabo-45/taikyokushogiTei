@@ -76,6 +76,29 @@ cargo run --release --example <name> -- [args...]
   games. The CLI's `match`/`sprt` commands offer the same machinery with
   `threadsA`/`threadsB` for Lazy-SMP A/B tests (see the main README).
 
+- `elo_report`: measures the engine's **current playing strength** as a
+  Stockfish-style self-referential **Elo depth ladder** — depth `d` plays
+  depth `d−1` on seeded random openings and the pairwise Elo gains
+  accumulate into one rating anchored at depth 1 = 0. Refreshes the
+  `<!-- elo-report:begin/end -->` block in a markdown file and/or writes a
+  JSON report for scripts/CI. **Flags:** `--games N` (per rung, default
+  40), `--max-depth D` (default 3), `--movetime MS` (default 300 — must
+  stay above the top depth's cost, else that rung is truncated by the
+  clock), `--maxplies P` (default 250), `--open K` (default 8),
+  `--threads N`
+  (default 1 — reproducible), `--net PATH`, `--json PATH`, `--md PATH`.
+  `make strength` runs the canonical invocation (updates `docs/STRENGTH.md`
+  and `bench/elo.json`):
+
+  ```bash
+  make strength
+  # or directly:
+  cargo run --release --example elo_report -- \
+      --games 40 --max-depth 3 --movetime 300 --md docs/STRENGTH.md --json bench/elo.json
+  ```
+
+  Results and methodology: [docs/STRENGTH.md](../docs/STRENGTH.md).
+
 - `version_race`: the cross-version counterpart — matches between two
   engine **executables** (e.g. the current build vs an older commit), so
   code changes themselves can be measured. The harness only orchestrates

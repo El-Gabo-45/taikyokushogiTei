@@ -408,5 +408,121 @@ impl NnueState {
     }
 }
 
+// ============================================================
+// Debugging / research: single-position forward-pass report
+// ============================================================
+
+/// Summary statistics of one perspective's accumulator.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AccStats {
+    /// Minimum / maximum accumulator value (raw `i32`, before clipping).
+    pub min: i32,
+    pub max: i32,
+    /// Arithmetic mean of the raw values.
+    pub mean: f64,
+    /// How many units clip to the lower bound (0) / upper bound (127).
+    pub clipped_lo: usize,
+    pub clipped_hi: usize,
+}
+
+fn acc_stats(acc: &[i32; L1]) -> AccStats {
+    let mut min = i32::MAX;
+    let mut max = i32::MIN;
+    let mut sum = 0i64;
+    let mut lo = 0usize;
+    let mut hi = 0usize;
+    for &x in acc {
+        min = min.min(x);
+        max = max.max(x);
+        sum += x as i64;
+        let c = clip(x);
+        if c == 0 {
+            lo += 1;
+        } else if c == 127 {
+            hi += 1;
+        }
+    }
+    AccStats {
+        min,
+        max,
+        mean: sum as f64 / L1 as f64,
+        clipped_lo: lo,
+        clipped_hi: hi,
+    }
+}
+
+/// Stockfish-style "explain" report: every intermediate quantity of the
+/// NNUE forward pass for ONE position, for debugging and research.
+///
+/// Built by [`explain`]; `eval` is the final (clamped) value the engine
+/// returns, `refresh_eval` recomputes everything from scratch so the two
+/// can be compared (the incremental accumulator must agree with a full
+/// refresh — a mismatch is an apply/undo bookkeeping bug).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NnueExplain {
+    /// Side to move (0 = Black, 1 = White).
+    pub side_to_move: u8,
+    /// Piece counts per color (Black, White).
+    pub pieces: [usize; 2],
+    /// Output bucket selected by the total piece count.
+    pub bucket: usize,
+    /// Active features per perspective (one per piece).
+    pub features: usize,
+    /// Accumulator statistics per perspective (Black, White).
+    pub acc: [AccStats; 2],
+    /// PSQT sum per perspective for the selected bucket.
+    pub psqt: [i32; 2],
+    /// `(psqt_stm - psqt_nstm) / 2`, the PSQT term of the output layer.
+    pub psqt_term: i32,
+    /// Output of the dense layers (before the final division).
+    pub dense_out: i32,
+    /// `(psqt_term + dense_out) / FV_SCALE`, before the final clamp.
+    pub raw_total: i32,
+    /// Final evaluation as `Board::evaluate()` returns it (clamped).
+    pub eval: i32,
+    /// Same evaluation recomputed from a full accumulator refresh.
+    pub refresh_eval: i32,
+}
+
+/// Build an [`NnueExplain`] for `board` using the network attached to it.
+///
+/// Returns `None` when no network is attached to the board. Note that the
+/// `eval`/`refresh_eval` fields are raw forward-pass outputs even for
+/// terminal positions (where `Board::evaluate()` returns mate/draw scores).
+pub fn explain(board: &crate::Board) -> Option<NnueExplain> {
+    let b = &board.inner;
+    let state = b.nnue.as_deref()?;
+    let net = &state.net;
+    let stm = b.side_to_move;
+    let pieces = [b.piece_count[0] as usize, b.piece_count[1] as usize];
+    let bucket = net.bucket(pieces[0] + pieces[1]);
+
+    let acc = [acc_stats(&state.acc.acc[0]), acc_stats(&state.acc.acc[1])];
+    let psqt = [state.acc.psqt[0][bucket], state.acc.psqt[1][bucket]];
+    let (psqt_term, dense_out, raw_total) = net.forward(&state.acc, stm, bucket);
+    let eval = raw_total.clamp(-net.eval_limit, net.eval_limit);
+
+    // Parity check: rebuild the accumulator from scratch and re-run the
+    // forward pass. Must equal the incremental result.
+    let mut fresh = Accumulator::zero();
+    fresh.refresh(net, b);
+    let (_, _, refresh_raw) = net.forward(&fresh, stm, bucket);
+    let refresh_eval = refresh_raw.clamp(-net.eval_limit, net.eval_limit);
+
+    Some(NnueExplain {
+        side_to_move: stm,
+        pieces,
+        bucket,
+        features: pieces[0] + pieces[1],
+        acc,
+        psqt,
+        psqt_term,
+        dense_out,
+        raw_total,
+        eval,
+        refresh_eval,
+    })
+}
+
 #[cfg(test)]
 mod tests;

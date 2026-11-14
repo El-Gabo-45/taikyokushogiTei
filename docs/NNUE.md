@@ -161,6 +161,41 @@ accumulator from a fixed ring of 256 snapshots: memory does not depend on the
 game length, apply/undo never allocate, and an undo further back than the ring
 refreshes from the board. A board without a network pays nothing.
 
+## Debugging a network
+
+Stockfish-style introspection of a single evaluation — for engine
+development and research, not for playing:
+
+```bash
+# Full forward-pass report for one position (walks --plies random moves first)
+cargo run --release --bin nnue -- explain nets/experimental-v1.tkn.zst \
+    --tsfen "<TSFEN>" --plies 0
+
+# Same breakdown from the CLI for the position you are inspecting
+./target/release/taikyokushogi-cli --net nets/experimental-v1.tkn.zst "debug nnue"
+```
+
+`explain` prints, position by position:
+
+| Line | Meaning |
+| --- | --- |
+| `net` | file, compression format and architecture hash |
+| `pieces` / `bucket` | piece counts and the output bucket selected by them |
+| `acc[stm]` / `acc[nstm]` | accumulator statistics per perspective: min/max/mean of the raw `i32` units and how many of the `L1` units clip to 0 or 127 |
+| `psqt` | PSQT sum per perspective and the `term = (stm − nstm)/2` that enters the output layer |
+| `dense` | output of the dense layers before the final division |
+| `raw` | `(psqt_term + dense) / FV_SCALE` before clamping |
+| `eval` | the clamped value `Board::evaluate()` returns |
+| `parity` | the same position re-evaluated after a **full accumulator refresh** — `incremental == refresh` must hold; a mismatch means an apply/undo bookkeeping bug |
+| `classic` | hand-crafted evaluator on the same position, for reference |
+
+The library exposes the same report programmatically:
+`taikyokushogi::nnue::explain(&board) -> Option<NnueExplain>` (built from
+the board's attached network; `NnueExplain` carries every field above,
+including both accumulators' [`AccStats`]). The CLI's `debug eval`
+command is the hand-crafted counterpart — see
+[CLI.md#debugging](CLI.md#debugging).
+
 ## Workflow
 
 ```text

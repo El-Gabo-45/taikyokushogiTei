@@ -14,7 +14,8 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 | Play in the browser / use the REST API | [docs/WEB.md](docs/WEB.md) |
 | Use the CLI | [docs/CLI.md](docs/CLI.md) |
 | Load it into a shogi GUI (USI) | [docs/USI.md](docs/USI.md) |
-| Benchmark it / measure strength | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
+| Benchmark it / measure strength | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) · current Elo: [docs/STRENGTH.md](docs/STRENGTH.md) |
+| Debug evals, NNUE and search | [docs/CLI.md](docs/CLI.md#debugging) · [docs/NNUE.md](docs/NNUE.md) |
 | Use it as a Rust crate | [docs/LIBRARY.md](docs/LIBRARY.md) |
 | Understand the codebase | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/MODULE_GUIDE.md](docs/MODULE_GUIDE.md) |
 | Work on the NNUE evaluator | [docs/NNUE.md](docs/NNUE.md) |
@@ -165,7 +166,7 @@ The crate is also a Python extension module (build with maturin, see
 | `taikyokushogi-server` | HTTP server + web GUI (REST API in `src/server/`; build with `--features server`; `--sessions` gives each visitor an isolated game) |
 | `taikyokushogi-cli` | Full user-facing CLI: REPL + argv flags |
 | `taikyokushogi-usi` | USI protocol engine for shogi GUIs / test harnesses |
-| `nnue` | NNUE tool: classes, verify, random-net, dump-positions, … |
+| `nnue` | NNUE tool: classes, verify, random-net, dump-positions, `explain` (forward-pass breakdown), bench |
 | `debug-cli` | Minimal CLI search harness: best move, score, nodes, time |
 | `selfplay` | Self-play training-data generator for the NNUE pipeline |
 
@@ -175,11 +176,16 @@ Single-threaded release build — headline numbers. Full table, methodology,
 the search-technique list and the examples catalog:
 **[docs/BENCHMARKS.md](docs/BENCHMARKS.md)**.
 
+All benchmark numbers in this README and in `docs/BENCHMARKS.md` were
+measured on the development machine: an **Intel Xeon E3-1230 V2
+(4c/8t) with 16 GB of RAM**, Linux, release build, single-threaded.
+
 | Metric | Value |
 | --- | --- |
 | Legal moves from the initial position | 512 |
 | Perft(2) | 260,917 nodes @ ~10–18 M nodes/s |
 | Search — depth 1 / 3 / 5 | ~13 ms / ~100 ms / ~2.8 s |
+| Current playing strength | see **[docs/STRENGTH.md](docs/STRENGTH.md)** (self-referential Elo depth ladder, refreshed by `make strength`) |
 
 Lazy SMP is **opt-in** (`--threads` / `setoption threads` / `search_threads`,
 1–64 workers sharing one lock-free transposition table); results with
@@ -196,6 +202,14 @@ architecture, TKN1 format, training pipeline and quality gates are
 documented in **[docs/NNUE.md](docs/NNUE.md)**. The network files are a
 separate work licensed under ODbL 1.0
 ([nets/README.md](nets/README.md)).
+
+For debugging and research there are Stockfish-style introspection tools:
+`nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]` prints every
+intermediate of the forward pass (bucket, accumulator statistics, PSQT
+term, dense output, incremental-vs-refresh parity), the CLI's
+`debug nnue` does the same for the attached position, and the library
+exposes `taikyokushogi::nnue::explain(&board)` — see
+[docs/NNUE.md](docs/NNUE.md#debugging-a-network).
 
 ## Project structure
 

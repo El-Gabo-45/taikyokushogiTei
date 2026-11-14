@@ -84,7 +84,7 @@ pub fn evaluate(board: &Board) -> i32 {
 
 /// Simple king safety: penalize if the king has no friendly pieces nearby.
 /// Uses the precomputed threat-zone bitboard for O(1) defender counting.
-fn king_safety(board: &Board, color: u8) -> i32 {
+pub(crate) fn king_safety(board: &Board, color: u8) -> i32 {
     let king_sq = board.king_square(color);
     if king_sq == INVALID_SQ || (king_sq as usize) >= NUM_SQUARES {
         return 0;
