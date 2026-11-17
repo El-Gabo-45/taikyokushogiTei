@@ -28,8 +28,7 @@ pub fn dump_position(board: &crate::Board, net: &Network) -> PositionDump {
     let b = &board.inner;
     let mut pieces = Vec::new();
     let mut features = [Vec::new(), Vec::new()];
-    for sq in 0..NUM_SQUARES {
-        let cell = b.cells[sq];
+    for (sq, &cell) in b.cells.iter().enumerate() {
         if cell == EMPTY_CELL {
             continue;
         }
@@ -58,8 +57,8 @@ pub fn thinned(board: &crate::Board, keep_per_mille: u32, seed: u64) -> crate::B
     let mut inner = board.inner.clone();
     inner.set_network(None);
     let mut state = seed ^ 0x9E37_79B9_7F4A_7C15;
-    for sq in 0..NUM_SQUARES {
-        let cell = inner.cells[sq];
+    for slot in inner.cells.iter_mut() {
+        let cell = *slot;
         if cell == EMPTY_CELL || crate::pieces::is_royal(cell_piece(cell)) {
             continue;
         }
@@ -67,7 +66,7 @@ pub fn thinned(board: &crate::Board, keep_per_mille: u32, seed: u64) -> crate::B
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
         if ((state >> 33) % 1000) as u32 >= keep_per_mille {
-            inner.cells[sq] = EMPTY_CELL;
+            *slot = EMPTY_CELL;
         }
     }
     inner.rebuild_lists_pub();

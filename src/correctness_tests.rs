@@ -225,8 +225,8 @@ use crate::board;
 use crate::movegen;
 use crate::pieces;
 use crate::types::{
-    BLACK, DRAW_PLIES, EMPTY_CELL, GameResult, INVALID_SQ, Move, NUM_SQUARES, WHITE, cell_color,
-    cell_piece, make_cell,
+    BLACK, DRAW_PLIES, EMPTY_CELL, GameResult, INVALID_SQ, Move, WHITE, cell_color, cell_piece,
+    make_cell,
 };
 
 type IntBoard = board::Board;
@@ -409,10 +409,10 @@ fn draw_by_no_progress_rule() {
 #[test]
 fn losing_last_royal_loses() {
     let mut b = initial_int();
-    for sq in 0..NUM_SQUARES {
-        let cell = b.cells[sq];
+    for slot in b.cells.iter_mut() {
+        let cell = *slot;
         if cell != EMPTY_CELL && cell_color(cell) == WHITE && pieces::is_royal(cell_piece(cell)) {
-            b.cells[sq] = EMPTY_CELL;
+            *slot = EMPTY_CELL;
         }
     }
     b.rebuild_lists_pub();
@@ -642,8 +642,7 @@ fn material_score_matches_piece_sum() {
     let mut rng = Lcg(0xFACE);
     for check in 0..26 {
         let mut sum = 0i32;
-        for sq in 0..NUM_SQUARES {
-            let cell = b.cells[sq];
+        for &cell in b.cells.iter() {
             if cell != EMPTY_CELL {
                 let v = pieces::value(cell_piece(cell));
                 if cell_color(cell) == BLACK {

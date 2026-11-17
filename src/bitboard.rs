@@ -33,9 +33,7 @@ impl Bitboard1296 {
     pub fn all() -> Self {
         let mut bb = Bitboard1296::new();
         // Set all bits in all words
-        for w in &mut bb.words {
-            *w = !0u64;
-        }
+        bb.words.fill(!0u64);
         // Clear the extra bits beyond 1,296
         let extra = U64_COUNT * 64 - NUM_SQUARES;
         if extra > 0 {

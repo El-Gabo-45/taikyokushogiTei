@@ -319,7 +319,7 @@ describe('api client — response validation', () => {
     const error = await api.fetchState().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(api.ApiError);
     expect((error as api.ApiError).message).toContain('/api/state');
-    expect((error as api.ApiError).message).toContain('Expected object');
+    expect((error as api.ApiError).message).toContain('expected object');
   });
 
   it('validates nested board cells', async () => {

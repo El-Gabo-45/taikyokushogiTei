@@ -162,8 +162,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Python dependencies (CPU torch; needed for pyright)
-        run: pip install -r training/requirements.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+      - name: Install Python dependencies (pinned lockfile, CPU torch)
+        run: pip install -r training/requirements-lock.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 
       - name: Install ruff and pyright
         run: pip install ruff pyright
@@ -216,7 +216,8 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Vitest 5 requires Node >= 22.12.
+          node-version: '22'
 
       - name: Install web dependencies
         run: npm ci
@@ -251,8 +252,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Python dependencies (CPU torch)
-        run: pip install numpy torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+      - name: Install Python dependencies (pinned lockfile, CPU torch)
+        run: pip install -r training/requirements-lock.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 
       - name: Build the nnue tool
         run: cargo build --release --bin nnue

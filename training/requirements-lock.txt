@@ -1,0 +1,17 @@
+# Pinned dependency set for reproducible installs (CI, parity gates).
+# Install with:
+#   python3 -m pip install -r training/requirements-lock.txt \
+#       --index-url https://download.pytorch.org/whl/cpu \
+#       --extra-index-url https://pypi.org/simple
+#
+# The floating floors stay in requirements.txt. Refresh these pins from the
+# environment used to train/verify the current nets:
+#   pip freeze | grep -E '^(numpy|torch)=='
+#
+# numpy 2.5.x ships wheels only for Python >= 3.12, so the 3.11 branch of the
+# matrix pins the last release that still supports it (environment markers,
+# PEP 508). torch 2.15.0 covers 3.11-3.13 with one pin (the `+cpu` local
+# segment matches `==2.15.0`, PEP 440).
+numpy==2.5.4 ; python_version >= "3.12"
+numpy==2.4.6 ; python_version < "3.12"
+torch==2.15.0

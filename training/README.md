@@ -76,6 +76,18 @@ attached to a board with `Board::set_network(Some(Arc<Network>))`.
 python3 -m pip install -r training/requirements.txt
 ```
 
+For **reproducible installs** (what CI and the parity gates use) there is a
+pinned lockfile, `training/requirements-lock.txt`; it fixes the exact
+torch/numpy pair the current nets were verified against (numpy gets a
+version per Python branch via environment markers, since numpy 2.5 needs
+Python 3.12+):
+
+```bash
+python3 -m pip install -r training/requirements-lock.txt \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple
+```
+
 The trainer currently runs on **CPU**. The pilot network was trained in about
 6 minutes on one core; a GPU is not required.
 

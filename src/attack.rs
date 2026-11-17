@@ -197,8 +197,7 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
         let sq_c = sq_col(sq) as i32;
 
         // Jumps/steps/area: only capture if target is an enemy piece.
-        for j in 0..tmpl.n_jumps as usize {
-            let (dr, dc) = tmpl.jumps[j];
+        for &(dr, dc) in tmpl.jumps.iter().take(tmpl.n_jumps as usize) {
             let nr = sq_r + dr as i32;
             let nc = sq_c + dc as i32;
             if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
@@ -212,8 +211,7 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
         }
 
         // Sliders: walk rays (occupancy-dependent blocking).
-        for j in 0..tmpl.n_slides as usize {
-            let (dir, max_range) = tmpl.slides[j];
+        for &(dir, max_range) in tmpl.slides.iter().take(tmpl.n_slides as usize) {
             walk_ray_captures(board, rt, sq, pt, color, dir as usize, max_range, moves);
         }
 
@@ -459,8 +457,7 @@ pub fn fast_piece(
     let sq_r = sq_row(sq) as i32;
     let sq_c = sq_col(sq) as i32;
 
-    for j in 0..tmpl.n_jumps as usize {
-        let (dr, dc) = tmpl.jumps[j];
+    for &(dr, dc) in tmpl.jumps.iter().take(tmpl.n_jumps as usize) {
         let nr = sq_r + dr as i32;
         let nc = sq_c + dc as i32;
         if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
@@ -475,8 +472,7 @@ pub fn fast_piece(
         }
     }
 
-    for j in 0..tmpl.n_slides as usize {
-        let (dir, max_range) = tmpl.slides[j];
+    for &(dir, max_range) in tmpl.slides.iter().take(tmpl.n_slides as usize) {
         walk_ray(board, rt, sq, pt, color, dir as usize, max_range, moves);
     }
 
@@ -602,8 +598,7 @@ pub fn fast_piece_quiets(
     let sq_c = sq_col(sq) as i32;
 
     // Jumps/steps/area: only quiet when target is empty.
-    for j in 0..tmpl.n_jumps as usize {
-        let (dr, dc) = tmpl.jumps[j];
+    for &(dr, dc) in tmpl.jumps.iter().take(tmpl.n_jumps as usize) {
         let nr = sq_r + dr as i32;
         let nc = sq_c + dc as i32;
         if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
@@ -617,8 +612,7 @@ pub fn fast_piece_quiets(
     }
 
     // Sliders: walk rays, stop at first occupancy.
-    for j in 0..tmpl.n_slides as usize {
-        let (dir, max_range) = tmpl.slides[j];
+    for &(dir, max_range) in tmpl.slides.iter().take(tmpl.n_slides as usize) {
         walk_ray_quiets(board, rt, sq, pt, color, dir as usize, max_range, moves);
     }
 

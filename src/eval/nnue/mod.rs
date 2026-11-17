@@ -298,8 +298,7 @@ impl Accumulator {
             self.acc[p].copy_from_slice(&net.ft_bias);
             self.psqt[p] = [0; OUT_BUCKETS];
         }
-        for sq in 0..NUM_SQUARES {
-            let cell = board.cells[sq];
+        for (sq, &cell) in board.cells.iter().enumerate() {
             if cell != EMPTY_CELL {
                 self.add(net, cell_piece(cell), cell_color(cell), sq);
             }
