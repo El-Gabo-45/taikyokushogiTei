@@ -87,7 +87,7 @@ STRENGTH_NET     ?=
 
 .PHONY: strength
 
-strength:
+	strength:
 	cargo build --release --example elo_report
 	cargo run --release --example elo_report -- \
 		--games $(STRENGTH_GAMES) --max-depth $(STRENGTH_MAXDEPTH) \
@@ -95,3 +95,14 @@ strength:
 		--open $(STRENGTH_OPEN) --threads $(STRENGTH_THREADS) \
 		$(if $(STRENGTH_NET),--net $(STRENGTH_NET),) \
 		--md docs/STRENGTH.md --json bench/elo.json
+
+# ── Local CI mirror ─────────────────────────────────────────────
+# Runs the same gates as .github/workflows/ci.yml before a push:
+# toolchain sync (rustup update stable), fmt, clippy -D warnings, check,
+# USI smoke, tests, web (if web/node_modules exists) and python lint
+# (if ruff/pyright are installed). MSRV/PyO3/NNUE jobs stay in CI.
+#   make ci-local
+.PHONY: ci-local
+
+ci-local:
+	bash scripts/ci-check.sh
