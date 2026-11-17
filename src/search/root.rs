@@ -26,7 +26,7 @@ use super::params::{self, SearchConfig};
 use super::pvs;
 use super::tt::Tt;
 use crate::board::Board;
-use crate::eval::{evaluate, MATE_SCORE};
+use crate::eval::{MATE_SCORE, evaluate};
 use crate::movegen::generate_pseudo_legal_moves_into;
 use crate::types::*;
 use std::sync::atomic::AtomicBool;

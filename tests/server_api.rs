@@ -7,14 +7,14 @@
 
 #![cfg(feature = "server")]
 
-use axum::body::Body;
-use axum::http::{header, Method, Request, StatusCode};
 use axum::Router;
+use axum::body::Body;
+use axum::http::{Method, Request, StatusCode, header};
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use taikyokushogi::server::{
-    build_router, new_state, new_state_with_config, AnonPolicy, AppState, AppStateConfig,
+    AnonPolicy, AppState, AppStateConfig, build_router, new_state, new_state_with_config,
 };
 use tower::ServiceExt;
 
@@ -374,9 +374,11 @@ async fn pieces_endpoint_lists_full_database() {
     let pieces = body["pieces"].as_array().unwrap();
     assert_eq!(body["count"], pieces.len());
     assert_eq!(pieces.len(), 301);
-    assert!(pieces
-        .iter()
-        .any(|p| p["abbrev"] == "K" && p["is_royal"] == true));
+    assert!(
+        pieces
+            .iter()
+            .any(|p| p["abbrev"] == "K" && p["is_royal"] == true)
+    );
     // At least some pieces carry Betza movement notation.
     assert!(pieces.iter().filter(|p| p["betza"].is_string()).count() > 100);
     // IDs are unique.

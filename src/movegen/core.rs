@@ -62,7 +62,11 @@ pub fn push_move_raw(moves: &mut Vec<Move>, m: Move) {
 }
 
 // ── PRECOMPUTED JUMP DESTINATIONS ──────────────────────────────
-static JUMP_TABLE: OnceLock<Box<[[[[u16; 8]; 2]; NUM_SQUARES]]>> = OnceLock::new();
+/// Precomputed jump destinations: `[pt][sq][color]` → up to 8 target
+/// squares per color (`INVALID_SQ` when unused).
+type JumpTable = Box<[[[[u16; 8]; 2]; NUM_SQUARES]]>;
+
+static JUMP_TABLE: OnceLock<JumpTable> = OnceLock::new();
 
 fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
     JUMP_TABLE.get_or_init(|| {
@@ -75,16 +79,16 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
             if mv.jumps.is_empty() {
                 continue;
             }
-            for sq in 0..NUM_SQUARES {
+            for (sq, entries) in table[pt as usize].iter_mut().enumerate() {
                 let r = sq_row(sq) as i32;
                 let c = sq_col(sq) as i32;
-                for color in 0..2u8 {
-                    let mut dests = [INVALID_SQ; 8];
+                for (color, dests) in entries.iter_mut().enumerate() {
+                    let mut next = [INVALID_SQ; 8];
                     for (j, &(jdr, jdc)) in mv.jumps.iter().enumerate() {
                         if j >= 8 {
                             break;
                         }
-                        let (dr, dc) = if color == BLACK {
+                        let (dr, dc) = if color == BLACK as usize {
                             (jdr as i32, jdc as i32)
                         } else {
                             (-(jdr as i32), -(jdc as i32))
@@ -92,10 +96,10 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
                         let nr = r + dr;
                         let nc = c + dc;
                         if nr >= 0 && nr < BOARD_SIZE as i32 && nc >= 0 && nc < BOARD_SIZE as i32 {
-                            dests[j] = (nr as usize * BOARD_SIZE + nc as usize) as u16;
+                            next[j] = (nr as usize * BOARD_SIZE + nc as usize) as u16;
                         }
                     }
-                    table[pt as usize][sq][color as usize] = dests;
+                    *dests = next;
                 }
             }
         }
@@ -314,8 +318,8 @@ fn gen_slides_captures(
             (max_range as usize).min(ray.len())
         };
 
-        for j in 0..limit {
-            let target_sq = ray[j] as usize;
+        for &rsq in ray.iter().take(limit) {
+            let target_sq = rsq as usize;
             let target = board.cells[target_sq];
             if target == EMPTY_CELL {
                 // Non-capturing promotion: only include if entering promo zone.
@@ -345,8 +349,7 @@ fn gen_jumps_captures(
         return;
     }
     let dests = &jt[pt as usize][sq][color as usize];
-    for j in 0..mv.jumps.len().min(8) {
-        let nsq = dests[j];
+    for &nsq in dests.iter().take(mv.jumps.len().min(8)) {
         if nsq == INVALID_SQ {
             continue;
         }
@@ -526,7 +529,7 @@ pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, t
     let to_in_zone = in_promo_zone(to as usize, color);
     let is_capture = captured != 0;
 
-    let may_promote = (!from_in_zone && to_in_zone) || (from_in_zone && to_in_zone && is_capture);
+    let may_promote = to_in_zone && (!from_in_zone || is_capture);
 
     let must_promote =
         to_in_zone && is_farthest_rank(to as usize, color) && pieces::must_promote_at_far_rank(pt);
@@ -618,8 +621,8 @@ fn gen_slides(
             (max_range as usize).min(ray.len())
         };
 
-        for j in 0..limit {
-            let target_sq = ray[j] as usize;
+        for &rsq in ray.iter().take(limit) {
+            let target_sq = rsq as usize;
             let target = board.cells[target_sq];
             if target == EMPTY_CELL {
                 add_move(moves, sq as u16, target_sq as u16, pt, color, EMPTY_CELL);
@@ -647,8 +650,7 @@ fn gen_jumps_fast(
         return;
     }
     let dests = &jt[pt as usize][sq][color as usize];
-    for j in 0..mv.jumps.len().min(8) {
-        let nsq = dests[j];
+    for &nsq in dests.iter().take(mv.jumps.len().min(8)) {
         if nsq == INVALID_SQ {
             continue;
         }

@@ -11,7 +11,9 @@ fn main() {
     let debug = args.iter().any(|arg| arg == "--debug" || arg == "-d");
 
     if debug {
-        std::env::set_var("TAIKYOKUSHOGI_DEBUG_CLI", "1");
+        // Edition 2024 makes `set_var` unsafe (not thread-safe); this runs
+        // single-threaded at startup, before any search threads exist.
+        unsafe { std::env::set_var("TAIKYOKUSHOGI_DEBUG_CLI", "1") };
     }
 
     let mut board = Board::initial();

@@ -2,7 +2,7 @@
 use crate::eval::families::family_value;
 use crate::eval::zones::zone_score;
 use crate::pieces;
-use crate::types::{cell_piece, BLACK, EMPTY_CELL, INVALID_SQ, WHITE};
+use crate::types::{BLACK, EMPTY_CELL, INVALID_SQ, WHITE, cell_piece};
 
 /// Resumen detallado del heuristic para inspección rápida.
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
         }
     }
 
-    by_piece.sort_by(|a, b| b.1.cmp(&a.1));
+    by_piece.sort_by_key(|item| std::cmp::Reverse(item.1));
 
     let zones = zone_score(b, BLACK) - zone_score(b, WHITE);
     // Same king-safety term the engine's hand-crafted evaluator uses

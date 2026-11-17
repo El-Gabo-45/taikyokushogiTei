@@ -49,8 +49,8 @@
 use crate::search::{IterInfo, Searcher};
 use crate::{Board, Color, Network};
 use std::io::BufRead;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 const ENGINE_NAME: &str = "TaikyokuShogi";
@@ -741,6 +741,8 @@ impl UsiEngine {
 
     /// Wait for a running search to finish on its own (no stop signal) and
     /// park the searcher back on the engine. Does nothing when idle.
+    // Test-only today: production paths stop searches with `join_search`.
+    #[cfg(test)]
     fn wait_search(&mut self) {
         if let Some(job) = self.job.take() {
             self.recover(job);
@@ -1078,15 +1080,19 @@ mod tests {
         let (mut e, sink) = engine();
         e.handle("usi");
         let lines = sink.lines();
-        assert!(lines
-            .iter()
-            .any(|l| l.starts_with("id name TaikyokuShogi ")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("id name TaikyokuShogi "))
+        );
         assert!(lines.iter().any(|l| l.starts_with("id author ")));
         assert!(lines.iter().any(|l| l.starts_with("option name Threads ")));
         assert!(lines.iter().any(|l| l.starts_with("option name Hash ")));
-        assert!(lines
-            .iter()
-            .any(|l| l.starts_with("option name NetworkFile ")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("option name NetworkFile "))
+        );
         assert_eq!(lines.last().map(|s| s.as_str()), Some("usiok"));
         e.handle("isready");
         assert_eq!(sink.last(), "readyok");

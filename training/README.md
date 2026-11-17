@@ -70,7 +70,7 @@ attached to a board with `Board::set_network(Some(Arc<Network>))`.
 ## Requirements
 
 - Rust toolchain (the workspace's normal requirements).
-- Python 3.9+ with `torch>=2.0` and `numpy>=1.24`:
+- Python 3.11+ with `torch>=2.0` and `numpy>=1.24`:
 
 ```bash
 python3 -m pip install -r training/requirements.txt

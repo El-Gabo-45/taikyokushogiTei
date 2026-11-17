@@ -768,7 +768,7 @@ impl Board {
 
     pub fn king_square(&self, color: u8) -> u16 {
         let c = color as usize;
-        let n = self.royal_count[c] as usize;
+        let n = self.royal_count[c];
         if n == 0 {
             return INVALID_SQ;
         }

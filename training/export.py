@@ -10,7 +10,6 @@ per tensor; exporting a saturated network fails unless --allow-clip is given.
 """
 
 import numpy as np
-
 import tkn
 from arch import FT_SCALE, FV_SCALE
 

@@ -13,6 +13,14 @@
     "moduleDetection": "force",
     "noEmit": true,
 
+    /* Strictness */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedSideEffectImports": true,
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,

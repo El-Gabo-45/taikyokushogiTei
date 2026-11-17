@@ -80,11 +80,7 @@ pub const NMP_NO_PROGRESS_LIMIT: u32 = 100;
 pub const NMP_MIN_SIDE_PIECES: usize = 4; // piece_count > 3
 #[inline]
 pub fn nmp_reduction(d: u32) -> u32 {
-    if d >= 6 {
-        3
-    } else {
-        2
-    }
+    if d >= 6 { 3 } else { 2 }
 }
 
 // ── Capture beam (scaled by real branching) ─────────────────────
@@ -146,11 +142,7 @@ pub const IID_MIN_DEPTH: u32 = 4;
 // ── Root aspiration windows ─────────────────────────────────────
 #[inline]
 pub fn aspiration_window(depth: u32) -> i32 {
-    if depth <= 4 {
-        64
-    } else {
-        200
-    }
+    if depth <= 4 { 64 } else { 200 }
 }
 /// Window growth factor after the first aspiration failure (×8).
 pub const ASPIRATION_WINDOW_GROW: i32 = 8;

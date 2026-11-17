@@ -12,18 +12,17 @@ labels whose scale does not match the engine.
 """
 
 import argparse
-
 import time
-
-import numpy as np
-import torch
 
 import check_label_units
 import dataset
+import numpy as np
+import torch
 from arch import Arch
 from export import export
 from features import feature_indices
 from model import TKNet
+
 
 def auto_scale(scores):
     """Sigmoid scale SC such that the median |score| maps to a 75 % win
@@ -40,7 +39,9 @@ def make_batch(arch, d, ids, device="cpu"):
     i0, i1 = feature_indices(arch, d.sq[ent], d.pt[ent], d.color[ent])
     off = np.concatenate([[0], np.cumsum(lens)[:-1]])
     bucket = np.array([arch.bucket(int(n)) for n in lens])
-    t = lambda a, dt=torch.long: torch.as_tensor(a, dtype=dt, device=device)
+
+    def t(a, dt=torch.long):
+        return torch.as_tensor(a, dtype=dt, device=device)
     return t(i0), t(off), t(i1), t(off), t(d.stm[ids]), t(bucket)
 
 

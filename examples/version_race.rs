@@ -387,7 +387,7 @@ fn play_game(
             None => {
                 return Err(format!(
                     "side {side} returned move `{token}`, which is not legal in `{tsfen}`"
-                ))
+                ));
             }
         }
         plies += 1;
@@ -474,7 +474,7 @@ fn parse_args() -> Args {
     let mut pos: Vec<u64> = Vec::new();
     for a in std::env::args().skip(1) {
         macro_rules! num_opt {
-            ($prefix:literal, $target:expr) => {
+            ($prefix:literal, $target:expr_2021) => {
                 if let Some(rest) = a.strip_prefix($prefix) {
                     match rest.parse() {
                         Ok(v) => $target = Some(v),

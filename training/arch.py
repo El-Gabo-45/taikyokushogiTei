@@ -35,7 +35,9 @@ class Arch:
         assert max(self.class_map[1:]) + 1 == self.num_classes
         self.thresholds = list(spec["thresholds_pieces"])
         assert len(self.thresholds) == OUT_BUCKETS - 1
-        assert all(a < b for a, b in zip(self.thresholds, self.thresholds[1:]))
+        assert all(
+            a < b for a, b in zip(self.thresholds, self.thresholds[1:], strict=False)
+        )
         self.class_values = list(spec.get("class_values", []))
         self.eval_limit = spec["eval_limit"]
         self.planes = 2 * self.num_classes

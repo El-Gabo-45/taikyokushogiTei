@@ -6,6 +6,30 @@ use pyo3::types::{PyDict, PyList, PyTuple};
 use crate::types::*;
 use crate::{board, eval, movegen, pieces, search};
 
+/// Validate a color parameter (`0` = black, `1` = white) and return its index
+/// into the per-color tables. Raises `ValueError` for any other value instead
+/// of letting it index out of bounds.
+fn color_index(color: u8) -> PyResult<usize> {
+    if color > 1 {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "color must be 0 (black) or 1 (white), got {color}"
+        )));
+    }
+    Ok(color as usize)
+}
+
+/// Validate row/column parameters and return the board index. Raises
+/// `IndexError` for out-of-range coordinates instead of panicking inside
+/// [`sq_index`].
+fn checked_sq(row: usize, col: usize) -> PyResult<u16> {
+    if row >= BOARD_SIZE || col >= BOARD_SIZE {
+        return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+            "row {row}, col {col} outside the board (rows and columns are 0..{BOARD_SIZE})"
+        )));
+    }
+    Ok(sq_index(row, col) as u16)
+}
+
 /// A loaded NNUE network (TKN1 file). Load it once and share it between
 /// boards: `board.set_network(net)`.
 #[pyclass]
@@ -65,16 +89,18 @@ impl PyBoard {
         self.inner.network().is_some()
     }
 
-    fn at(&self, row: usize, col: usize) -> Option<(String, u8)> {
-        let sq = sq_index(row, col);
+    /// Piece at `(row, col)` as `(abbrev, color)`, or `None` when empty.
+    /// Raises `IndexError` for out-of-range coordinates.
+    fn at(&self, row: usize, col: usize) -> PyResult<Option<(String, u8)>> {
+        let sq = checked_sq(row, col)? as usize;
         let cell = self.inner.cells[sq];
         if cell == EMPTY_CELL {
-            None
+            Ok(None)
         } else {
-            Some((
+            Ok(Some((
                 pieces::abbrev(cell_piece(cell)).to_string(),
                 cell_color(cell),
-            ))
+            )))
         }
     }
 
@@ -103,9 +129,11 @@ impl PyBoard {
         })
     }
 
+    /// Mapping `(row, col) -> abbrev` for every piece of `color` (0 = black,
+    /// 1 = white). Raises `ValueError` for any other color.
     fn piece_positions(&self, py: Python, color: u8) -> PyResult<Py<PyAny>> {
         let dict = PyDict::new(py);
-        let c = color as usize;
+        let c = color_index(color)?;
         for i in 0..self.inner.piece_list_len[c] {
             let sq = self.inner.piece_list[c][i];
             if sq == INVALID_SQ {
@@ -115,22 +143,23 @@ impl PyBoard {
             if cell == EMPTY_CELL {
                 continue;
             }
-            let key = PyTuple::new(py, [sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])
-                .expect("tuple");
+            let key = PyTuple::new(py, [sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])?;
             dict.set_item(key, pieces::abbrev(cell_piece(cell)))?;
         }
         Ok(dict.into_any().unbind())
     }
 
+    /// List of `(row, col)` tuples for the royal pieces (kings) of `color`.
+    /// Raises `ValueError` for any other color.
     fn royal_positions(&self, py: Python, color: u8) -> PyResult<Py<PyAny>> {
         let list = PyList::empty(py);
-        let c = color as usize;
+        let c = color_index(color)?;
         for i in 0..self.inner.royal_count[c] {
             let sq = self.inner.royal_list[c][i];
-            list.append(
-                PyTuple::new(py, [sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE])
-                    .expect("tuple"),
-            )?;
+            list.append(PyTuple::new(
+                py,
+                [sq as usize / BOARD_SIZE, sq as usize % BOARD_SIZE],
+            )?)?;
         }
         Ok(list.into_any().unbind())
     }
@@ -150,6 +179,10 @@ impl PyBoard {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
     }
 
+    /// Apply the first legal move matching `(from_r, from_c) -> (to_r, to_c)`
+    /// with the given promotion/igui flags and optional middle square (igui
+    /// moves). Raises `IndexError` for out-of-range coordinates; returns
+    /// `false` when no legal move matches (the board is left unchanged).
     fn apply_move_py(
         &mut self,
         from_r: usize,
@@ -159,9 +192,15 @@ impl PyBoard {
         promotion: bool,
         mid_sq: Option<usize>,
         is_igui: bool,
-    ) -> bool {
-        let from_sq = sq_index(from_r, from_c) as u16;
-        let to_sq = sq_index(to_r, to_c) as u16;
+    ) -> PyResult<bool> {
+        let from_sq = checked_sq(from_r, from_c)?;
+        let to_sq = checked_sq(to_r, to_c)?;
+        if let Some(ms) = mid_sq.filter(|&ms| ms >= BOARD_SIZE * BOARD_SIZE) {
+            return Err(pyo3::exceptions::PyIndexError::new_err(format!(
+                "mid_sq {ms} outside the board (squares are 0..{})",
+                BOARD_SIZE * BOARD_SIZE
+            )));
+        }
         for m in &movegen::generate_legal_moves(&self.inner) {
             let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
             if m.from_sq == from_sq
@@ -171,10 +210,10 @@ impl PyBoard {
                 && mid_match
             {
                 self.inner.apply_move(m);
-                return true;
+                return Ok(true);
             }
         }
-        false
+        Ok(false)
     }
 
     fn undo(&mut self) -> bool {
@@ -212,8 +251,10 @@ impl PyBoard {
         Ok(list.into_any().unbind())
     }
 
+    /// Legal moves departing from `(r, c)`, deduplicated by destination.
+    /// Raises `IndexError` for out-of-range coordinates.
     fn moves_from_py(&self, py: Python, r: usize, c: usize) -> PyResult<Py<PyAny>> {
-        let sq = sq_index(r, c) as u16;
+        let sq = checked_sq(r, c)?;
         let moves = movegen::generate_legal_moves(&self.inner);
         let list = PyList::empty(py);
         let mut seen = std::collections::HashSet::new();

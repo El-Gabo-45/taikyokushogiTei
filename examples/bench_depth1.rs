@@ -150,7 +150,15 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
         total_us as f64 / 1000.0
     );
     println!("    aggregate NPS: {:.0}", agg_nps);
-    println!("    per-run NPS:   min={:.0}  median={:.0}  mean={:.0}  max={:.0}  stddev={:.0}  ({} samples)", min_nps, median_nps, mean_nps, max_nps, stddev_nps, per_run_nps.len());
+    println!(
+        "    per-run NPS:   min={:.0}  median={:.0}  mean={:.0}  max={:.0}  stddev={:.0}  ({} samples)",
+        min_nps,
+        median_nps,
+        mean_nps,
+        max_nps,
+        stddev_nps,
+        per_run_nps.len()
+    );
     println!(
         "    per-run time:  min={:.1}us  median={:.1}us  mean={:.1}us  max={:.1}us",
         min_us, median_us, mean_us, max_us

@@ -52,7 +52,7 @@ pub fn from_tsfen(tsfen: &str) -> Result<Board, String> {
         _ => {
             return Err(format!(
                 "invalid side to move '{side_str}': expected 'b' or 'w'"
-            ))
+            ));
         }
     };
 

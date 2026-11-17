@@ -39,8 +39,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
-      - name: Run clippy
-        run: cargo clippy --all-targets --features server
+      # -D warnings keeps clippy findings from slipping in unnoticed.
+      - name: Run clippy (warnings are errors)
+        run: cargo clippy --all-targets --features server -- -D warnings
 
       - name: Compile all targets
         run: cargo check --all-targets --features server
@@ -71,6 +72,108 @@ jobs:
       - name: Run HTTP API integration tests
         run: cargo test --features server --test server_api
 
+  msrv:
+    name: MSRV (Rust 1.85)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.85 (the declared rust-version)
+        uses: dtolnay/rust-toolchain@1.85
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
+
+      # Compile-only: prove the declared minimum supported Rust version is
+      # still sufficient for every target (no lint, no tests).
+      - name: Check all targets on the MSRV
+        run: cargo check --all-targets --features server
+
+  pyo3:
+    name: PyO3 bindings (build + import)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build the wheel (python feature)
+        run: maturin build --release --features python
+
+      - name: Import the module and check input validation
+        run: |
+          pip install target/wheels/taikyokushogi-*.whl
+          python - <<'PY'
+          import taikyokushogi as t
+
+          assert t.BOARD_SIZE == 36
+          board = t.PyBoard()
+          cell = board.at(0, 0)
+          assert cell is None or (isinstance(cell, tuple) and len(cell) == 2)
+          # Invalid coordinates/colors must raise, never panic the interpreter.
+          for bad_call in (
+              lambda: board.at(36, 0),
+              lambda: board.at(0, 36),
+              lambda: board.moves_from_py(99, 99),
+              lambda: board.piece_positions(7),
+              lambda: board.royal_positions(2),
+              lambda: board.apply_move_py(36, 0, 0, 0, False, None, False),
+          ):
+              try:
+                  bad_call()
+              except (IndexError, ValueError):
+                  pass
+              else:
+                  raise SystemExit(f"{bad_call} must raise IndexError/ValueError")
+          print("PyO3 smoke test OK")
+          PY
+
+  python-lint:
+    name: Python lint (ruff) and types (pyright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies (CPU torch; needed for pyright)
+        run: pip install -r training/requirements.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+
+      - name: Install ruff and pyright
+        run: pip install ruff pyright
+
+      - name: Ruff (config in pyproject.toml)
+        run: ruff check .
+
+      - name: Pyright (basic mode, config in pyproject.toml)
+        run: pyright
+
   build:
     name: Release build
     runs-on: ubuntu-latest
@@ -90,7 +193,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache target directory
         uses: actions/cache@v4
@@ -126,10 +229,15 @@ jobs:
       - name: Vite production build
         run: npm run build
         working-directory: ./web
+
   nnue-python:
-    name: NNUE Python pipeline and parity
+    name: NNUE Python pipeline and parity (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - name: Checkout repository
@@ -141,7 +249,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Python dependencies (CPU torch)
         run: pip install numpy torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple

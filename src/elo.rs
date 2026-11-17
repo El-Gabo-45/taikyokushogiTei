@@ -12,10 +12,10 @@
 //! * [`run_sprt`] — run a match under SPRT, stopping as soon as the test
 //!   accepts H0 or H1.
 
+use crate::GameResult;
 use crate::board::Board;
 use crate::search;
 use crate::types::Move;
-use crate::GameResult;
 
 // ============================================================
 // Elo math

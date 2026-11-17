@@ -4,17 +4,17 @@
 //! search work to the blocking pool, and serialize snapshots. Shared state
 //! helpers live in [`crate::server`].
 
+use axum::Json;
 use axum::extract::{Path, Query};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
 use crate::{Board, Color, GameResult, Move as EngineMove};
 
 use crate::server::types::*;
-use crate::server::{apply_move_to_board, record_move, GameState as ServerGameState, SessionGame};
+use crate::server::{GameState as ServerGameState, SessionGame, apply_move_to_board, record_move};
 
 // ============================================================
 // Error helper — maps to HTTP status codes with a JSON body

@@ -1,2 +1,7 @@
+# NNUE training pipeline dependencies (training/, Python 3.11+).
+# Install with: python3 -m pip install -r training/requirements.txt
+#
+# These are NOT the Python bindings' dependencies: the bindings ship no
+# third-party runtime requirements (see the root pyproject.toml).
 torch>=2.0
 numpy>=1.24

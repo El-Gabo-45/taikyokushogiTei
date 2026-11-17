@@ -1,9 +1,11 @@
 /**
  * HTTP client for the Taikyoku Shogi engine API.
  *
- * Every method returns fresh data from the Rust backend. Errors carry the
- * HTTP status and the server's JSON `error` message when available, so the
- * UI can show *why* something failed (illegal move, unknown piece, 409…).
+ * Every method returns fresh data from the Rust backend. Responses are
+ * validated at runtime against the schemas in ./schemas before they reach
+ * the UI. Errors carry the HTTP status and the server's JSON `error`
+ * message when available, so the UI can show *why* something failed
+ * (illegal move, unknown piece, 409, malformed payload…).
  */
 
 import type {
@@ -24,6 +26,25 @@ import type {
   StatusInfo,
   UndoResponse,
 } from '../types/board';
+import {
+  boardStateSchema,
+  engineInfoSchema,
+  evalInfoSchema,
+  healthInfoSchema,
+  historyInfoSchema,
+  legalMovesSchema,
+  moveListSchema,
+  moveResponseSchema,
+  newGameSchema,
+  pieceInfoSchema,
+  pieceListSchema,
+  positionInfoSchema,
+  saveInfoSchema,
+  searchResponseSchema,
+  statusInfoSchema,
+  undoResponseSchema,
+} from './schemas';
+import type { ZodType } from 'zod';
 
 const BASE = '';
 
@@ -59,7 +80,11 @@ function sessionId(): string {
   return id;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  schema: ZodType<T>,
+  init?: RequestInit,
+): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: {
       Accept: 'application/json',
@@ -86,43 +111,59 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       `HTTP ${res.status} ${res.statusText} (${path})`;
     throw new ApiError(message, res.status);
   }
-  return payload as T;
+
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue && issue.path.length > 0 ? ` at "${issue.path.join('.')}"` : '';
+    const more =
+      parsed.error.issues.length > 1 ? ` (+${parsed.error.issues.length - 1} more)` : '';
+    throw new ApiError(
+      `Invalid response from ${path}: ${issue?.message ?? 'validation failed'}${where}${more}`,
+      res.status,
+    );
+  }
+  return parsed.data;
 }
 
-const get = <T>(path: string) => request<T>(path);
-const post = <T>(path: string, body?: unknown) =>
-  request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+const get = <T>(path: string, schema: ZodType<T>) => request(path, schema);
+const post = <T>(path: string, schema: ZodType<T>, body?: unknown) =>
+  request(
+    path,
+    schema,
+    body === undefined ? { method: 'POST' } : { method: 'POST', body: JSON.stringify(body) },
+  );
 
 // ── Game state ─────────────────────────────────────────────────────
 
 /** Fetch the full board state. */
 export function fetchState(): Promise<BoardState> {
-  return get<BoardState>('/api/state');
+  return get('/api/state', boardStateSchema);
 }
 
 /** Compact status summary. */
 export function fetchStatus(): Promise<StatusInfo> {
-  return get<StatusInfo>('/api/status');
+  return get('/api/status', statusInfoSchema);
 }
 
 /** Move log + score history. */
 export function fetchHistory(): Promise<HistoryInfo> {
-  return get<HistoryInfo>('/api/history');
+  return get('/api/history', historyInfoSchema);
 }
 
 /** Legal moves for the piece on `(r, c)`. */
 export function fetchMoves(r: number, c: number): Promise<{ moves: MoveData[]; from: [number, number] }> {
-  return get(`/api/moves?r=${r}&c=${c}`);
+  return get(`/api/moves?r=${r}&c=${c}`, moveListSchema);
 }
 
 /** Every legal move of the side to move. */
 export function fetchLegalMoves(): Promise<LegalMovesResponse> {
-  return get<LegalMovesResponse>('/api/legal-moves');
+  return get('/api/legal-moves', legalMovesSchema);
 }
 
 /** Start a new game. */
 export function newGame(): Promise<{ ok: boolean; version: number }> {
-  return post('/api/new-game');
+  return post('/api/new-game', newGameSchema);
 }
 
 /** Apply a human move. */
@@ -132,68 +173,68 @@ export function sendMove(
   promotion = false,
   mid_sq?: number | null,
 ): Promise<MoveResponse> {
-  return post<MoveResponse>('/api/move', { from, to, promotion, mid_sq: mid_sq ?? null });
+  return post('/api/move', moveResponseSchema, { from, to, promotion, mid_sq: mid_sq ?? null });
 }
 
 /** Ask the AI to search and apply a move. `depth = 0` means random. */
 export function sendAiMove(depth = 2, timeLimit = 30_000): Promise<MoveResponse> {
-  return post<MoveResponse>('/api/ai-move', { depth, time_limit: timeLimit });
+  return post('/api/ai-move', moveResponseSchema, { depth, time_limit: timeLimit });
 }
 
 /** Analysis search — does not mutate the board. */
 export function analyze(depth = 2, timeLimit = 10_000): Promise<SearchResponse> {
-  return post<SearchResponse>('/api/search', { depth, time_limit: timeLimit });
+  return post('/api/search', searchResponseSchema, { depth, time_limit: timeLimit });
 }
 
 /** Undo the last `plies` moves (default 1). */
 export function undo(plies = 1): Promise<UndoResponse> {
-  return post<UndoResponse>('/api/undo', { plies });
+  return post('/api/undo', undoResponseSchema, { plies });
 }
 
 // ── Position / persistence ────────────────────────────────────────
 
 export function fetchPosition(): Promise<PositionInfo> {
-  return get<PositionInfo>('/api/position');
+  return get('/api/position', positionInfoSchema);
 }
 
 /** Install a position from TSFEN. */
 export function setPosition(tsfen: string): Promise<BoardState> {
-  return post<BoardState>('/api/position', { tsfen });
+  return post('/api/position', boardStateSchema, { tsfen });
 }
 
 export function saveGame(): Promise<SaveInfo> {
-  return get<SaveInfo>('/api/save');
+  return get('/api/save', saveInfoSchema);
 }
 
 export function loadGame(tsfen: string): Promise<BoardState> {
-  return post<BoardState>('/api/load', { tsfen });
+  return post('/api/load', boardStateSchema, { tsfen });
 }
 
 // ── Engine information ────────────────────────────────────────────
 
 /** Piece database entry by abbreviation; throws `ApiError` 404 when unknown. */
 export function pieceInfo(abbrev: string): Promise<PieceInfo> {
-  return get<PieceInfo>(`/api/piece-info/${encodeURIComponent(abbrev)}`);
+  return get(`/api/piece-info/${encodeURIComponent(abbrev)}`, pieceInfoSchema);
 }
 
 /** Full piece database (301 piece types). */
 export function fetchPieces(): Promise<PieceListResponse> {
-  return get<PieceListResponse>('/api/pieces');
+  return get('/api/pieces', pieceListSchema);
 }
 
 /** Engine metadata: sizes, backend, hash size, search techniques. */
 export function fetchEngineInfo(): Promise<EngineInfo> {
-  return get<EngineInfo>('/api/engine-info');
+  return get('/api/engine-info', engineInfoSchema);
 }
 
 /** Static evaluation and material balance. */
 export function fetchEval(): Promise<EvalInfo> {
-  return get<EvalInfo>('/api/evaluate');
+  return get('/api/evaluate', evalInfoSchema);
 }
 
 /** Liveness probe / server discovery. */
 export function health(): Promise<HealthInfo> {
-  return get<HealthInfo>('/api/health');
+  return get('/api/health', healthInfoSchema);
 }
 
 export type { SearchStats };

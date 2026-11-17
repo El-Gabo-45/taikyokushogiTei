@@ -17,7 +17,7 @@ pub mod types;
 
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
-use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -203,13 +203,19 @@ pub fn new_state() -> Arc<AppState> {
 /// The network is stored in the game state (not just on the initial board) so
 /// it survives `new game`, TSFEN loads and undo.
 pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
+    // Invalid environment configuration must abort startup, never degrade the
+    // CORS policy (same policy as the TAIKYOKU_NET/bind handling in `run`).
+    let cors_origins = match cors_origins_env() {
+        Ok(origins) => origins,
+        Err(msg) => panic!("invalid TAIKYOKU_CORS_ORIGIN: {msg}"),
+    };
     new_state_with_config(
         net,
         AppStateConfig {
             sessions: sessions_enabled(),
             max_sessions: max_sessions(),
             anon: anon_policy_env(),
-            cors_origins: cors_origins_env(),
+            cors_origins,
         },
     )
 }
@@ -259,16 +265,51 @@ pub fn anon_policy_env() -> AnonPolicy {
         .unwrap_or_default()
 }
 
-fn cors_origins_env() -> Vec<String> {
-    std::env::var("TAIKYOKU_CORS_ORIGIN")
-        .map(|v| {
-            v.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
+/// CORS origins from `TAIKYOKU_CORS_ORIGIN` (comma-separated). Unset or empty
+/// means "no restriction": the layer mirrors the request origin (the
+/// permissive default for local use). Every entry must be a valid origin
+/// (`scheme://host[:port]`) — a malformed value is a fatal configuration
+/// error, so a public deployment can never silently degrade to the permissive
+/// default (the caller aborts startup on `Err`).
+fn cors_origins_env() -> Result<Vec<String>, String> {
+    let Some(raw) = std::env::var("TAIKYOKU_CORS_ORIGIN").ok() else {
+        return Ok(Vec::new());
+    };
+    let mut origins = Vec::new();
+    for entry in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        parse_cors_origin(entry)?;
+        origins.push(entry.to_string());
+    }
+    Ok(origins)
+}
+
+/// Validate one CORS origin: `scheme://host[:port]` with an `http`/`https`
+/// scheme and no path, query or fragment (CORS origins never carry one).
+fn parse_cors_origin(origin: &str) -> Result<(), String> {
+    let invalid = |why: &str| {
+        format!(
+            "invalid origin `{origin}` ({why}); expected \
+             `scheme://host[:port]`, e.g. `https://example.com`"
+        )
+    };
+    let Some((scheme, rest)) = origin.split_once("://") else {
+        return Err(invalid("missing `scheme://` prefix"));
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return Err(invalid("scheme must be http or https"));
+    }
+    if rest.is_empty() || rest.starts_with(':') {
+        return Err(invalid("empty host"));
+    }
+    if rest.contains(['/', '?', '#']) {
+        return Err(invalid("origins never contain a path, query or fragment"));
+    }
+    // Header values must be visible ASCII; this also covers spaces, tabs and
+    // control bytes, which no origin contains.
+    if origin.bytes().any(|b| !(0x21..=0x7E).contains(&b)) {
+        return Err(invalid("only visible ASCII characters are allowed"));
+    }
+    Ok(())
 }
 
 // ============================================================
@@ -641,6 +682,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// for local use). A non-empty origin list restricts responses to those
 /// exact origins instead — recommended together with session mode for
 /// public deployments (`TAIKYOKU_CORS_ORIGIN`, comma-separated).
+///
+/// Environment origins are validated in [`cors_origins_env`] (a malformed
+/// value aborts startup), so the `mirror_request` fallback below is only
+/// reached when *no* origin was configured. Explicit configs (tests and
+/// embedders) are trusted: an entry that still fails to parse is skipped.
 fn cors_layer(origins: &[String]) -> CorsLayer {
     let parsed: Vec<HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
     let allow_origin = if parsed.is_empty() {
@@ -745,7 +791,8 @@ async fn serve_frontend() -> impl IntoResponse {
 /// hand-crafted evaluator. Set `TAIKYOKU_SESSIONS=1` to give every visitor
 /// an isolated game instead of one shared board (see [`AppState`]), with
 /// `TAIKYOKU_MAX_SESSIONS` capping the live games, `TAIKYOKU_CORS_ORIGIN`
-/// restricting the CORS policy to exact origins and `TAIKYOKU_ANON` choosing
+/// restricting the CORS policy to exact origins (a malformed value aborts
+/// startup) and `TAIKYOKU_ANON` choosing
 /// what id-less `/api/*` requests get (default `auto`: a fresh session).
 pub async fn run() {
     let net = match std::env::var("TAIKYOKU_NET")
@@ -792,4 +839,48 @@ pub async fn run_with_network(net: Option<Arc<Network>>) {
     axum::serve(listener, build_router(new_state_with_network(net)))
         .await
         .unwrap();
+}
+
+#[cfg(test)]
+mod cors_config_tests {
+    use super::*;
+
+    #[test]
+    fn cors_origin_parser_accepts_valid_origins() {
+        for good in [
+            "https://example.com",
+            "http://localhost:8000",
+            "http://127.0.0.1",
+            "HTTPS://Example.com:443",
+        ] {
+            assert!(parse_cors_origin(good).is_ok(), "`{good}` must be accepted");
+        }
+    }
+
+    #[test]
+    fn cors_origin_parser_rejects_malformed_values() {
+        for bad in [
+            "example.com",
+            "//example.com",
+            "ftp://example.com",
+            "https://",
+            "https://:8443",
+            "https://example.com/",
+            "https://example.com/path",
+            "https://example.com?x=1",
+            "https://example.com#frag",
+            "https://exa mple.com",
+            "https://example.com ",
+            "",
+        ] {
+            assert!(parse_cors_origin(bad).is_err(), "`{bad}` must be rejected");
+        }
+    }
+
+    #[test]
+    fn cors_env_reports_the_offending_entry() {
+        // The error must point at the malformed entry, not drop it silently.
+        let err = parse_cors_origin("htp:/oops").unwrap_err();
+        assert!(err.contains("htp:/oops"), "error names the entry: {err}");
+    }
 }

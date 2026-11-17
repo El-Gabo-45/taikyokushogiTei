@@ -494,7 +494,7 @@ pub fn explain(board: &crate::Board) -> Option<NnueExplain> {
     let state = b.nnue.as_deref()?;
     let net = &state.net;
     let stm = b.side_to_move;
-    let pieces = [b.piece_count[0] as usize, b.piece_count[1] as usize];
+    let pieces = [b.piece_count[0], b.piece_count[1]];
     let bucket = net.bucket(pieces[0] + pieces[1]);
 
     let acc = [acc_stats(&state.acc.acc[0]), acc_stats(&state.acc.acc[1])];

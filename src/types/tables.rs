@@ -101,9 +101,9 @@ fn zobrist_table() -> &'static ZobristTable {
         };
         // 512 slots: pt*2 + color, covers all piece types + promotions for both sides
         let mut piece_keys = vec![[0u64; NUM_SQUARES]; 512];
-        for pt in 0..512 {
-            for sq in 0..NUM_SQUARES {
-                piece_keys[pt][sq] = rng();
+        for row in piece_keys.iter_mut() {
+            for key in row.iter_mut() {
+                *key = rng();
             }
         }
         ZobristTable {

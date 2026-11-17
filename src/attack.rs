@@ -409,6 +409,9 @@ fn can_promote(pt: u16) -> bool {
 }
 
 #[inline]
+// Hot movegen path: the eight scalars are passed by value on purpose; a
+// parameters struct would add indirection without helping readability.
+#[allow(clippy::too_many_arguments)]
 fn walk_ray_captures(
     board: &Board,
     rt: &RayTable,
@@ -425,8 +428,8 @@ fn walk_ray_captures(
     } else {
         (max_range as usize).min(ray.len())
     };
-    for j in 0..limit {
-        let rsq = ray[j] as usize;
+    for &rsq_raw in ray.iter().take(limit) {
+        let rsq = rsq_raw as usize;
         let target = board.cells[rsq];
         if target == EMPTY_CELL {
             // Non-capturing promotion: only include if entering promo zone.
@@ -516,6 +519,8 @@ fn push_move_igui(
 }
 
 #[inline]
+// Hot movegen path: see walk_ray_captures for why the signature stays flat.
+#[allow(clippy::too_many_arguments)]
 fn walk_ray(
     board: &Board,
     rt: &RayTable,
@@ -532,8 +537,8 @@ fn walk_ray(
     } else {
         (max_range as usize).min(ray.len())
     };
-    for j in 0..limit {
-        let rsq = ray[j] as usize;
+    for &rsq_raw in ray.iter().take(limit) {
+        let rsq = rsq_raw as usize;
         let target = board.cells[rsq];
         if target == EMPTY_CELL {
             push_move(moves, sq as u16, rsq as u16, pt, color, EMPTY_CELL);
@@ -549,6 +554,8 @@ fn walk_ray(
 /// Like [`walk_ray`] but only emits non-capturing (quiet) moves: stops at the
 /// first occupied square of either color, never emits captures.
 #[inline]
+// Hot movegen path: see walk_ray_captures for why the signature stays flat.
+#[allow(clippy::too_many_arguments)]
 fn walk_ray_quiets(
     board: &Board,
     rt: &RayTable,
@@ -565,8 +572,8 @@ fn walk_ray_quiets(
     } else {
         (max_range as usize).min(ray.len())
     };
-    for j in 0..limit {
-        let rsq = ray[j] as usize;
+    for &rsq_raw in ray.iter().take(limit) {
+        let rsq = rsq_raw as usize;
         let target = board.cells[rsq];
         if target == EMPTY_CELL {
             push_move(moves, sq as u16, rsq as u16, pt, color, EMPTY_CELL);

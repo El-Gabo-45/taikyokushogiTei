@@ -136,7 +136,7 @@ export function render(ctx: CanvasRenderingContext2D, opts: RenderOptions): void
   const symbolFont = Math.max(7, Math.round(cell * 0.34));
   for (let br = 0; br < BOARD_SIZE; br++) {
     for (let bc = 0; bc < BOARD_SIZE; bc++) {
-      const piece: CellData | null = state.board[br][bc];
+      const piece: CellData | null = state.board[br]?.[bc] ?? null;
       if (!piece) continue;
 
       const [vr, vc] = toViewSquare([br, bc], flip);

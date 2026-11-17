@@ -225,8 +225,8 @@ use crate::board;
 use crate::movegen;
 use crate::pieces;
 use crate::types::{
-    cell_color, cell_piece, make_cell, GameResult, Move, BLACK, DRAW_PLIES, EMPTY_CELL, INVALID_SQ,
-    NUM_SQUARES, WHITE,
+    BLACK, DRAW_PLIES, EMPTY_CELL, GameResult, INVALID_SQ, Move, NUM_SQUARES, WHITE, cell_color,
+    cell_piece, make_cell,
 };
 
 type IntBoard = board::Board;
@@ -640,8 +640,7 @@ fn exhaustive_apply_undo_initial() {
 fn material_score_matches_piece_sum() {
     let mut b = initial_int();
     let mut rng = Lcg(0xFACE);
-    let mut check = 0;
-    for _ in 0..26 {
+    for check in 0..26 {
         let mut sum = 0i32;
         for sq in 0..NUM_SQUARES {
             let cell = b.cells[sq];
@@ -656,10 +655,8 @@ fn material_score_matches_piece_sum() {
         }
         assert_eq!(
             b.material_score, sum,
-            "incremental material diverged (check {})",
-            check
+            "incremental material diverged (check {check})"
         );
-        check += 1;
         let moves = movegen::generate_legal_moves(&b);
         if moves.is_empty() {
             break;

@@ -3,11 +3,11 @@ use crate::board::Board;
 use crate::search::search;
 use crate::types::*;
 
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 
-use crossbeam::channel::{bounded, Receiver, Sender};
+use crossbeam::channel::{Receiver, Sender, bounded};
 
 #[derive(Debug, Clone)]
 pub struct SelfPlayConfig {

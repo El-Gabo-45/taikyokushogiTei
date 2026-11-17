@@ -25,7 +25,7 @@ use super::params::{self, SearchConfig};
 use super::qsearch;
 use super::tt::{self, Tt};
 use crate::board::Board;
-use crate::eval::{evaluate, MATE_SCORE};
+use crate::eval::{MATE_SCORE, evaluate};
 use crate::types::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -154,11 +154,7 @@ impl<'a> Ctx<'a> {
         self.board.null_move();
         let null_score = -self.pvs(d.saturating_sub(r), -beta, -(beta - 1));
         self.board.undo_null_move();
-        if null_score >= beta {
-            Some(beta)
-        } else {
-            None
-        }
+        if null_score >= beta { Some(beta) } else { None }
     }
 
     /// Static-eval prune (depth ≥ 4): if the static eval is far enough below
@@ -612,7 +608,7 @@ impl<'a> Ctx<'a> {
                     // Coherence: tt_pack overrides this field with the ACTIVE
                     // generation, so a hardcoded 0 had no packed effect — but an
                     // inspected struct must not lie. Set the real generation.
-                    generation: self.tt.gen(),
+                    generation: self.tt.generation(),
                     best_move: best_packed,
                     in_check: false, // no such thing as check in Taikyoku
                 },

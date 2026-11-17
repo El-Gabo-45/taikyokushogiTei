@@ -124,7 +124,11 @@ fn cmd_gen_classes(args: &[String]) {
         eval_limit,
         classes::num_classes(&map),
         cm.join(", "),
-        classes::class_values(&map).iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "),
+        classes::class_values(&map)
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
         th.join(", ")
     );
     ArchSpec::from_json(&json).unwrap_or_else(|e| die(format!("generated arch is invalid: {e}")));
@@ -307,7 +311,7 @@ fn cmd_explain(args: &[String]) {
             } else {
                 "raw"
             },
-            hex(net.arch_hash())[..16].to_string()
+            &hex(net.arch_hash())[..16]
         ),
     );
     explain_line("position", &board.to_tsfen());

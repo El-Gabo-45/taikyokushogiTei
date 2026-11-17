@@ -710,7 +710,7 @@ impl Board {
         let moves = movegen::generate_legal_moves(&self.inner);
         let mut found: Option<&types::Move> = None;
         for m in &moves {
-            let mid_match = mid_sq.map_or(true, |ms| m.mid_sq as usize == ms);
+            let mid_match = mid_sq.is_none_or(|ms| m.mid_sq as usize == ms);
             if m.from_sq == from_sq && m.to_sq == to_sq && m.promotion == promotion && mid_match {
                 if found.is_some() {
                     return Err(MoveError::Ambiguous);

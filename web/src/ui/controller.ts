@@ -145,7 +145,7 @@ export class Controller {
     if (!board || !this.state.selectedSq) return;
     const [fr, fc] = this.state.selectedSq;
 
-    let target: MoveData | null = matches[0];
+    let target: MoveData | null = matches[0] ?? null;
     if (matches.length > 1) {
       const choices = matches.map((m, i) => ({
         label: describeMove(m, i),

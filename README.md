@@ -28,7 +28,7 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
   required because `Cargo.lock` is written in version 4 format.
 - **Node.js + npm** only if you want to rebuild the `web/` frontend
   (TypeScript + Vite; a prebuilt `dist/` is committed).
-- **Python 3.9+** only for the NNUE training pipeline in `training/` (see
+- **Python 3.11+** only for the NNUE training pipeline in `training/` (see
   [training/README.md](training/README.md)).
 
 ### Prebuilt binaries
@@ -76,6 +76,9 @@ note that the GPU features currently have no consuming code.
 pip install maturin
 maturin build --release --features python
 ```
+
+The root `pyproject.toml` declares the maturin build backend, so
+`pip install .` produces the same wheel.
 
 **Web frontend (optional):** the compiled `web/dist/` is tracked in git
 (`!web/dist/` in `.gitignore`), so the server runs without npm. Rebuild it

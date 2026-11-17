@@ -9,8 +9,8 @@
 //! maintains incremental PSQT scores this way.
 
 #![allow(dead_code)] // utility/debug API kept intentionally
-use crate::eval::families::family_value_fast;
 use crate::eval::families::Family;
+use crate::eval::families::family_value_fast;
 use crate::eval::zones::Zone;
 use crate::pieces;
 use crate::types::*;
@@ -70,9 +70,9 @@ pub fn psqt(pt: u16, sq: usize, color: u8) -> i32 {
         // Box<[[[..]; NUM_SQUARES]]> without any large stack temporaries.
         let mut table: Vec<[[i32; 2]; NUM_SQUARES]> = vec![[[0i32; 2]; NUM_SQUARES]; 512];
         for pt in 1..=301u16 {
-            for sq in 0..NUM_SQUARES {
-                for color in 0..2u8 {
-                    table[pt as usize][sq][color as usize] = psqt_value(pt, sq, color);
+            for (sq, colors) in table[pt as usize].iter_mut().enumerate() {
+                for (color, entry) in colors.iter_mut().enumerate() {
+                    *entry = psqt_value(pt, sq, color as u8);
                 }
             }
         }

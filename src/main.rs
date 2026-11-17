@@ -22,12 +22,15 @@ async fn main() {
 /// Minimal flag handling: everything else is configured through the
 /// `TAIKYOKU_*` environment variables (see README / docs/WEB.md). Flags
 /// override the variables of their kind.
+//
+// Edition 2024 makes `std::env::set_var` unsafe (it is not thread-safe).
+// These writes run single-threaded at startup, before any threads exist.
 fn apply_flags() {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             // Per-session game state: every visitor gets an isolated game.
-            "--sessions" => std::env::set_var("TAIKYOKU_SESSIONS", "1"),
+            "--sessions" => unsafe { std::env::set_var("TAIKYOKU_SESSIONS", "1") },
             // Anonymous-request policy for session mode (auto|error|shared).
             "--anon" => {
                 if let Some(v) = args.next() {
@@ -35,7 +38,7 @@ fn apply_flags() {
                         eprintln!("invalid --anon value: {v} (expected auto|error|shared)");
                         std::process::exit(2);
                     }
-                    std::env::set_var("TAIKYOKU_ANON", v);
+                    unsafe { std::env::set_var("TAIKYOKU_ANON", v) };
                 } else {
                     eprintln!("--anon requires a value (auto|error|shared)");
                     std::process::exit(2);
@@ -43,12 +46,12 @@ fn apply_flags() {
             }
             "--bind" => {
                 if let Some(v) = args.next() {
-                    std::env::set_var("TAIKYOKU_BIND", v);
+                    unsafe { std::env::set_var("TAIKYOKU_BIND", v) };
                 }
             }
             "--net" => {
                 if let Some(v) = args.next() {
-                    std::env::set_var("TAIKYOKU_NET", v);
+                    unsafe { std::env::set_var("TAIKYOKU_NET", v) };
                 }
             }
             "--help" | "-h" => {

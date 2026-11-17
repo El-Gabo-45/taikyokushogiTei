@@ -145,7 +145,8 @@ fn search_config_all_toggles_work() {
     assert!(r.best_move.is_some());
 
     // Disable each technique one at a time — none may crash.
-    let techniques: Vec<(fn(&mut SearchConfig), &'static str)> = vec![
+    type Technique = (fn(&mut SearchConfig), &'static str);
+    let techniques: Vec<Technique> = vec![
         (|c| c.razoring = false, "razoring"),
         (|c| c.reverse_futility = false, "rfp"),
         (|c| c.futility = false, "futility"),

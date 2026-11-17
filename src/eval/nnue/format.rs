@@ -21,7 +21,7 @@
 use std::fmt;
 
 use super::arch::{ArchSpec, NUM_THRESHOLDS};
-use super::{Network, H1, H2, L1, MAX_BOARD_PIECES, NSQ, OUT_BUCKETS};
+use super::{H1, H2, L1, MAX_BOARD_PIECES, NSQ, Network, OUT_BUCKETS};
 
 pub const MAGIC: &[u8; 4] = b"TKN1";
 /// zstd frame magic (`0xFD2FB528` little-endian).

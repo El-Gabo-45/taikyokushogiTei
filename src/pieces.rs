@@ -2493,11 +2493,7 @@ pub fn promotes_to(pt: u16) -> Option<u16> {
         return None;
     }
     let p = s.promotes_to[pt as usize];
-    if p == 0 {
-        None
-    } else {
-        Some(p)
-    }
+    if p == 0 { None } else { Some(p) }
 }
 
 pub fn movement(pt: u16) -> &'static Movement {

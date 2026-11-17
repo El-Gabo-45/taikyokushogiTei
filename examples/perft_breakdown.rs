@@ -1,6 +1,6 @@
 //! Breaks down perft(1) from the initial position by piece type and checks
 use std::collections::HashMap;
-use taikyokushogi::{piece_info, Board};
+use taikyokushogi::{Board, piece_info};
 
 fn main() {
     let board = Board::initial();

@@ -15,9 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
-
 import dataset
+import numpy as np
 from arch import OUT_BUCKETS
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,7 +31,10 @@ def thresholds_from(npieces, min_share=0.05):
         if th[i] <= th[i - 1]:
             th[i] = th[i - 1] + 1
     edges = [0] + th + [10 ** 9]
-    shares = [float(((npieces >= a) & (npieces < b)).mean()) for a, b in zip(edges[:-1], edges[1:])]
+    shares = [
+        float(((npieces >= a) & (npieces < b)).mean())
+        for a, b in zip(edges[:-1], edges[1:], strict=False)
+    ]
     return th, shares, all(s >= min_share for s in shares)
 
 

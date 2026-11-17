@@ -49,7 +49,7 @@ export function openChoiceModal<T>(
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'modal-option';
-      button.dataset.index = String(index);
+      button.dataset['index'] = String(index);
 
       const label = document.createElement('span');
       label.className = 'modal-option-label';

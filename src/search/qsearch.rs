@@ -12,7 +12,7 @@ use super::ordering::{self, piece_vals};
 use super::params;
 use super::pvs::Ctx;
 use super::tt;
-use crate::eval::{evaluate, MATE_SCORE};
+use crate::eval::{MATE_SCORE, evaluate};
 use crate::types::*;
 
 /// Quiescence entry (qd = 0 from the main search).
@@ -138,7 +138,7 @@ impl<'a> Ctx<'a> {
                     score: alpha,
                     depth: 0,
                     flag: if alpha <= init_q_alpha { 2 } else { 0 },
-                    generation: self.tt.gen(),
+                    generation: self.tt.generation(),
                     best_move: 0,
                     // Taikyoku has no check (SPEC §7.3) — always false.
                     in_check: false,

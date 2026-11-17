@@ -7,8 +7,7 @@ output bucket, and truncating division (toward zero) like Rust's `/`.
 """
 
 import numpy as np
-
-from arch import FT_SHIFT, FV_SCALE, L1, OUT_BUCKETS
+from arch import FT_SHIFT, FV_SCALE
 from features import feature_indices
 
 

@@ -1,0 +1,73 @@
+# Python packaging + tooling configuration.
+#
+# The crate doubles as a Python extension module (`python` Cargo feature,
+# built with maturin — see README "Python bindings"). This file makes
+# `pip install .` / `maturin build` work out of the box and centralises the
+# lint/type-check settings for the NNUE training pipeline in `training/`.
+#
+# Training-pipeline runtime dependencies (torch, numpy) are NOT listed in
+# [project] dependencies: they belong to `training/requirements.txt`, which
+# training/README.md documents.
+
+[build-system]
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "taikyokushogi"
+description = "Taikyoku Shogi engine — the largest known shogi variant (36x36 board, 804 pieces, 301 piece types) with Python bindings"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = [{ name = "El-Gabo-45" }]
+requires-python = ">=3.11"
+keywords = [
+    "shogi",
+    "taikyoku",
+    "board-game",
+    "chess-variant",
+    "game-engine",
+    "nnue",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Rust",
+    "Topic :: Games/Entertainment :: Board Games",
+]
+# The version comes from Cargo.toml (maturin supplies it), so there is a
+# single source of truth for the release number.
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/El-Gabo-45/taikyokushogiTei"
+
+[tool.maturin]
+# Bindings are always built with the `python` feature (redundant but
+# harmless when passing --features python on the command line).
+features = ["python"]
+
+# ── Ruff (linter for training/) ────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort (import order)
+    "UP", # pyupgrade (targeting Python 3.11)
+    "B",  # flake8-bugbear (likely bugs)
+]
+# E501 (line length) is intentionally not enforced: the training scripts keep
+# long help strings, error messages and f-prints unwrapped — the same policy
+# markdownlint follows here (MD013 disabled).
+ignore = ["E501"]
+
+# ── Pyright (type checking for training/) ─────────────────────
+[tool.pyright]
+include = ["training"]
+typeCheckingMode = "basic"
+pythonVersion = "3.11"

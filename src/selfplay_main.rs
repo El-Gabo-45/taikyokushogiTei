@@ -1,4 +1,4 @@
-use taikyokushogi::selfplay::{run_selfplay, SelfPlayConfig};
+use taikyokushogi::selfplay::{SelfPlayConfig, run_selfplay};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

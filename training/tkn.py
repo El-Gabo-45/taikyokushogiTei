@@ -14,7 +14,6 @@ import struct
 from dataclasses import dataclass
 
 import numpy as np
-
 from arch import H1, H2, L1, OUT_BUCKETS
 
 MAGIC = b"TKN1"

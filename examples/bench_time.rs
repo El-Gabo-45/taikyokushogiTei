@@ -27,7 +27,12 @@ fn run(depth: u32, limit_ms: u64, n_moves: usize) {
     let overshoot = max_move_ms - limit_ms as f64;
     println!(
         "depth={:<2} limit={:>4}ms  moves={:<3} total={:>7.0}ms  max_single_move={:>7.1}ms  overshoot={:>+7.1}ms",
-        depth, limit_ms, played, t.elapsed().as_secs_f64() * 1000.0, max_move_ms, overshoot
+        depth,
+        limit_ms,
+        played,
+        t.elapsed().as_secs_f64() * 1000.0,
+        max_move_ms,
+        overshoot
     );
 }
 

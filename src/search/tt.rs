@@ -118,13 +118,13 @@ const TT_MOVE_MASK: u64 = (1 << 25) - 1;
 const TT_CHECK_MASK: u64 = 1 << 25;
 
 #[inline]
-pub(crate) fn tt_pack(entry: &TTEntry, gen: u8) -> u64 {
+pub(crate) fn tt_pack(entry: &TTEntry, generation: u8) -> u64 {
     let sc = entry.score.clamp(-32000, 32000) as i16 as u16;
     let mv = entry.best_move & (TT_MOVE_MASK as u32);
     ((sc as u64) << 48)
         | ((entry.depth as u64 & 0x7F) << 41)
         | ((entry.flag as u64 & 0x03) << 39)
-        | ((gen as u64) << 31)
+        | ((generation as u64) << 31)
         | if entry.in_check { TT_CHECK_MASK } else { 0 }
         | (mv as u64)
 }
@@ -146,7 +146,7 @@ impl Tt {
     /// generations lose the replacement race, achieving aging without
     /// clearing the table.
     #[inline]
-    pub fn gen(&self) -> u8 {
+    pub fn generation(&self) -> u8 {
         (self.generation.load(Ordering::Relaxed) & 0xFF) as u8
     }
 
@@ -221,7 +221,7 @@ impl Tt {
         // Pin BOTH the generation and the table for the whole write: a
         // concurrent `resize_mb` would otherwise install a fresh table whose
         // generation counter is unrelated to the entries we compare against.
-        let gen = self.gen();
+        let generation = self.generation();
         let guard = self.read_table();
         let table: &TtStorage = guard.as_ref();
         let base = bucket_index(hash, table.buckets);
@@ -237,7 +237,8 @@ impl Tt {
                 break;
             }
             let old = tt_unpack(t[idx + 1].load(Ordering::Relaxed));
-            let score = ((old.depth as i32) << 16) - (gen.wrapping_sub(old.generation) as i32);
+            let score =
+                ((old.depth as i32) << 16) - (generation.wrapping_sub(old.generation) as i32);
             if score < replace_score {
                 replace_score = score;
                 replace_idx = idx;
@@ -248,7 +249,7 @@ impl Tt {
         // Publish data BEFORE the hash, both with Release: a reader that
         // observes the hash (Acquire) is guaranteed to see at least this data
         // snapshot, never a torn mix of old and new entries.
-        t[replace_idx + 1].store(tt_pack(&entry, gen), Ordering::Release);
+        t[replace_idx + 1].store(tt_pack(&entry, generation), Ordering::Release);
         t[replace_idx].store(hash, Ordering::Release);
     }
 }
@@ -269,7 +270,7 @@ mod tests {
             score: 1234,
             depth: 8,
             flag: 1,
-            generation: 0, // ignored by tt_pack — the gen parameter wins
+            generation: 0, // ignored by tt_pack — the generation parameter wins
             best_move: 0x1234,
             in_check: true,
         };

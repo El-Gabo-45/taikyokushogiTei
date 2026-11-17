@@ -14,9 +14,8 @@ whose score is not a mate score).
 import argparse
 import sys
 
-import numpy as np
-
 import dataset
+import numpy as np
 
 SLOPE_RANGE = (0.8, 1.25)
 MIN_CORR = 0.9

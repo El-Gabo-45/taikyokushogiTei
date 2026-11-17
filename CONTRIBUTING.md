@@ -24,9 +24,9 @@ in the parent module's `mod.rs`.
 ## Development requirements
 
 - Install Rust via `rustup` and use the stable toolchain.
-- Style: match the surrounding code. The historical codebase is **not**
-  rustfmt-clean, so do *not* run `cargo fmt` across the tree (it would
-  reformat hundreds of unrelated lines); format only the code you touch.
+- Style: match the surrounding code. The tree is **rustfmt-clean** and CI
+  enforces it with `cargo fmt --check`, so running `cargo fmt` is safe;
+  format the code you touch before committing.
 
 Before submitting a PR
 

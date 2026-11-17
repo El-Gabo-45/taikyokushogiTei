@@ -23,7 +23,7 @@
 //! redundancy; a rotation means worker *i* dives into a different (still
 //! playable) move first, which is where the TT-filling diversity comes from.
 
-use super::{deadline_from, Searcher};
+use super::{Searcher, deadline_from};
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 
 /// Best completed iteration published by any worker of a search group.

@@ -230,7 +230,9 @@ fn main() {
     println!("  • Move generation iterates all ~402 pieces per side");
     println!("  • No check rule: movegen never filters self-checks (king may move into danger)");
     println!("  • Search uses PVS + TT + killers + history + LMR + NMP");
-    println!("  • Lazy SMP is opt-in (CLI --threads / setoption threads / search_threads); default = 1 thread");
+    println!(
+        "  • Lazy SMP is opt-in (CLI --threads / setoption threads / search_threads); default = 1 thread"
+    );
     println!();
     println!("  Expected bottlenecks (by cost):");
     println!("    1. movegen (generate_pseudo_legal_moves): O(pieces × rays)");

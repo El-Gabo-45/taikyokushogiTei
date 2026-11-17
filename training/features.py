@@ -11,7 +11,6 @@ parity gate (parity_gate.py) checks this on thousands of positions.
 """
 
 import numpy as np
-
 from arch import NSQ
 
 

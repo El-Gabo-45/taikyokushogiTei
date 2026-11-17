@@ -135,18 +135,10 @@ fn file_char(col: usize) -> char {
 fn parse_file(c: char) -> Option<usize> {
     if c.is_ascii_lowercase() {
         let v = c as usize - 'a' as usize;
-        if v < 26 {
-            Some(v)
-        } else {
-            None
-        }
+        if v < 26 { Some(v) } else { None }
     } else if c.is_ascii_uppercase() {
         let v = c as usize - 'A' as usize;
-        if v < 10 {
-            Some(v + 26)
-        } else {
-            None
-        }
+        if v < 10 { Some(v + 26) } else { None }
     } else {
         None
     }
@@ -962,7 +954,9 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         "match" => {
             // match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N] [open K] [seed S]
             if rest.len() < 3 {
-                println!("error: usage `match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N] [open K] [seed S]`");
+                println!(
+                    "error: usage `match <games> <depthA> <depthB> [movetime MS] [maxplies N] [threadsA N] [threadsB N] [open K] [seed S]`"
+                );
                 return true;
             }
             let games: usize = rest[0].parse().unwrap_or(10);
@@ -971,10 +965,22 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             let kw = parse_match_keywords(&rest[3..]);
             let movetime = kw.movetime.unwrap_or(0);
             let max_plies = kw.max_plies.unwrap_or(400);
-            println!("match: {} games — A depth {} ({} threads) vs B depth {} ({} threads) (movetime {}ms, max plies {}{}, seed {})",
-                     games, da, kw.threads_a, db, kw.threads_b, movetime, max_plies,
-                     if kw.opening.is_some() { format!(", {} random opening plies", kw.opening.unwrap()) } else { String::new() },
-                     kw.seed.unwrap_or(0x9E37_79B9_7F4A_7C15));
+            println!(
+                "match: {} games — A depth {} ({} threads) vs B depth {} ({} threads) (movetime {}ms, max plies {}{}, seed {})",
+                games,
+                da,
+                kw.threads_a,
+                db,
+                kw.threads_b,
+                movetime,
+                max_plies,
+                if let Some(opening) = kw.opening {
+                    format!(", {opening} random opening plies")
+                } else {
+                    String::new()
+                },
+                kw.seed.unwrap_or(0x9E37_79B9_7F4A_7C15)
+            );
             let cfg = MatchConfig {
                 games,
                 a: EngineConfig {
@@ -1010,8 +1016,17 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 .or_else(|| rest.get(5).and_then(|s| s.parse().ok()))
                 .unwrap_or(0);
             let max_plies = kw.max_plies.unwrap_or(400);
-            println!("SPRT: H0 ≤ {:+.0} vs H1 ≥ {:+.0}, max {} games (A depth {} {} threads, B depth {} {} threads, {} random opening plies)",
-                     elo0, elo1, games, da, kw.threads_a, db, kw.threads_b, kw.opening.unwrap_or(0));
+            println!(
+                "SPRT: H0 ≤ {:+.0} vs H1 ≥ {:+.0}, max {} games (A depth {} {} threads, B depth {} {} threads, {} random opening plies)",
+                elo0,
+                elo1,
+                games,
+                da,
+                kw.threads_a,
+                db,
+                kw.threads_b,
+                kw.opening.unwrap_or(0)
+            );
             let cfg = MatchConfig {
                 games,
                 a: EngineConfig {
@@ -1057,9 +1072,12 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     "hand-crafted"
                 }
             );
-            println!("  search: threads {}..={} (setoption threads <N>), hash {}MiB (setoption hash <MiB>)",
-                     taikyokushogi::search::DEFAULT_THREADS, taikyokushogi::search::MAX_THREADS,
-                     taikyokushogi::search::hash_mb());
+            println!(
+                "  search: threads {}..={} (setoption threads <N>), hash {}MiB (setoption hash <MiB>)",
+                taikyokushogi::search::DEFAULT_THREADS,
+                taikyokushogi::search::MAX_THREADS,
+                taikyokushogi::search::hash_mb()
+            );
         }
         "go" => {
             // inline overrides: `go depth 5` / `go movetime 1000` / `go threads 4`
@@ -1178,7 +1196,9 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         }
         "setoption" => {
             if rest.len() < 2 {
-                println!("error: `setoption depth <N>` | `setoption movetime <MS>` | `setoption threads <N>` | `setoption hash <MiB>` | `setoption net <path|none>`");
+                println!(
+                    "error: `setoption depth <N>` | `setoption movetime <MS>` | `setoption threads <N>` | `setoption hash <MiB>` | `setoption net <path|none>`"
+                );
                 return true;
             }
             let key = rest[0].to_ascii_lowercase();

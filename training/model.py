@@ -16,7 +16,6 @@ Everything is trained in the engine's own evaluation units.
 
 import torch
 import torch.nn as nn
-
 from arch import FT_SCALE, FV_SCALE, H1, H2, L1, NSQ, OUT_BUCKETS
 
 

@@ -1,6 +1,6 @@
 use super::*;
-use crate::eval::nnue::format::{MAGIC, VERSION, ZSTD_MAGIC};
 use crate::Board as PubBoard;
+use crate::eval::nnue::format::{MAGIC, VERSION, ZSTD_MAGIC};
 
 fn net() -> Arc<Network> {
     Arc::new(Network::random(42))
@@ -554,7 +554,9 @@ fn lion_and_igui_moves_keep_the_accumulator_exact() {
             );
         }
     }
-    eprintln!("lion/igui exhaustive: {tested_pieces} piece types, {total_moves} moves, kinds [capture, mid, range, promo, igui] = {kinds:?}");
+    eprintln!(
+        "lion/igui exhaustive: {tested_pieces} piece types, {total_moves} moves, kinds [capture, mid, range, promo, igui] = {kinds:?}"
+    );
     assert!(tested_pieces >= 4);
     assert!(kinds[1] > 0, "no lion mid-capture was exercised");
     assert!(kinds[4] > 0, "no igui was exercised");

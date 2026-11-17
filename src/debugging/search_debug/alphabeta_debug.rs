@@ -18,6 +18,9 @@ pub struct AlphaBetaDebugFrame {
 }
 
 /// Construye un resumen corto para inspección de la rama actual.
+// Espeja el marco de la búsqueda: una struct con los escalares no reduciría
+// los valores pasados en los puntos de llamada.
+#[allow(clippy::too_many_arguments)]
 pub fn debug_alphabeta_frame(
     board: &Board,
     depth: u32,
@@ -49,6 +52,7 @@ pub fn debug_alphabeta_frame(
 }
 
 /// Formato legible para log o depuración interactiva.
+#[allow(clippy::too_many_arguments)]
 pub fn format_alphabeta_debug(
     board: &Board,
     depth: u32,

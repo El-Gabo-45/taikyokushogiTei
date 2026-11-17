@@ -40,11 +40,11 @@ use self::root::RootState;
 use self::smp::SharedBest;
 use self::tt::Tt;
 use crate::board::Board;
-use crate::eval::{evaluate, MATE_SCORE};
+use crate::eval::{MATE_SCORE, evaluate};
 use crate::types::Move;
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 /// Result of a completed search.
@@ -506,8 +506,8 @@ pub use self::params::MAX_THREADS;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types;
     use crate::Board;
+    use crate::types;
 
     #[test]
     fn search_initial_reaches_depth_and_finds_a_move() {

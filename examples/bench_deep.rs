@@ -31,8 +31,14 @@ fn run(depth: u32, limit_ms: u64, n_moves: usize) {
     let total_s = t.elapsed().as_secs_f64();
     println!(
         "depth={:<2} limit={:>6}ms  moves={:<3} total={:>8.0}ms  max_move={:>8.1}ms  overshoot={:>+7.1}ms  nodes={:>10}  nps={:>9.0}",
-        depth, limit_ms, played, t.elapsed().as_secs_f64() * 1000.0, max_move_ms, overshoot,
-        total_nodes, total_nodes as f64 / total_s
+        depth,
+        limit_ms,
+        played,
+        t.elapsed().as_secs_f64() * 1000.0,
+        max_move_ms,
+        overshoot,
+        total_nodes,
+        total_nodes as f64 / total_s
     );
 }
 

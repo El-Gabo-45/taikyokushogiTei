@@ -84,6 +84,21 @@ jobs:
       - name: Build release binaries
         run: cargo build --release --bins --features server --target ${{ matrix.target }}
 
+      # Rebuild the frontend instead of packaging the committed web/dist —
+      # CI may have green for a dist that no longer matches the sources.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Rebuild the web frontend (fresh web/dist)
+        run: |
+          npm ci
+          npm run build
+        working-directory: ./web
+
       - name: Stage files
         id: stage-files
         shell: bash
@@ -123,7 +138,8 @@ jobs:
             cp -R LICENSES "$STAGE/LICENSES"
           done
 
-          # full and monolithic additionally carry the prebuilt web frontend.
+          # full and monolithic additionally carry the freshly built web
+          # frontend (rebuilt above, not the committed web/dist).
           for variant in full monolithic; do
             STAGE="${BASE}-${variant}"
             mkdir -p "$STAGE/web"

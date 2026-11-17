@@ -50,7 +50,7 @@ Settings (environment variables; the server binary also accepts `--sessions`,
 | `TAIKYOKU_SESSIONS` | unset | `1`/`true`/`on`/`yes` enables session mode |
 | `TAIKYOKU_ANON` | `auto` | Session-mode policy for id-less `/api/*` requests: `auto` mints a fresh session (cookie + `X-Session-Id`), `error` rejects with 400, `shared` serves the legacy shared board |
 | `TAIKYOKU_MAX_SESSIONS` | `64` | Live session games before the least recently used one is evicted (its next request simply starts a fresh game) |
-| `TAIKYOKU_CORS_ORIGIN` | *(mirror)* | Comma-separated exact origins to allow; unset = the CORS layer mirrors the request origin (permissive, fine locally) |
+| `TAIKYOKU_CORS_ORIGIN` | *(mirror)* | Comma-separated exact origins to allow (`scheme://host[:port]`); unset = the CORS layer mirrors the request origin (permissive, fine locally). A malformed value aborts startup instead of falling back to the permissive default |
 | `TAIKYOKU_BIND` | `127.0.0.1:8000` | Bind address |
 | `TAIKYOKU_NET` | *(none)* | NNUE network file, or `none` for the hand-crafted evaluator |
 | `TAIKYOKU_DIST` | `web/dist` | Frontend directory |

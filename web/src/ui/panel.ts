@@ -197,7 +197,8 @@ function drawScoreChart(history: number[]): void {
   ctx.stroke();
 
   const last = points[points.length - 1];
-  ctx.fillStyle = history[history.length - 1] >= 0 ? '#5cb85c' : '#d9534f';
+  if (!last) return;
+  ctx.fillStyle = (history[history.length - 1] ?? 0) >= 0 ? '#5cb85c' : '#d9534f';
   ctx.beginPath();
   ctx.arc(last.x, last.y, 2.5, 0, Math.PI * 2);
   ctx.fill();

@@ -104,11 +104,12 @@ const MOVE_LOG_RE =
 function parseMoveLogEntry(entry: string): ParsedMove | null {
   const match = MOVE_LOG_RE.exec(entry.trim());
   if (!match) return null;
+  // Capture groups 1–7 are mandatory in the regex, so they always participate.
   return {
     side: match[2] === 'Black' ? 'b' : 'w',
-    piece: match[3],
-    from: [Number(match[4]), Number(match[5])],
-    to: [Number(match[6]), Number(match[7])],
+    piece: match[3]!,
+    from: [Number(match[4]!), Number(match[5]!)],
+    to: [Number(match[6]!), Number(match[7]!)],
     promotion: match[8] === '+',
   };
 }
@@ -129,8 +130,8 @@ function pgnMoveNumbers(moves: ParsedMove[], board: BoardState): number[] {
   if (moves.length === 0) return [];
   const lastFull = board.move_number - (board.side_to_move === 0 ? 1 : 0);
   let full = lastFull;
-  for (let i = 0; i < moves.length - 1; i += 1) {
-    if (moves[i].side === 'w') full -= 1;
+  for (const move of moves.slice(0, -1)) {
+    if (move.side === 'w') full -= 1;
   }
   full = Math.max(1, full);
 

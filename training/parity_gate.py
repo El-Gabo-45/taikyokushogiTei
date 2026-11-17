@@ -14,7 +14,6 @@ import json
 import sys
 
 import numpy as np
-
 import tkn
 from arch import Arch
 from quantized_forward import evaluate
