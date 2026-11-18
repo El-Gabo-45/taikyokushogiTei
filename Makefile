@@ -87,7 +87,7 @@ STRENGTH_NET     ?=
 
 .PHONY: strength
 
-	strength:
+strength:
 	cargo build --release --example elo_report
 	cargo run --release --example elo_report -- \
 		--games $(STRENGTH_GAMES) --max-depth $(STRENGTH_MAXDEPTH) \
@@ -106,3 +106,22 @@ STRENGTH_NET     ?=
 
 ci-local:
 	bash scripts/ci-check.sh
+
+# ── Release ─────────────────────────────────────────────────────
+# One-command release: CI gates -> version bump (Cargo + Cargo.lock + web in
+# lockstep) -> commit -> annotated tag vX.Y.Z -> push. The tag push is what
+# publishes the GitHub Release (release.yml). Aborts at the first failed
+# guard, before touching anything; safe to re-run after a failed push.
+#   make release VERSION=1.3.0
+#   make release VERSION=1.3.0 MSG="Release 1.3.0: movegen + clippy fixes"
+#   Preview without changes:  bash scripts/release.sh 1.3.0 --dry-run
+VERSION ?=
+MSG     ?=
+
+.PHONY: release
+
+release:
+ifeq ($(VERSION),)
+	$(error usage: make release VERSION=1.3.0 [MSG="..."])
+endif
+	bash scripts/release.sh $(VERSION) $(if $(MSG),"$(MSG)",)
