@@ -5,6 +5,7 @@
 #   bash scripts/release.sh 1.3.0 "Release 1.3.0: fixed X" # custom commit message
 #   bash scripts/release.sh 1.3.0 [MSG] --dry-run          # plan only, changes nothing
 #   bash scripts/release.sh 1.3.0 [MSG] --no-push          # stop right before pushing
+#   bash scripts/release.sh 1.3.0 [MSG] --no-wait-ci       # publish without waiting for remote CI
 #   make release VERSION=1.3.0 [MSG="..."]                 # same thing, via make
 #
 # What it does, in order — it aborts at the first problem, BEFORE touching
@@ -17,7 +18,9 @@
 #      dynamic and comes from Cargo.toml via maturin)
 #   3. commit ONLY the version files, with your message
 #   4. annotated tag vX.Y.Z (softprops/action-gh-release generates the notes)
-#   5. push main + the tag (the tag push is what publishes the GitHub Release)
+#   5. push main, WAIT for the remote CI run on that commit to be green
+#      (gh CLI; skips gracefully without it), then push the tag — the tag push
+#      is what publishes the GitHub Release, now gated on remote CI passing.
 #
 # It is idempotent: if a push fails, fix the network and run the same command
 # again — the bump becomes a no-op and it re-tags/re-pushes safely.
@@ -32,11 +35,12 @@ cd "$REPO"
 
 # ── arguments ──────────────────────────────────────────────────────────────
 VERSION="${1:-}"; [ -n "$VERSION" ] || usage; shift
-MSG=""; DRY_RUN=0; NO_PUSH=0
+MSG=""; DRY_RUN=0; NO_PUSH=0; NO_WAIT_CI=0; TAG_ON_REMOTE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1 ;;
         --no-push) NO_PUSH=1 ;;
+        --no-wait-ci) NO_WAIT_CI=1 ;;
         "") ;;
         *) [ -z "$MSG" ] || usage; MSG="$1" ;;
     esac
@@ -87,8 +91,17 @@ if git remote get-url origin >/dev/null 2>&1; then
     if git fetch origin --tags --quiet 2>/dev/null; then
         BEHIND="$(git rev-list --count "$BRANCH..origin/$BRANCH" 2>/dev/null || echo 0)"
         [ "$BEHIND" -gt 0 ] && die "local $BRANCH is $BEHIND commit(s) behind origin/$BRANCH — git pull first"
-        if git ls-remote --tags origin "refs/tags/$TAG" 2>/dev/null | grep -q .; then
-            die "tag $TAG already exists on origin"
+        # The tag may already be on origin: either a genuine conflict or a
+        # previous run whose push response was lost (the retry must adopt
+        # it instead of dying). Peel annotated tags to their commit.
+        REMOTE_COMMIT="$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" 2>/dev/null | awk '{print $1}' | tail -1)"
+        if [ -n "$REMOTE_COMMIT" ]; then
+            if [ "$REMOTE_COMMIT" = "$(git rev-parse HEAD)" ]; then
+                TAG_ON_REMOTE=1
+                echo "    note: tag $TAG is already on origin at HEAD — adopting it (previous push likely succeeded)"
+            else
+                die "tag $TAG already exists on origin at a different commit ($(git rev-parse --short "$REMOTE_COMMIT"))"
+            fi
         fi
     else
         echo "    note: cannot reach origin — skipping remote checks (push will fail if offline)"
@@ -107,7 +120,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
   3. git add Cargo.toml Cargo.lock web/package.json web/package-lock.json
      git commit -m "$MSG"
   4. git tag -a $TAG -m "$TAG"
-  5. git push origin $BRANCH && git push origin $TAG   # tag push publishes the GitHub Release
+  5. git push origin $BRANCH
+     wait for the remote CI run on that commit to be green (gh CLI)
+     git push origin $TAG                              # tag push publishes the GitHub Release
 PLAN
     exit 0
 fi
@@ -154,10 +169,35 @@ else
 fi
 
 # ── 4) tag ─────────────────────────────────────────────────────────────────
-if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+if [ "$TAG_ON_REMOTE" -eq 0 ] && ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
     step "tag: $TAG (annotated)"
     git tag -a "$TAG" -m "$TAG"
 fi
+
+# Wait until the remote CI run for HEAD finishes, and require success, so a
+# release is never published from a commit that fails on GitHub.
+wait_for_remote_ci() {
+    if [ "$NO_WAIT_CI" -eq 1 ]; then
+        echo "    (--no-wait-ci: publishing without waiting for remote CI)"
+        return 0
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "    note: gh CLI not installed — cannot verify remote CI; tagging anyway"
+        return 0
+    fi
+    SHA="$(git rev-parse HEAD)"
+    RUN_ID="$(gh run list --commit "$SHA" --limit 10 --json databaseId,workflowName \
+        --jq '.[] | select(.workflowName == "CI") | .databaseId' 2>/dev/null | head -1)"
+    if [ -z "$RUN_ID" ]; then
+        echo "    note: no remote CI run found for ${SHA:0:7} (API lag?) — tagging anyway"
+        return 0
+    fi
+    echo "==> waiting for remote CI run #$RUN_ID on ${SHA:0:7}"
+    if ! gh run watch "$RUN_ID" --exit-status --interval 20 >/dev/null 2>&1; then
+        die "remote CI did NOT pass for ${SHA:0:7} — tag NOT pushed. Inspect: gh run view $RUN_ID --log-failed"
+    fi
+    echo "    remote CI green ✓ — publishing the tag"
+}
 
 # ── 5) push ────────────────────────────────────────────────────────────────
 if [ "$NO_PUSH" -eq 1 ]; then
@@ -168,7 +208,12 @@ fi
 
 step "push: origin $BRANCH + $TAG (the tag push publishes the GitHub Release)"
 git push origin "$BRANCH"
-git push origin "$TAG"
+wait_for_remote_ci
+if [ "$TAG_ON_REMOTE" -eq 1 ]; then
+    echo "    tag $TAG is already on origin at HEAD — nothing to publish"
+else
+    git push origin "$TAG"
+fi
 
 REPO_SLUG="$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##; s/\.git$//' || true)"
 step "release $VERSION pushed"

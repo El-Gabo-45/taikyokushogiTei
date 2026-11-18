@@ -58,9 +58,10 @@ fn should_stop_game(move_count: u32, max_moves: u32, terminal: Option<GameResult
 /// the final outcome of the game.
 #[derive(Clone, Debug)]
 pub struct TrainingSample {
-    /// Identifier of the game this sample came from. Used by the trainer to
-    /// split train/validation by game so positions from the same game never
-    /// appear in both sets.
+    /// Identifier of the game this sample came from. Unique across selfplay
+    /// runs writing into the same directory (the coordinator reserves id
+    /// ranges from `selfplay_next_game_id.txt` and/or the SQLite max id), so
+    /// the trainer can split train/validation by game safely.
     pub game_id: u32,
     /// `(piece_type & 0x1FF) | (color << 9)` per square; 0 = empty.
     pub board: [u16; 1296],
@@ -80,6 +81,45 @@ pub struct TrainingSample {
 
 /// File header of the training-sample format "TKD1": magic, u16 version, u16 reserved.
 pub const SAMPLE_FILE_HEADER: [u8; 8] = *b"TKD1\x01\x00\x00\x00";
+
+/// Per-directory state file that reserves the next free game id. Without it,
+/// every selfplay run would restart ids at 0: the sample writer avoids file
+/// collisions, but SQLite (`games.id` PRIMARY KEY) would reject the duplicates
+/// and the trainer would group samples from *different runs* as one game.
+const GAME_ID_STATE_FILE: &str = "selfplay_next_game_id.txt";
+
+fn next_game_id_state_path(output_dir: &str) -> String {
+    format!("{output_dir}/{GAME_ID_STATE_FILE}")
+}
+
+/// Next free game id recorded in `output_dir` (0 when absent/corrupt).
+fn read_next_game_id(output_dir: &str) -> u64 {
+    std::fs::read_to_string(next_game_id_state_path(output_dir))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+/// Reserve `[0, next)` as used. Called *before* the run starts, so even a
+/// crashed run never hands out its range again.
+fn write_next_game_id(output_dir: &str, next: u64) -> std::io::Result<()> {
+    std::fs::create_dir_all(output_dir)?;
+    std::fs::write(next_game_id_state_path(output_dir), format!("{next}\n"))
+}
+
+/// Highest game id persisted in the SQLite log, plus one (0 when the DB is
+/// missing, empty or unreadable). Read-only open: never creates the file.
+fn max_db_game_id(db_path: &str) -> u64 {
+    use rusqlite::OpenFlags;
+    rusqlite::Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .and_then(|conn| {
+            conn.query_row("SELECT COALESCE(MAX(id), -1) FROM games", [], |r| {
+                r.get::<_, i64>(0)
+            })
+        })
+        .map(|v| if v < 0 { 0 } else { v as u64 + 1 })
+        .unwrap_or(0)
+}
 
 impl TrainingSample {
     /// Append the sparse little-endian record to `out`:
@@ -181,6 +221,9 @@ fn classic_eval(board: &mut Board) -> i32 {
 struct SelfPlayWorker {
     id: usize,
     config: SelfPlayConfig,
+    /// First game id this run may use (reserved by the coordinator so ids
+    /// never collide with previous runs in the same output directory).
+    game_id_offset: u64,
     stats: Arc<SelfPlayStats>,
     sample_tx: Sender<TrainingSample>,
     game_tx: Sender<GameRecord>,
@@ -305,7 +348,7 @@ impl SelfPlayWorker {
         (game_samples, record)
     }
 
-    fn run(&mut self) {
+    fn run(&mut self) -> Result<(), String> {
         let total_games = self.config.num_games;
         let num_workers = self.config.num_workers.max(1);
         let games_per_worker = total_games.div_ceil(num_workers);
@@ -313,67 +356,107 @@ impl SelfPlayWorker {
         let my_end = std::cmp::min(my_start + games_per_worker, total_games);
         if my_start >= total_games {
             eprintln!("[worker-{}] no games assigned", self.id);
-            return;
+            return Ok(());
         }
         let my_count = my_end - my_start;
         eprintln!(
-            "[worker-{}] will play {} games ({}..{})",
-            self.id, my_count, my_start, my_end
+            "[worker-{}] will play {} games (ids {}..{})",
+            self.id,
+            my_count,
+            self.game_id_offset + my_start as u64,
+            self.game_id_offset + my_end as u64
         );
 
         for (i, game_id) in (my_start..my_end).enumerate() {
-            let (samples, record) = self.play_one_game(game_id as u64);
+            let global_id = self.game_id_offset + game_id as u64;
+            let (samples, record) = self.play_one_game(global_id);
             let n = samples.len();
             let result_str = match record.result {
                 1 => "BlackWins",
                 -1 => "WhiteWins",
                 _ => "Draw",
             };
+            // A failed send means the receiving thread is gone: keep going
+            // and the run would silently lose every following sample.
             for s in samples {
-                let _ = self.sample_tx.send(s);
+                if self.sample_tx.send(s).is_err() {
+                    return Err(format!(
+                        "sample writer stopped (channel closed) — samples of game {global_id} and later are LOST"
+                    ));
+                }
             }
-            let _ = self.game_tx.send(record);
+            if self.game_tx.send(record).is_err() {
+                return Err(format!(
+                    "database writer stopped (channel closed) — record of game {global_id} LOST"
+                ));
+            }
             self.stats.games_completed.fetch_add(1, Ordering::Relaxed);
             eprintln!(
                 "[worker-{}] game {}/{} (id={}) finished: {} moves, result={}",
                 self.id,
                 i + 1,
                 my_count,
-                game_id,
+                global_id,
                 n,
                 result_str
             );
         }
+        Ok(())
     }
 }
 
 pub struct SelfPlayCoordinator {
     config: SelfPlayConfig,
+    game_id_offset: u64,
     stats: Arc<SelfPlayStats>,
-    workers: Vec<JoinHandle<()>>,
-    writer_handle: Option<JoinHandle<()>>,
-    db_handle: Option<JoinHandle<()>>,
+    workers: Vec<JoinHandle<Result<(), String>>>,
+    writer_handle: Option<JoinHandle<Result<(), String>>>,
+    db_handle: Option<JoinHandle<Result<(), String>>>,
     sample_tx: Sender<TrainingSample>,
     game_tx: Sender<GameRecord>,
 }
 
 impl SelfPlayCoordinator {
     pub fn new(config: SelfPlayConfig) -> Self {
+        // ── Reserve a game-id range unique across runs ──────────────
+        // Sources of truth: the per-directory state file and (when enabled)
+        // the SQLite max id. The range is written back *before* the run
+        // starts, so even a crashed run cannot reuse its ids later.
+        let mut offset = read_next_game_id(&config.output_dir);
+        if let Some(db) = &config.sqlite_path {
+            offset = offset.max(max_db_game_id(db));
+        }
+        let reserved_end = offset + config.num_games as u64;
+        assert!(
+            reserved_end <= u32::MAX as u64,
+            "game id space exhausted: the TKD1 sample format stores u32 game ids"
+        );
+        if let Err(e) = write_next_game_id(&config.output_dir, reserved_end) {
+            eprintln!(
+                "[selfplay] warning: could not reserve game ids in {}: {e} \
+                 (continuing; the SQLite max-id fallback still protects the database)",
+                config.output_dir
+            );
+        }
+        println!(
+            "[selfplay] game ids: {offset}..{reserved_end} (unique across runs in {})",
+            config.output_dir
+        );
+
         let stats = Arc::new(SelfPlayStats::default());
         let (sample_tx, sample_rx) = bounded(10000);
         let (game_tx, game_rx) = bounded(1000);
 
         let output_dir = config.output_dir.clone();
         let save_interval = config.save_interval;
-        let writer_handle = std::thread::spawn(move || {
-            Self::writer_loop(sample_rx, output_dir, save_interval);
-        });
+        let writer_handle =
+            std::thread::spawn(move || Self::writer_loop(sample_rx, output_dir, save_interval));
 
         let db_handle = if let Some(db_path) = &config.sqlite_path {
             let db_path = db_path.clone();
             let output_dir = config.output_dir.clone();
             Some(std::thread::spawn(move || {
-                Self::db_loop(game_rx, db_path, output_dir);
+                Self::db_loop(game_rx, db_path, output_dir)
             }))
         } else {
             None
@@ -381,6 +464,7 @@ impl SelfPlayCoordinator {
 
         Self {
             config,
+            game_id_offset: offset,
             stats,
             workers: Vec::new(),
             writer_handle: Some(writer_handle),
@@ -390,9 +474,14 @@ impl SelfPlayCoordinator {
         }
     }
 
-    fn writer_loop(rx: Receiver<TrainingSample>, output_dir: String, save_interval: usize) {
+    fn writer_loop(
+        rx: Receiver<TrainingSample>,
+        output_dir: String,
+        save_interval: usize,
+    ) -> Result<(), String> {
         // Create output dir, propagating errors instead of silencing them.
-        std::fs::create_dir_all(&output_dir).expect("failed to create training output dir");
+        std::fs::create_dir_all(&output_dir)
+            .map_err(|e| format!("cannot create output dir {output_dir}: {e}"))?;
 
         // Discover the next free file index so we never overwrite samples
         // from a previous selfplay run in the same output_dir.
@@ -403,12 +492,17 @@ impl SelfPlayCoordinator {
         while let Ok(sample) = rx.recv() {
             buffer.push(sample);
             if buffer.len() >= save_interval {
-                let filename = format!("{}/samples_{:06}.bin", output_dir, file_count);
+                let filename = format!("{output_dir}/samples_{file_count:06}.bin");
                 let mut data = SAMPLE_FILE_HEADER.to_vec();
                 for s in &buffer {
                     s.encode_into(&mut data);
                 }
-                std::fs::write(&filename, &data).expect("failed to write training samples");
+                std::fs::write(&filename, &data).map_err(|e| {
+                    format!(
+                        "cannot write {filename}: {e} ({} samples LOST)",
+                        buffer.len()
+                    )
+                })?;
                 total_saved += buffer.len() as u64;
                 println!(
                     "[writer] Saved {} samples (total {}) to {}",
@@ -425,12 +519,17 @@ impl SelfPlayCoordinator {
             }
         }
         if !buffer.is_empty() {
-            let filename = format!("{}/samples_{:06}.bin", output_dir, file_count);
+            let filename = format!("{output_dir}/samples_{file_count:06}.bin");
             let mut data = SAMPLE_FILE_HEADER.to_vec();
             for s in &buffer {
                 s.encode_into(&mut data);
             }
-            std::fs::write(&filename, &data).expect("failed to write training samples");
+            std::fs::write(&filename, &data).map_err(|e| {
+                format!(
+                    "cannot write {filename}: {e} ({} samples LOST)",
+                    buffer.len()
+                )
+            })?;
             total_saved += buffer.len() as u64;
             println!(
                 "[writer] Flushed {} samples (total {}) to {}",
@@ -439,6 +538,7 @@ impl SelfPlayCoordinator {
                 filename
             );
         }
+        Ok(())
     }
 
     /// Returns the smallest `n >= 0` such that `output_dir/samples_{n:06}.bin`
@@ -451,16 +551,16 @@ impl SelfPlayCoordinator {
         n
     }
 
-    fn db_loop(rx: Receiver<GameRecord>, db_path: String, output_dir: String) {
-        std::fs::create_dir_all(&output_dir).ok();
-        let conn = match rusqlite::Connection::open(&db_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("[db] open failed: {}", e);
-                return;
-            }
-        };
-        if let Err(_e) = conn.execute_batch(
+    fn db_loop(
+        rx: Receiver<GameRecord>,
+        db_path: String,
+        output_dir: String,
+    ) -> Result<(), String> {
+        std::fs::create_dir_all(&output_dir)
+            .map_err(|e| format!("cannot create dir {output_dir}: {e}"))?;
+        let conn = rusqlite::Connection::open(&db_path)
+            .map_err(|e| format!("cannot open {db_path}: {e}"))?;
+        conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS games (
                 id INTEGER PRIMARY KEY,
                 result INTEGER NOT NULL,
@@ -481,45 +581,79 @@ impl SelfPlayCoordinator {
                 white_pieces INTEGER NOT NULL,
                 PRIMARY KEY (game_id, move_number)
             );",
-        ) {
-            eprintln!("[db] schema failed");
-            return;
-        }
+        )
+        .map_err(|e| format!("cannot create schema in {db_path}: {e}"))?;
         let mut total = 0u64;
+        let mut failures = 0u64;
+        let mut last_err = String::new();
         let mut last_print = std::time::Instant::now();
         while let Ok(record) = rx.recv() {
+            total += 1;
             if let Err(e) = conn.execute(
                 "INSERT INTO games (id, result, total_moves, depth, duration_ms) VALUES (?, ?, ?, ?, ?)",
                 rusqlite::params![record.game_id as i64, record.result as i64, record.total_moves as i64, record.depth as i64, record.duration_ms as i64]
             ) {
-                eprintln!("[db] insert game failed: {}", e);
+                failures += 1;
+                last_err = format!("insert game {}: {e}", record.game_id);
                 continue;
             }
-            let tx = match conn.unchecked_transaction() {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            let mut failed = false;
-            for m in &record.moves {
-                if tx.execute(
-                    "INSERT INTO moves (game_id, move_number, from_sq, to_sq, promo, captured, side, black_pieces, white_pieces) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    rusqlite::params![
-                        record.game_id as i64, m.move_number as i64, m.from as i64, m.to as i64,
-                        m.promo as i64, m.captured_piece as i64, m.side as i64,
-                        m.black_pieces as i64, m.white_pieces as i64,
-                    ]
-                ).is_err() { failed = true; break; }
+            match conn.unchecked_transaction() {
+                Ok(t) => {
+                    let mut failed = None;
+                    for m in &record.moves {
+                        if let Err(e) = t.execute(
+                            "INSERT INTO moves (game_id, move_number, from_sq, to_sq, promo, captured, side, black_pieces, white_pieces) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            rusqlite::params![
+                                record.game_id as i64, m.move_number as i64, m.from as i64, m.to as i64,
+                                m.promo as i64, m.captured_piece as i64, m.side as i64,
+                                m.black_pieces as i64, m.white_pieces as i64,
+                            ]
+                        ) {
+                            failed = Some(format!(
+                                "insert move {} of game {}: {e}",
+                                m.move_number, record.game_id
+                            ));
+                            break;
+                        }
+                    }
+                    match failed {
+                        Some(msg) => {
+                            failures += 1;
+                            last_err = msg;
+                        }
+                        None => {
+                            if let Err(e) = t.commit() {
+                                failures += 1;
+                                last_err = format!("commit game {}: {e}", record.game_id);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    failures += 1;
+                    last_err = format!("transaction for game {}: {e}", record.game_id);
+                }
             }
-            if !failed {
-                let _ = tx.commit();
-            }
-            total += 1;
             if last_print.elapsed().as_secs() >= 2 {
                 last_print = std::time::Instant::now();
-                println!("[db] games={} written to {}", total, db_path);
+                println!(
+                    "[db] games={} ({} failed) written to {}",
+                    total, failures, db_path
+                );
             }
         }
-        println!("[db] Done: {} games written to {}", total, db_path);
+        println!(
+            "[db] Done: {} games written to {} ({} failed)",
+            total, db_path, failures
+        );
+        if failures > 0 {
+            Err(format!(
+                "{failures} of {total} games failed to persist in {db_path} \
+                 (last error: {last_err}) — the dataset is INCOMPLETE"
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn start(&mut self) {
@@ -529,34 +663,61 @@ impl SelfPlayCoordinator {
             let gx = self.game_tx.clone();
             let config = self.config.clone();
             let stats = self.stats.clone();
+            let offset = self.game_id_offset;
             let handle = std::thread::spawn(move || {
                 let mut worker = SelfPlayWorker {
                     id: i,
                     config,
+                    game_id_offset: offset,
                     stats,
                     sample_tx: tx,
                     game_tx: gx,
                 };
-                worker.run();
+                worker.run()
             });
             self.workers.push(handle);
         }
     }
 
-    pub fn wait(mut self) {
+    /// Joins every thread and reports any data loss. Returns `Err` when a
+    /// worker, the sample writer or the database writer failed — the caller
+    /// must exit non-zero so a broken dataset is never mistaken for success.
+    pub fn wait(mut self) -> Result<(), String> {
+        let mut errors: Vec<String> = Vec::new();
         for handle in self.workers.drain(..) {
-            let _ = handle.join();
+            match handle.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => errors.push(format!("worker: {e}")),
+                Err(p) => errors.push(format!("worker panicked: {p:?}")),
+            }
         }
         drop(self.sample_tx);
         drop(self.game_tx);
         if let Some(writer) = self.writer_handle.take() {
-            let _ = writer.join();
+            match writer.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => errors.push(format!("writer: {e}")),
+                Err(p) => errors.push(format!("writer panicked: {p:?}")),
+            }
         }
         if let Some(db) = self.db_handle.take() {
-            let _ = db.join();
+            match db.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => errors.push(format!("db: {e}")),
+                Err(p) => errors.push(format!("db panicked: {p:?}")),
+            }
         }
-        println!("\nSelf-play completed!");
         self.stats.print();
+        if errors.is_empty() {
+            println!("\nSelf-play completed!");
+            Ok(())
+        } else {
+            eprintln!("\n✗ SELF-PLAY FAILED — possible data loss:");
+            for e in &errors {
+                eprintln!("  - {e}");
+            }
+            Err(errors.join("; "))
+        }
     }
 }
 
@@ -573,7 +734,11 @@ pub fn run_selfplay(config: Option<SelfPlayConfig>) {
     );
     let mut coord = SelfPlayCoordinator::new(config);
     coord.start();
-    coord.wait();
+    if coord.wait().is_err() {
+        // Data loss was detected (or a writer died): the dataset on disk is
+        // incomplete, so the process must not report success.
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]
@@ -594,5 +759,109 @@ mod tests {
         assert!(should_stop_game(1000, 10, None));
         assert!(should_stop_game(10, 10, None));
         assert!(should_stop_game(5, 10, Some(GameResult::Draw)));
+    }
+
+    /// Unique scratch dir per test (tests run concurrently in one process).
+    fn scratch(name: &str) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir()
+            .join(format!(
+                "tk_selfplay_{}_{}_{}",
+                name,
+                std::process::id(),
+                nanos
+            ))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn tiny_config(output_dir: &str) -> SelfPlayConfig {
+        SelfPlayConfig {
+            num_games: 2,
+            num_workers: 1,
+            depth: 1,
+            time_limit_ms: 10,
+            max_moves: 6,
+            output_dir: output_dir.to_string(),
+            save_interval: 1,
+            sqlite_path: Some(format!("{output_dir}/games.db")),
+            opening_plies: 1,
+            seed: 1,
+            net: None,
+        }
+    }
+
+    #[test]
+    fn game_id_state_roundtrip_and_missing() {
+        let dir = scratch("state");
+        assert_eq!(
+            read_next_game_id(&dir),
+            0,
+            "missing state file means ids start at 0"
+        );
+        write_next_game_id(&dir, 42).unwrap();
+        assert_eq!(read_next_game_id(&dir), 42);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit fix A: two runs into the same directory must not collide — the
+    /// second run continues the id range instead of restarting at 0, which
+    /// previously made SQLite reject the inserts and made the trainer group
+    /// samples of different runs as one game.
+    #[test]
+    fn second_run_in_same_dir_gets_fresh_game_ids() {
+        let dir = scratch("ids");
+        for _ in 0..2 {
+            let mut coord = SelfPlayCoordinator::new(tiny_config(&dir));
+            coord.start();
+            coord.wait().expect("both runs must succeed");
+        }
+        let conn = rusqlite::Connection::open(format!("{dir}/games.db")).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM games", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 4, "both runs' games must be persisted");
+        let (min, max): (i64, i64) = conn
+            .query_row("SELECT MIN(id), MAX(id) FROM games", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(
+            (min, max),
+            (0, 3),
+            "ids must be 0..3 across runs — no collision, no gap"
+        );
+        // And the sample writer must not have overwritten run 1's files.
+        let samples: usize = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("samples_"))
+            .count();
+        assert!(samples >= 2, "each run must write its own sample files");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Audit fix B: a writer that cannot even create its output dir must
+    /// surface as a failed run (non-zero exit via run_selfplay), not as a
+    /// "completed!" message with a lost dataset.
+    #[test]
+    fn writer_failure_is_reported_not_silenced() {
+        let dir = scratch("writerfail");
+        std::fs::create_dir_all(&dir).unwrap();
+        let blocker = format!("{dir}/not_a_dir");
+        std::fs::write(&blocker, b"x").unwrap();
+        let mut cfg = tiny_config(&blocker);
+        cfg.sqlite_path = None;
+        let mut coord = SelfPlayCoordinator::new(cfg);
+        coord.start();
+        let err = coord.wait().expect_err("writer failure must surface");
+        assert!(
+            err.contains("cannot create output dir"),
+            "the write error must reach the coordinator: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

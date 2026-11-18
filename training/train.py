@@ -32,7 +32,7 @@ def auto_scale(scores):
     return float(np.clip(med / np.log(3.0), 2000.0, 200000.0))
 
 
-def make_batch(arch, d, ids, device="cpu"):
+def make_batch(arch, d, ids, device: str | torch.device = "cpu"):
     """EmbeddingBag inputs for the samples `ids` (vectorised, no per-piece loops)."""
     starts, lens = d.off[ids], d.npieces[ids]
     ent = dataset.gather_entries(starts, lens)
@@ -45,20 +45,56 @@ def make_batch(arch, d, ids, device="cpu"):
     return t(i0), t(off), t(i1), t(off), t(d.stm[ids]), t(bucket)
 
 
-def targets(d, ids, lam, sc):
-    score = torch.as_tensor(d.score[ids], dtype=torch.float32)
-    res = torch.as_tensor((d.result[ids] + 1) / 2.0, dtype=torch.float32)
+def targets(d, ids, lam, sc, device: str | torch.device = "cpu"):
+    score = torch.as_tensor(d.score[ids], dtype=torch.float32, device=device)
+    res = torch.as_tensor((d.result[ids] + 1) / 2.0, dtype=torch.float32, device=device)
     return lam * torch.sigmoid(score / sc) + (1 - lam) * res
 
 
-def evaluate_loss(model, arch, d, ids, lam, sc, batch):
+def resolve_device(name):
+    """`auto` picks cuda when available; an explicit `cuda` errors if missing."""
+    if name == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    d = torch.device(name)
+    if d.type == "cuda" and not torch.cuda.is_available():
+        raise SystemExit("--device cuda requested but torch.cuda is not available")
+    return d
+
+
+def device_check(model, arch, d, ids, batch, device):
+    """Equivalence guard: one fixed batch evaluated on cpu and on `device`.
+
+    Catches wrong-dtype/wrong-device transfer mistakes before they silently
+    ruin a paid GPU training run. Run it once on the rented box:
+    `python training/train.py data --device cuda --device-check ...`.
+    """
+    if device.type == "cpu":
+        print("device check: cpu-only, nothing to compare")
+        return
+    state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    ref = TKNet(arch)
+    ref.load_state_dict(state)
+    ref.eval()
+    with torch.no_grad():
+        b = ids[:batch]
+        pred_cpu = ref(*make_batch(arch, d, b, device="cpu"))
+        pred_dev = model(*make_batch(arch, d, b, device=device)).detach().cpu()
+    diff = float((pred_dev - pred_cpu).abs().max())
+    print(f"device check: max |pred_cpu - pred_{device.type}| = {diff:.2e}")
+    if diff > 1e-2:
+        raise SystemExit(
+            f"device check FAILED (diff {diff:.2e}) — cpu/{device.type} transfers are inconsistent"
+        )
+
+
+def evaluate_loss(model, arch, d, ids, lam, sc, batch, device: str | torch.device = "cpu"):
     model.eval()
     tot, n = 0.0, 0
     with torch.no_grad():
         for s in range(0, len(ids), batch):
             b = ids[s:s + batch]
-            pred = model(*make_batch(arch, d, b))
-            loss = ((torch.sigmoid(pred / sc) - targets(d, b, lam, sc)) ** 2).sum().item()
+            pred = model(*make_batch(arch, d, b, device=device))
+            loss = ((torch.sigmoid(pred / sc) - targets(d, b, lam, sc, device)) ** 2).sum().item()
             tot, n = tot + loss, n + len(b)
     model.train()
     return tot / max(n, 1)
@@ -82,7 +118,15 @@ def main():
     ap.add_argument("--skip-unit-gate", action="store_true")
     ap.add_argument("--allow-clip", action="store_true")
     ap.add_argument("--checkpoint", default=None, help="save the float model here after every epoch")
+    ap.add_argument("--checkpoint-best", default=None, help="save the best-validation state here")
+    ap.add_argument("--device", default="auto", choices=["cpu", "cuda", "auto"],
+                    help="training device (auto = cuda when available)")
+    ap.add_argument("--device-check", action="store_true",
+                    help="compare one batch cpu vs the chosen device before training")
     args = ap.parse_args()
+
+    device = resolve_device(args.device)
+    print(f"device: {device}")
 
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -118,6 +162,7 @@ def main():
     model = TKNet(arch)
     if not args.no_material_init:
         model.init_material(arch.class_values)
+    model.to(device)
     special = {id(model.psqt.weight), id(model.fc2_b)}
     opt = torch.optim.Adam([
         {"params": [p for p in model.parameters() if id(p) not in special], "lr": args.lr},
@@ -126,25 +171,46 @@ def main():
     ])
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(1, args.epochs))
 
+    if args.device_check:
+        device_check(model, arch, d, train_ids, args.batch, device)
+
+    best_val = float("inf")
+    best_epoch = 0
+    best_state = None
+
     t0 = time.time()
     for ep in range(args.epochs):
         perm = rng.permutation(train_ids)
         run, cnt = 0.0, 0
         for s in range(0, len(perm), args.batch):
             b = perm[s:s + args.batch]
-            pred = model(*make_batch(arch, d, b))
-            loss = torch.mean((torch.sigmoid(pred / sc) - targets(d, b, args.lam, sc)) ** 2)
+            pred = model(*make_batch(arch, d, b, device=device))
+            loss = torch.mean(
+                (torch.sigmoid(pred / sc) - targets(d, b, args.lam, sc, device)) ** 2
+            )
             opt.zero_grad()
             loss.backward()
             opt.step()
             model.clamp_to_quant_range()
             run, cnt = run + loss.item() * len(b), cnt + len(b)
         sched.step()
-        val = evaluate_loss(model, arch, d, val_ids, args.lam, sc, args.batch)
+        val = evaluate_loss(model, arch, d, val_ids, args.lam, sc, args.batch, device)
         print(f"epoch {ep + 1}/{args.epochs}  train {run / cnt:.5f}  val {val:.5f}  ({time.time() - t0:.0f}s)")
         if args.checkpoint:
-            torch.save(model.state_dict(), args.checkpoint)
+            # Keep checkpoints device-agnostic so they can be resumed anywhere.
+            torch.save({k: v.detach().cpu() for k, v in model.state_dict().items()}, args.checkpoint)
+        if val < best_val:
+            best_val, best_epoch = val, ep + 1
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            if args.checkpoint_best:
+                torch.save(best_state, args.checkpoint_best)
 
+    # Export the BEST validation state, not the last epoch: later epochs can
+    # overfit and validate strictly worse, and the TKN file is what ships.
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        print(f"exporting best-validation state (epoch {best_epoch}, val {best_val:.5f})")
+    model.to("cpu")
     export(model, arch, args.out, allow_clip=args.allow_clip)
 
 

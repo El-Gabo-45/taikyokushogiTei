@@ -12,6 +12,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# Jobs only read the repo; only the release job writes (it creates the
+# GitHub Release), and it declares `contents: write` explicitly.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 

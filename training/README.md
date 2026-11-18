@@ -127,6 +127,13 @@ selfplay <games> <depth> <max_moves> <workers> <time_limit_ms>
   the same. The opening plies are random legal moves and are not recorded.
 - `--net` makes self-play use a network; omit it to generate data from the
   hand-crafted evaluator + search labels.
+- **Game ids are unique across runs.** Each run reserves its id range in
+  `DIR/selfplay_next_game_id.txt` (cross-checked against the SQLite max id),
+  so running self-play twice into the same directory continues at id N
+  instead of restarting at 0 — no more SQLite primary-key collisions and no
+  games from different runs sharing a `game_id` in the trainer's split.
+  The run also fails with a non-zero exit code if the writer or the database
+  loses data (e.g. full disk) instead of reporting success.
 - Output: `data/samples_*.bin` plus `data/games.db`.
 
 Each sample is a `TKD1` v1 record (see `dataset.py` for the exact byte
@@ -174,6 +181,13 @@ flags:
   engine units.
 - `--checkpoint checkpoints/latest.pt` — save the float `state_dict` after
   every epoch.
+- `--checkpoint-best checkpoints/best.pt` — additionally save the
+  best-validation state. The TKN export always uses the best-validation
+  epoch (a later epoch can overfit and validate strictly worse), so the
+  shipped network is never a downgrade of an earlier epoch.
+- `--device cpu|cuda|auto` — training device (`auto` picks CUDA when
+  available). Use `--device-check` once on a new GPU box: it compares one
+  batch on CPU vs CUDA and refuses to train on an inconsistent transfer.
 - `--allow-clip` — allow exporting a network whose weights saturate their
   integer types. Prefer fixing the training instead.
 - `--max-abs-score 100000` — drop mate-like labels (the default).

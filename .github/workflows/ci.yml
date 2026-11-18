@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+# Jobs only read the repo; nothing here writes back to it.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
