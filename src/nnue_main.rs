@@ -17,6 +17,23 @@
 //!                                           stats, PSQT term, dense output,
 //!                                           incremental==refresh parity)
 //! nnue bench [<net>]                        evals/s, apply+undo overhead
+//!
+//! Research toolkit (see src/research/mod.rs):
+//! nnue multipv [<tsfen>] [--net F] [--depth D] [--n N] [--max-root R] [--time-ms T]
+//!                                           best N candidate moves compared
+//!                                           (static prefilter + per-line search)
+//! nnue tree [<tsfen>] [--net F] [--depth D] [--branching B] [--max-nodes N] [--out F]
+//!                                           bounded static-eval tree as JSON
+//! nnue stability [<tsfen>] [--net F] [--depth D] [--time-ms T]
+//!                                           depth ladder: score/best-move deltas
+//! nnue critical <games.db> [--net F] [--threshold N] [--limit G] [--top N]
+//!                                           biggest evaluation swings in
+//!                                           recorded selfplay games
+//! nnue pieces <games.db> [--limit G] [--top N] [--csv F]
+//!                                           piece interaction matrix (301×301)
+//! nnue ablate [<tsfen>|--positions F] [--net F] [--depth D]
+//!                                           search each position with one
+//!                                           technique disabled at a time
 //! ```
 //!
 //! A `<net>` argument can be a raw `.tkn` or a zstd-compressed `.tkn.zst`;
@@ -477,9 +494,17 @@ fn main() {
         Some("dump-positions") => cmd_dump(rest),
         Some("explain") => cmd_explain(rest),
         Some("bench") => cmd_bench(rest.first().map(|s| s.as_str())),
+        Some("multipv") => taikyokushogi::research::multipv::run(rest).unwrap_or_else(|e| die(e)),
+        Some("tree") => taikyokushogi::research::tree::run(rest).unwrap_or_else(|e| die(e)),
+        Some("stability") => {
+            taikyokushogi::research::stability::run(rest).unwrap_or_else(|e| die(e))
+        }
+        Some("critical") => taikyokushogi::research::critical::run(rest).unwrap_or_else(|e| die(e)),
+        Some("pieces") => taikyokushogi::research::pieces::run(rest).unwrap_or_else(|e| die(e)),
+        Some("ablate") => taikyokushogi::research::ablate::run(rest).unwrap_or_else(|e| die(e)),
         _ => {
             eprintln!(
-                "usage: nnue <classes|gen-classes|info|verify|random-net|dump-positions|explain|bench> ..."
+                "usage: nnue <classes|gen-classes|info|verify|random-net|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
             );
             std::process::exit(if args.is_empty() { 0 } else { 2 });
         }

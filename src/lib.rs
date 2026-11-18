@@ -95,6 +95,7 @@ pub(crate) mod test_lock {
 mod bitboard;
 pub mod debugging;
 pub mod elo;
+pub mod research;
 pub mod selfplay;
 #[cfg(feature = "server")]
 pub mod server;

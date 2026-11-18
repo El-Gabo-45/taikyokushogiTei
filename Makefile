@@ -39,6 +39,42 @@ nnue-parity:
 nnue-bench:
 	cargo run --release --bin nnue -- bench $(NET)
 
+# ── Research toolkit (audit-2) ──────────────────────────────────
+# Position-based tools take ARGS verbatim, e.g.:
+#   make nnue-multipv ARGS="--depth 3 --n 10 --net nets/tk.tkn"
+#   make nnue-tree ARGS="--depth 3 --branching 3 --out tree.json"
+#   make nnue-stability ARGS="--depth 6"
+# Database tools point at a selfplay games.db, e.g.:
+#   make nnue-critical ARGS="data/games.db --threshold 500"
+#   make nnue-pieces ARGS="data/games.db --csv matrix.csv"
+#   make nnue-ablate ARGS="--positions positions.txt --depth 3"
+# Python dataset analyzers: make coverage ARGS="data" / make calibration ARGS="data"
+.PHONY: nnue-multipv nnue-tree nnue-stability nnue-critical nnue-pieces nnue-ablate coverage calibration
+
+nnue-multipv:
+	cargo run --release --bin nnue -- multipv $(ARGS)
+
+nnue-tree:
+	cargo run --release --bin nnue -- tree $(ARGS)
+
+nnue-stability:
+	cargo run --release --bin nnue -- stability $(ARGS)
+
+nnue-critical:
+	cargo run --release --bin nnue -- critical $(ARGS)
+
+nnue-pieces:
+	cargo run --release --bin nnue -- pieces $(ARGS)
+
+nnue-ablate:
+	cargo run --release --bin nnue -- ablate $(ARGS)
+
+coverage:
+	$(PY) training/coverage.py $(ARGS)
+
+calibration:
+	$(PY) training/calibration.py $(ARGS)
+
 nnue-test:
 	cargo test --release --lib --tests
 	NNUE_BIN=target/release/nnue $(PY) -m unittest training/test_pipeline.py

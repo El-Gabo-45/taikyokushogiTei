@@ -256,6 +256,63 @@ TAIKYOKU_NET=nets/tk.tkn \
   cargo run --release --features server --bin taikyokushogi-server
 ```
 
+## Research toolkit
+
+The `nnue` binary ships a research kit (`src/research/`, audit-2 roadmap) built
+only on public engine APIs — nothing in it touches the search hot paths, so
+research can never change how the engine plays. Every score is in engine units
+(a pawn is 500, mate is ±1,000,000) from the point of view stated next to it.
+
+| Command | Question it answers |
+| --- | --- |
+| `nnue multipv` | Which candidate moves exist and how far apart are they? |
+| `nnue tree` | What does the shallow tree below a position look like? |
+| `nnue stability` | How much do score/best move change with depth? |
+| `nnue critical` | Which plies of recorded games swung the evaluation most? |
+| `nnue pieces` | Which piece types actually capture which? |
+| `nnue ablate` | Which search technique changes the engine's decisions? |
+| `training/coverage.py` | What does the training data actually cover? |
+| `training/calibration.py` | Do engine scores mean win probabilities? |
+
+```bash
+# MultiPV: static prefilter ranks the ~800 root moves, the top --max-root get
+# a full-window depth-1 search each; a reference search shows what the engine
+# actually plays (its root score uses aspiration windows — compare choices,
+# not raw numbers).
+cargo run --release --bin nnue -- multipv --net nets/tk.tkn --depth 3 --n 10
+
+# Static-eval tree as JSON (data layer for a GUI visualizer): every node is a
+# move, children are the best --branching moves, --max-nodes bounds the work.
+cargo run --release --bin nnue -- tree --depth 3 --branching 3 --out tree.json
+
+# Stability ladder: one search, every completed depth reported with Δ score
+# and best-move changes. Pawn-sized swings (>500) mean horizon/tactical noise.
+cargo run --release --bin nnue -- stability --net nets/tk.tkn --depth 6
+
+# Critical positions + piece interaction matrix over a selfplay games.db
+# (games are replayed from the initial position and verified against legal
+# play; divergent games are skipped with a reason, never analyzed blind).
+cargo run --release --bin nnue -- critical data/games.db --threshold 500
+cargo run --release --bin nnue -- pieces data/games.db --csv matrix.csv
+
+# Ablation: each technique disabled one at a time (SearchConfig switches, no
+# engine changes); reports decision changes, score deltas and node cost. Use
+# it to pick candidates, then run the real strength test: make version-race.
+cargo run --release --bin nnue -- ablate --net nets/tk.tkn --depth 3
+cargo run --release --bin nnue -- ablate --positions positions.txt   # one tsfen per line
+
+# Dataset research (same TKD1 files the trainer reads):
+python3 training/coverage.py data            # buckets, phases, piece types, gaps
+python3 training/calibration.py data         # sigmoid(score/SC) vs real outcomes, ECE
+```
+
+`calibration.py` uses the same auto scale as `train.py` (median |score| → 75 %
+win probability); pass `--sc` to test alternatives. An ECE ≥ 0.08 means the
+scale or the labels need work — fix that before paying for GPU hours.
+
+All of these have `make` shortcuts (`make nnue-multipv ARGS="..."`,
+`make coverage ARGS="data"`, …) and unit tests in the library.
+
 ## Memory budget
 
 The current S network is much smaller than the old HalfKP design:
