@@ -1,0 +1,5 @@
+{
+  "mount": "/mnt/artifacts",
+  "store_path": "/mnt/artifacts/taikyokushogiTei/snapshots",
+  "read_only": true
+}

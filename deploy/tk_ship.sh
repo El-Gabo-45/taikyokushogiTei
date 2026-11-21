@@ -62,8 +62,7 @@ cargo check --all-targets || die "cargo check failed"
 
 # ── bump ──
 step "bump Cargo.toml -> $VERSION"
-sed -i '' "s/^version = \".*\"$/version = \"$VERSION\"/" Cargo.toml 2>/dev/null \
-    || sed -i "s/^version = \".*\"$/version = \"$VERSION\"/" Cargo.toml \
+sed -i "s/^version = \".*\"$/version = \"$VERSION\"/" Cargo.toml \
     || die "sed failed on Cargo.toml"
 cargo update -w 2>/dev/null || true
 cargo metadata --format-version 1 >/dev/null 2>&1 || true

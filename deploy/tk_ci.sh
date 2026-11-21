@@ -5,6 +5,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+die()  { echo "✗ CI CHECK ABORTED: $*" >&2; exit 1; }
 step() { printf '\n==> %s\n' "$1"; }
 
 step "rustup update stable (sync with CI toolchain)"

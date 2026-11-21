@@ -1,0 +1,5 @@
+{
+  "mount": "/mnt/archive",
+  "store_path": "/mnt/archive/taikyokushogiTei/artifacts",
+  "retention_days": 90
+}
