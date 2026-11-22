@@ -26,6 +26,24 @@ cd "$(dirname "$0")/.."
 
 step() { printf '\n==> %s\n' "$1"; }
 
+# 0) System C compiler (cc). Rust needs `cc` to link native dependencies
+#    (e.g. parking_lot_core, libc, zstd-sys, rusqlite). Without it every
+#    `cargo build/check/clippy/test` fails with "linker 'cc' not found".
+if ! command -v cc >/dev/null 2>&1; then
+    step "Installing system C compiler (build-essential) — Rust needs cc to link"
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update -qq && sudo apt-get install -y -qq build-essential pkg-config
+    elif command -v apk >/dev/null 2>&1; then
+        sudo apk add --no-cache build-base
+    elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y gcc
+    else
+        echo "    ERROR: 'cc' not found and no supported package manager detected." >&2
+        echo "    Please install a C compiler (e.g. build-essential on Ubuntu/Debian) and re-run." >&2
+        exit 1
+    fi
+fi
+
 # 1) Toolchain sync. The #1 cause of "passed locally, failed in CI" is clippy
 #    drift: CI installs the latest stable on every run while a stale local
 #    toolchain lags behind (this repo was bitten by clippy 1.96 vs 1.100).
