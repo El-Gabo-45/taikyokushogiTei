@@ -7,7 +7,10 @@
  *
  *   N = new game · U = undo · A = auto-play · K = kanji/English
  *   F = flip board · +/- = zoom · Space = ask the AI for a move
+ *   D = toggle developer tools panel
  */
+
+import './styles/index.css';
 
 import { GameState, type Mode } from './game/state';
 import {
@@ -76,7 +79,6 @@ $('btn-undo').addEventListener('click', () => void state.undo(1));
 
 $('btn-auto').addEventListener('click', () => {
   readSettingsFromControls();
-  // Toggling Auto only starts the loop; it must not play for the human.
   state.setAutoPlay(!state.settings.autoPlay);
 });
 
@@ -159,6 +161,39 @@ function exportGame(format: GameFormat): void {
 $('btn-export-game').addEventListener('click', () => exportGame('json'));
 $('btn-export-game-pgn').addEventListener('click', () => exportGame('pgn'));
 
+// ── Developer tools ───────────────────────────────────────────────
+
+/** Toggle the developer-tools panel (keyboard: D). */
+const devPanel = document.querySelector('.dev-tools') as HTMLElement | null;
+let devVisible = false;
+
+function toggleDevTools(): void {
+  if (!devPanel) return;
+  devVisible = !devVisible;
+  devPanel.hidden = !devVisible;
+  state.announce(devVisible ? 'Developer tools shown' : 'Developer tools hidden', 'info');
+}
+
+/** Map each dev button to the make/Cargo target it runs. */
+const devTargets: Record<string, string> = {
+  'dev-nnue-pack': 'make nnue-pack   (zstd-compress nets/tk.tkn + sha256)',
+  'dev-nnue-parity': 'make nnue-parity   (dump positions + parity_gate.py)',
+  'dev-version-race': 'make version-race   (play current vs older commit)',
+  'dev-strength': 'make strength   (Elo ladder vs depth d-1)',
+  'dev-coverage': 'make coverage   (dataset coverage analyzer)',
+  'dev-calibration': 'make calibration   (bucket calibration analyzer)',
+};
+
+Object.entries(devTargets).forEach(([id, cmd]) => {
+  const btn = document.getElementById(id) as HTMLButtonElement | null;
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(cmd).then(() => {
+      state.announce(`Copied: ${cmd}`, 'success');
+    });
+  });
+});
+
 // ── Keyboard shortcuts ────────────────────────────────────────────
 
 document.addEventListener('keydown', (event) => {
@@ -199,6 +234,9 @@ document.addEventListener('keydown', (event) => {
     case '-':
       state.setZoom(Math.max(MIN_ZOOM, state.settings.zoom - 0.1));
       syncControlsFromSettings();
+      break;
+    case 'd':
+      toggleDevTools();
       break;
     default:
       break;

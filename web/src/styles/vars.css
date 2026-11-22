@@ -1,0 +1,16 @@
+/* Design tokens — Taikyoku Shogi Web GUI */
+
+:root {
+  --bg: #1a1a2e;
+  --bg-panel: #16213e;
+  --bg-deep: #0a0a1a;
+  --border: #0f3460;
+  --accent: #e94560;
+  --accent-2: #4a90d9;
+  --text: #e0e0e0;
+  --muted: #8a8fa8;
+  --ok: #5cb85c;
+  --warn: #e8b84a;
+  --err: #d9534f;
+  --focus: #ffd700;
+}

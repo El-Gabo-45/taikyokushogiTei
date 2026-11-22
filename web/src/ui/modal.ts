@@ -1,8 +1,12 @@
 /**
- * Minimal modal dialog used for move disambiguation (promotion / igui).
+ * Move-disambiguation dialog using the native <dialog> element.
  *
- * Built from DOM nodes (never `innerHTML` with data) and resolves a promise
- * with the chosen value, or `null` when the user cancels.
+ * The browser provides inert page, focus containment, top-layer rendering,
+ * ::backdrop, Esc dismissal and focus return to the invoker — no custom
+ * focus trap, role="dialog" or aria-modal needed (see modern-web-guidance
+ * guides/accessibility §12 and guides/ui-components/dialog.md).
+ *
+ * Resolves a promise with the chosen value, or null when cancelled.
  */
 
 export interface ModalChoice<T> {
@@ -16,79 +20,49 @@ export function openChoiceModal<T>(
   description: string,
   options: ModalChoice<T>[],
 ): Promise<T | null> {
+  const dialog = document.getElementById('choice-dialog') as HTMLDialogElement | null;
+  const titleEl = document.getElementById('choice-title') as HTMLElement | null;
+  const descEl = document.getElementById('choice-description') as HTMLElement | null;
+  const list = document.getElementById('choice-options') as HTMLElement | null;
+  if (!dialog || !titleEl || !descEl || !list) {
+    throw new Error('choice-dialog elements missing from index.html');
+  }
+
   return new Promise<T | null>((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-
-    const box = document.createElement('div');
-    box.className = 'modal-box';
-    box.setAttribute('role', 'dialog');
-    box.setAttribute('aria-modal', 'true');
-
-    const heading = document.createElement('h2');
-    heading.textContent = title;
-    box.appendChild(heading);
-
-    if (description) {
-      const paragraph = document.createElement('p');
-      paragraph.className = 'modal-description';
-      paragraph.textContent = description;
-      box.appendChild(paragraph);
-    }
-
-    const list = document.createElement('div');
-    list.className = 'modal-options';
+    titleEl.textContent = title;
+    descEl.textContent = description;
+    list.replaceChildren();
 
     const close = (value: T | null) => {
-      document.removeEventListener('keydown', onKey);
-      overlay.remove();
+      dialog.removeEventListener('close', onClose);
+      dialog.close();
       resolve(value);
+      dialog.returnValue = '';
     };
 
     options.forEach((option, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'modal-option';
-      button.dataset['index'] = String(index);
-
-      const label = document.createElement('span');
-      label.className = 'modal-option-label';
-      label.textContent = option.label;
-      button.appendChild(label);
-
+      button.value = String(index);
+      button.textContent = option.label;
       if (option.detail) {
-        const detail = document.createElement('span');
-        detail.className = 'modal-option-detail';
-        detail.textContent = option.detail;
-        button.appendChild(detail);
+        button.title = option.detail;
       }
-
       button.addEventListener('click', () => close(option.value));
       list.appendChild(button);
     });
-    box.appendChild(list);
 
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'modal-cancel';
-    cancel.textContent = 'Cancel (Esc)';
+    const cancel = dialog.querySelector<HTMLButtonElement>('.cancel-row')!;
     cancel.addEventListener('click', () => close(null));
-    box.appendChild(cancel);
 
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        close(null);
-      }
+    const onClose = () => {
+      // Esc or other close request with no chosen value → cancelled.
+      resolve(null);
     };
-    document.addEventListener('keydown', onKey);
-    overlay.addEventListener('click', (event) => {
-      if (event.target === overlay) close(null);
-    });
+    dialog.addEventListener('close', onClose, { once: true });
 
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    const first = box.querySelector<HTMLButtonElement>('.modal-option');
+    dialog.showModal();
+    const first = list.querySelector<HTMLButtonElement>('button');
     first?.focus();
   });
 }

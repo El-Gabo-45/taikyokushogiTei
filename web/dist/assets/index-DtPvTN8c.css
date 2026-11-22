@@ -1,0 +1,541 @@
+/* Entry point — imports all style modules for the Taikyoku Shogi Web GUI *//* Design tokens — Taikyoku Shogi Web GUI */
+
+:root {
+  --bg: #1a1a2e;
+  --bg-panel: #16213e;
+  --bg-deep: #0a0a1a;
+  --border: #0f3460;
+  --accent: #e94560;
+  --accent-2: #4a90d9;
+  --text: #e0e0e0;
+  --muted: #8a8fa8;
+  --ok: #5cb85c;
+  --warn: #e8b84a;
+  --err: #d9534f;
+  --focus: #ffd700;
+}
+
+/* Reset & base — Taikyoku Shogi Web GUI */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #000;
+  font-weight: bold;
+  border-radius: 4px;
+  z-index: 1000;
+}
+
+/* Focus indicator */
+:where(a:any-link, button):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+/* Layout — Taikyoku Shogi Web GUI */
+
+header.header {
+  background: var(--bg-panel);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid var(--border);
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+header.header h1 {
+  font-size: 16px;
+  color: var(--accent);
+  white-space: nowrap;
+  letter-spacing: 0.4px;
+}
+
+header.header h1 small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.toolbar label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.toolbar select,
+.toolbar button,
+.panel button {
+  padding: 6px 10px;
+  min-inline-size: 24px;
+  min-block-size: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.toolbar button,
+.panel button {
+  background: #13294b;
+}
+
+.toolbar button:hover,
+.panel button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.toolbar button[aria-disabled='true'],
+.panel button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #13294b;
+}
+
+.toolbar button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Zoom */
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.zoom input {
+  width: 90px;
+  accent-color: var(--accent);
+}
+
+/* Status bar */
+.status-bar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#busy {
+  color: var(--warn);
+  min-width: 0;
+}
+
+/* Main shell */
+.main {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  min-height: 0;
+  justify-content: center;
+}
+
+.board-wrap {
+  flex: 0 1 auto;
+  overflow: auto;
+  border: 2px solid var(--border);
+  background: var(--bg-deep);
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.board-wrap canvas {
+  display: block;
+}
+
+aside.sidebar {
+  width: 310px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* Components — Taikyoku Shogi Web GUI */
+
+/* Panels */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  flex-shrink: 0;
+}
+
+.panel h3 {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+
+/* Info rows */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.info-row:last-child {
+  border-bottom: 0;
+}
+
+.info-row .label {
+  color: var(--muted);
+}
+
+.info-row .value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Status message */
+.status-msg {
+  font-size: 11px;
+  margin-top: 5px;
+  min-height: 14px;
+  word-break: break-word;
+}
+
+.status-msg.info {
+  color: var(--accent-2);
+}
+
+.status-msg.success {
+  color: var(--ok);
+}
+
+.status-msg.error {
+  color: var(--err);
+}
+
+/* Engine grid */
+.engine-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 10px;
+}
+
+.engine-grid .info-row {
+  font-size: 10px;
+}
+
+.engine-note {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+/* Score chart */
+#score-chart {
+  width: 100%;
+  height: 64px;
+  display: block;
+  background: var(--bg-deep);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+/* Move log */
+.move-log {
+  max-height: 170px;
+  overflow-y: auto;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  background: var(--bg-deep);
+  border-radius: 4px;
+  padding: 3px 0;
+}
+
+.move-log .entry {
+  padding: 1px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.move-log .entry:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.move-log .entry:last-child {
+  color: var(--warn);
+}
+
+.move-log .entry.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Piece tags & hints */
+.piece-tags {
+  font-size: 10px;
+  color: var(--accent-2);
+  margin-top: 4px;
+}
+
+.hint {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+/* TSFEN box */
+.tsfen-box {
+  width: 100%;
+  height: 54px;
+  resize: vertical;
+  background: var(--bg-deep);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  padding: 5px;
+  margin-bottom: 5px;
+}
+
+/* Button row & shortcuts */
+.button-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.shortcuts {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.shortcuts kbd {
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-family: inherit;
+}
+
+/* Native dialog — Taikyoku Shogi Web GUI */
+
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  width: min(420px, 92vw);
+  max-height: 85vh;
+  overflow: auto;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+dialog::backdrop {
+  background: rgba(6, 8, 20, 0.6);
+  overscroll-behavior: contain;
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog h2 {
+  font-size: 14px;
+  color: var(--accent);
+  margin: 0 0 8px 16px;
+}
+
+dialog p {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 16px 12px 16px;
+}
+
+dialog .options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 16px 12px 16px;
+}
+
+dialog button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+dialog button:hover,
+dialog button:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+dialog button[value='cancel'] {
+  color: var(--muted);
+}
+
+dialog button.cancel-row {
+  margin-top: 8px;
+  text-align: center;
+  background: transparent;
+  color: var(--muted);
+}
+
+dialog button.cancel-row:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Developer tools panel — Taikyoku Shogi Web GUI */
+
+.dev-tools {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.dev-tools h3 {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin-bottom: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dev-tools .dev-toggle {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.dev-tools .dev-toggle:hover {
+  border-color: var(--accent-2);
+  color: var(--text);
+}
+
+.dev-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dev-grid button {
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 10px;
+  background: #1e293b;
+  color: var(--text);
+  border: 1px solid #334155;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dev-grid button:hover {
+  background: #334155;
+  border-color: var(--accent-2);
+}
+
+.dev-note {
+  font-size: 9px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+/* Responsive — Taikyoku Shogi Web GUI */
+
+@media (max-width: 900px) {
+  .main {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-y: auto;
+  }
+  aside.sidebar {
+    width: 100%;
+    overflow: visible;
+  }
+  .board-wrap {
+    align-self: center;
+  }
+}

@@ -6668,67 +6668,37 @@ function render(ctx, opts) {
 }
 // src/ui/modal.ts
 function openChoiceModal(title, description, options) {
+	const dialog = document.getElementById("choice-dialog");
+	const titleEl = document.getElementById("choice-title");
+	const descEl = document.getElementById("choice-description");
+	const list = document.getElementById("choice-options");
+	if (!dialog || !titleEl || !descEl || !list) throw new Error("choice-dialog elements missing from index.html");
 	return new Promise((resolve) => {
-		const overlay = document.createElement("div");
-		overlay.className = "modal-overlay";
-		const box = document.createElement("div");
-		box.className = "modal-box";
-		box.setAttribute("role", "dialog");
-		box.setAttribute("aria-modal", "true");
-		const heading = document.createElement("h2");
-		heading.textContent = title;
-		box.appendChild(heading);
-		if (description) {
-			const paragraph = document.createElement("p");
-			paragraph.className = "modal-description";
-			paragraph.textContent = description;
-			box.appendChild(paragraph);
-		}
-		const list = document.createElement("div");
-		list.className = "modal-options";
+		titleEl.textContent = title;
+		descEl.textContent = description;
+		list.replaceChildren();
 		const close = (value) => {
-			document.removeEventListener("keydown", onKey);
-			overlay.remove();
+			dialog.removeEventListener("close", onClose);
+			dialog.close();
 			resolve(value);
+			dialog.returnValue = "";
 		};
 		options.forEach((option, index) => {
 			const button = document.createElement("button");
 			button.type = "button";
-			button.className = "modal-option";
-			button.dataset["index"] = String(index);
-			const label = document.createElement("span");
-			label.className = "modal-option-label";
-			label.textContent = option.label;
-			button.appendChild(label);
-			if (option.detail) {
-				const detail = document.createElement("span");
-				detail.className = "modal-option-detail";
-				detail.textContent = option.detail;
-				button.appendChild(detail);
-			}
+			button.value = String(index);
+			button.textContent = option.label;
+			if (option.detail) button.title = option.detail;
 			button.addEventListener("click", () => close(option.value));
 			list.appendChild(button);
 		});
-		box.appendChild(list);
-		const cancel = document.createElement("button");
-		cancel.type = "button";
-		cancel.className = "modal-cancel";
-		cancel.textContent = "Cancel (Esc)";
-		cancel.addEventListener("click", () => close(null));
-		box.appendChild(cancel);
-		const onKey = (event) => {
-			if (event.key === "Escape") {
-				event.preventDefault();
-				close(null);
-			}
+		dialog.querySelector(".cancel-row").addEventListener("click", () => close(null));
+		const onClose = () => {
+			resolve(null);
 		};
-		document.addEventListener("keydown", onKey);
-		overlay.addEventListener("click", (event) => {
-			if (event.target === overlay) close(null);
-		});
-		overlay.appendChild(box);
-		document.body.appendChild(overlay);
-		box.querySelector(".modal-option")?.focus();
+		dialog.addEventListener("close", onClose, { once: true });
+		dialog.showModal();
+		list.querySelector("button")?.focus();
 	});
 }
 // src/ui/controller.ts
@@ -6893,7 +6863,7 @@ function setText(id, text) {
 }
 function setDisabled(id, disabled) {
 	const el = $$1(id);
-	if (el) el.disabled = disabled;
+	if (el) el.setAttribute("aria-disabled", String(disabled));
 }
 var lastLogSignature = "";
 function updatePanels(state) {
@@ -6953,13 +6923,20 @@ function updatePanels(state) {
 	drawScoreChart(board.score_history);
 	const autoBtn = $$1("btn-auto");
 	if (autoBtn) {
+		autoBtn.setAttribute("aria-pressed", String(state.settings.autoPlay));
 		autoBtn.textContent = state.settings.autoPlay ? "Stop" : "Auto";
 		autoBtn.classList.toggle("active", state.settings.autoPlay);
 	}
 	const kanjiBtn = $$1("btn-kanji");
-	if (kanjiBtn) kanjiBtn.textContent = state.settings.useKanji ? "Kanji" : "English";
+	if (kanjiBtn) {
+		kanjiBtn.setAttribute("aria-pressed", String(state.settings.useKanji));
+		kanjiBtn.textContent = state.settings.useKanji ? "Kanji" : "English";
+	}
 	const flipBtn = $$1("btn-flip");
-	if (flipBtn) flipBtn.textContent = state.settings.flip ? "Flip ↺" : "Flip";
+	if (flipBtn) {
+		flipBtn.setAttribute("aria-pressed", String(state.settings.flip));
+		flipBtn.textContent = state.settings.flip ? "Flip ↺" : "Flip";
+	}
 	setDisabled("btn-undo", board.move_log.length === 0);
 	setDisabled("btn-analyze", state.busy);
 	setDisabled("btn-ai-move", state.busy || board.game_over);
@@ -7036,16 +7013,6 @@ function drawScoreChart(history) {
 	ctx.fill();
 }
 // src/main.ts
-/**
-* Application entry point.
-*
-* Wires the game state, canvas renderer, input controller and DOM panels
-* together, then boots the first game. All UI actions are also available as
-* keyboard shortcuts:
-*
-*   N = new game · U = undo · A = auto-play · K = kanji/English
-*   F = flip board · +/- = zoom · Space = ask the AI for a move
-*/
 var canvas = document.getElementById("board-canvas");
 var ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("2D canvas context is not available in this browser");
@@ -7147,6 +7114,31 @@ function exportGame(format) {
 }
 $("btn-export-game").addEventListener("click", () => exportGame("json"));
 $("btn-export-game-pgn").addEventListener("click", () => exportGame("pgn"));
+/** Toggle the developer-tools panel (keyboard: D). */
+var devPanel = document.querySelector(".dev-tools");
+var devVisible = false;
+function toggleDevTools() {
+	if (!devPanel) return;
+	devVisible = !devVisible;
+	devPanel.hidden = !devVisible;
+	state.announce(devVisible ? "Developer tools shown" : "Developer tools hidden", "info");
+}
+Object.entries({
+	"dev-nnue-pack": "make nnue-pack   (zstd-compress nets/tk.tkn + sha256)",
+	"dev-nnue-parity": "make nnue-parity   (dump positions + parity_gate.py)",
+	"dev-version-race": "make version-race   (play current vs older commit)",
+	"dev-strength": "make strength   (Elo ladder vs depth d-1)",
+	"dev-coverage": "make coverage   (dataset coverage analyzer)",
+	"dev-calibration": "make calibration   (bucket calibration analyzer)"
+}).forEach(([id, cmd]) => {
+	const btn = document.getElementById(id);
+	if (!btn) return;
+	btn.addEventListener("click", () => {
+		navigator.clipboard.writeText(cmd).then(() => {
+			state.announce(`Copied: ${cmd}`, "success");
+		});
+	});
+});
 document.addEventListener("keydown", (event) => {
 	const target = event.target;
 	if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;
@@ -7182,6 +7174,8 @@ document.addEventListener("keydown", (event) => {
 		case "-":
 			state.setZoom(Math.max(MIN_ZOOM, state.settings.zoom - .1));
 			syncControlsFromSettings();
+			break;
+		case "d": toggleDevTools();
 	}
 });
 syncControlsFromSettings();

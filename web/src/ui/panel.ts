@@ -18,7 +18,7 @@ function setText(id: string, text: string): void {
 
 function setDisabled(id: string, disabled: boolean): void {
   const el = $<HTMLButtonElement>(id);
-  if (el) el.disabled = disabled;
+  if (el) el.setAttribute('aria-disabled', String(disabled));
 }
 
 let lastLogSignature = '';
@@ -105,13 +105,20 @@ export function updatePanels(state: GameState): void {
   // ── Toolbar state ─────────────────────────────────────────
   const autoBtn = $('btn-auto');
   if (autoBtn) {
+    autoBtn.setAttribute('aria-pressed', String(state.settings.autoPlay));
     autoBtn.textContent = state.settings.autoPlay ? 'Stop' : 'Auto';
     autoBtn.classList.toggle('active', state.settings.autoPlay);
   }
   const kanjiBtn = $('btn-kanji');
-  if (kanjiBtn) kanjiBtn.textContent = state.settings.useKanji ? 'Kanji' : 'English';
+  if (kanjiBtn) {
+    kanjiBtn.setAttribute('aria-pressed', String(state.settings.useKanji));
+    kanjiBtn.textContent = state.settings.useKanji ? 'Kanji' : 'English';
+  }
   const flipBtn = $('btn-flip');
-  if (flipBtn) flipBtn.textContent = state.settings.flip ? 'Flip ↺' : 'Flip';
+  if (flipBtn) {
+    flipBtn.setAttribute('aria-pressed', String(state.settings.flip));
+    flipBtn.textContent = state.settings.flip ? 'Flip ↺' : 'Flip';
+  }
 
   setDisabled('btn-undo', board.move_log.length === 0);
   setDisabled('btn-analyze', state.busy);

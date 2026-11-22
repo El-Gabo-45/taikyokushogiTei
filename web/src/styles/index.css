@@ -1,0 +1,9 @@
+/* Entry point — imports all style modules for the Taikyoku Shogi Web GUI */
+
+@import './vars.css';
+@import './reset.css';
+@import './layout.css';
+@import './components.css';
+@import './dialog.css';
+@import './dev-tools.css';
+@import './responsive.css';

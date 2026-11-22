@@ -4,276 +4,69 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Taikyoku Shogi — Engine Web GUI</title>
-    <style>
-      :root {
-        --bg: #1a1a2e;
-        --bg-panel: #16213e;
-        --bg-deep: #0a0a1a;
-        --border: #0f3460;
-        --accent: #e94560;
-        --accent-2: #4a90d9;
-        --text: #e0e0e0;
-        --muted: #8a8fa8;
-        --ok: #5cb85c;
-        --warn: #e8b84a;
-        --err: #d9534f;
-      }
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { height: 100%; }
-      body {
-        font-family: 'Segoe UI', system-ui, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        overflow: hidden;
-      }
-      .app { display: flex; flex-direction: column; height: 100vh; }
-      .header {
-        background: var(--bg-panel);
-        padding: 8px 14px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        border-bottom: 2px solid var(--border);
-        flex-wrap: wrap;
-        row-gap: 6px;
-      }
-      .header h1 { font-size: 16px; color: var(--accent); white-space: nowrap; letter-spacing: .4px; }
-      .header h1 small { color: var(--muted); font-size: 10px; font-weight: 400; margin-left: 6px; }
-      .controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-      .controls label { font-size: 11px; color: var(--muted); }
-      .controls select, .controls button, .panel button {
-        padding: 4px 9px;
-        border-radius: 4px;
-        border: 1px solid var(--border);
-        background: var(--bg);
-        color: var(--text);
-        font-size: 11px;
-        cursor: pointer;
-        transition: background .12s ease, border-color .12s ease;
-      }
-      .controls button, .panel button { background: #13294b; }
-      .controls button:hover, .panel button:hover { background: var(--accent); border-color: var(--accent); }
-      .controls button:disabled, .panel button:disabled { opacity: .45; cursor: not-allowed; background: #13294b; }
-      .controls button.active { background: var(--accent); border-color: var(--accent); }
-      .zoom { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
-      .zoom input { width: 90px; accent-color: var(--accent); }
-      .status-bar {
-        margin-left: auto;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      #busy { color: var(--warn); min-width: 0; }
-      .main {
-        flex: 1;
-        display: flex;
-        gap: 10px;
-        padding: 10px;
-        min-height: 0;
-        justify-content: center;
-      }
-      .board-wrap {
-        flex: 0 1 auto;
-        overflow: auto;
-        border: 2px solid var(--border);
-        background: var(--bg-deep);
-        border-radius: 4px;
-        min-width: 0;
-      }
-      .board-wrap canvas { display: block; }
-      .sidebar {
-        width: 310px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        flex-shrink: 0;
-        overflow-y: auto;
-        padding-right: 2px;
-      }
-      .panel {
-        background: var(--bg-panel);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 8px 10px;
-        flex-shrink: 0;
-      }
-      .panel h3 {
-        font-size: 10px;
-        letter-spacing: .8px;
-        text-transform: uppercase;
-        color: var(--accent);
-        margin-bottom: 5px;
-      }
-      .info-row {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        font-size: 11px;
-        padding: 2px 0;
-        border-bottom: 1px solid rgba(255,255,255,.03);
-      }
-      .info-row:last-child { border-bottom: 0; }
-      .info-row .label { color: var(--muted); }
-      .info-row .value { font-variant-numeric: tabular-nums; text-align: right; }
-      .status-msg { font-size: 11px; margin-top: 5px; min-height: 14px; word-break: break-word; }
-      .status-msg.info { color: var(--accent-2); }
-      .status-msg.success { color: var(--ok); }
-      .status-msg.error { color: var(--err); }
-      .engine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
-      .engine-grid .info-row { font-size: 10px; }
-      .engine-note { font-size: 9px; color: var(--muted); margin-top: 5px; }
-      #score-chart {
-        width: 100%;
-        height: 64px;
-        display: block;
-        background: var(--bg-deep);
-        border: 1px solid rgba(255,255,255,.05);
-        border-radius: 4px;
-      }
-      .move-log {
-        max-height: 170px;
-        overflow-y: auto;
-        font-size: 10px;
-        font-family: ui-monospace, monospace;
-        background: var(--bg-deep);
-        border-radius: 4px;
-        padding: 3px 0;
-      }
-      .move-log .entry { padding: 1px 6px; border-bottom: 1px solid rgba(255,255,255,.03); }
-      .move-log .entry:nth-child(odd) { background: rgba(255,255,255,.02); }
-      .move-log .entry:last-child { color: var(--warn); }
-      .move-log .entry.empty { color: var(--muted); font-style: italic; }
-      .piece-tags { font-size: 10px; color: var(--accent-2); margin-top: 4px; }
-      .hint { font-size: 9px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
-      .tsfen-box {
-        width: 100%;
-        height: 54px;
-        resize: vertical;
-        background: var(--bg-deep);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        font-family: ui-monospace, monospace;
-        font-size: 9px;
-        padding: 5px;
-        margin-bottom: 5px;
-      }
-      .button-row { display: flex; gap: 5px; flex-wrap: wrap; }
-      .shortcuts { font-size: 9px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
-      .shortcuts kbd {
-        background: var(--bg-deep);
-        border: 1px solid var(--border);
-        border-radius: 3px;
-        padding: 0 3px;
-        font-family: inherit;
-      }
-      /* Modal */
-      .modal-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(6, 8, 20, .7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 100;
-      }
-      .modal-box {
-        background: var(--bg-panel);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 16px;
-        width: min(380px, 92vw);
-        box-shadow: 0 18px 50px rgba(0,0,0,.5);
-      }
-      .modal-box h2 { font-size: 14px; color: var(--accent); margin-bottom: 4px; }
-      .modal-description { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
-      .modal-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
-      .modal-option {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
-        text-align: left;
-        padding: 8px 10px;
-        background: var(--bg);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 12px;
-      }
-      .modal-option:hover, .modal-option:focus { border-color: var(--accent); outline: none; }
-      .modal-option-detail { font-size: 10px; color: var(--muted); }
-      .modal-cancel {
-        width: 100%;
-        padding: 6px;
-        background: transparent;
-        color: var(--muted);
-        border: 1px solid var(--border);
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 11px;
-      }
-      .modal-cancel:hover { color: var(--text); border-color: var(--accent); }
-      @media (max-width: 900px) {
-        .main { flex-direction: column; align-items: stretch; overflow-y: auto; }
-        .sidebar { width: 100%; overflow: visible; }
-        .board-wrap { align-self: center; }
-      }
-    </style>
   </head>
   <body>
+    <a href="#content" class="skip-link">Skip to main content</a>
+
     <div class="app">
-      <header class="header">
-        <h1>Taikyoku Shogi <small>36×36 · 804 pieces</small></h1>
-        <div class="controls">
-          <label for="mode-select">Mode</label>
-          <select id="mode-select">
-            <option value="human_vs_random">Human vs Random</option>
-            <option value="human_vs_ai" selected>Human vs AI</option>
-            <option value="random_vs_random">Random vs Random</option>
-            <option value="ai_vs_ai">AI vs AI</option>
-          </select>
-          <label for="color-select">Play as</label>
-          <select id="color-select">
-            <option value="0">Black</option>
-            <option value="1">White</option>
-          </select>
-          <label for="ai-depth">AI</label>
-          <select id="ai-depth">
-            <option value="0">Random</option>
-            <option value="1">D1</option>
-            <option value="2" selected>D2</option>
-            <option value="3">D3</option>
-          </select>
-          <button id="btn-new" title="New game (N)">New Game</button>
-          <button id="btn-undo" title="Undo (U)">Undo</button>
-          <button id="btn-auto" title="Auto-play (A)">Auto</button>
-          <button id="btn-ai-move" title="Ask the AI to move (Space)">AI Move</button>
-          <button id="btn-analyze" title="Analyze without moving">Analyze</button>
-          <button id="btn-kanji" title="Kanji / English (K)">Kanji</button>
-          <button id="btn-flip" title="Flip board (F)">Flip</button>
+      <header class="header" aria-label="Game controls">
+        <h1 id="page-title">Taikyoku Shogi <small>36×36 · 804 pieces</small></h1>
+        <div class="toolbar" role="toolbar" aria-label="Game controls" aria-controls="board-canvas">
+          <div role="group" aria-label="Game mode">
+            <label for="mode-select">Mode</label>
+            <select id="mode-select" aria-label="Game mode">
+              <option value="human_vs_random">Human vs Random</option>
+              <option value="human_vs_ai" selected>Human vs AI</option>
+              <option value="random_vs_random">Random vs Random</option>
+              <option value="ai_vs_ai">AI vs AI</option>
+            </select>
+          </div>
+          <span role="separator" aria-orientation="vertical" style="opacity: 0"></span>
+          <div role="group" aria-label="Player color">
+            <label for="color-select">Play as</label>
+            <select id="color-select" aria-label="Player color">
+              <option value="0">Black</option>
+              <option value="1">White</option>
+            </select>
+          </div>
+          <span role="separator" aria-orientation="vertical" style="opacity: 0"></span>
+          <div role="group" aria-label="AI depth">
+            <label for="ai-depth">AI</label>
+            <select id="ai-depth" aria-label="AI search depth">
+              <option value="0">Random</option>
+              <option value="1">D1</option>
+              <option value="2" selected>D2</option>
+              <option value="3">D3</option>
+            </select>
+          </div>
+          <span role="separator" aria-orientation="vertical" style="opacity: 0"></span>
+          <button type="button" id="btn-new" aria-label="New game (N)">New Game</button>
+          <button type="button" id="btn-undo" aria-label="Undo (U)">Undo</button>
+          <button type="button" id="btn-auto" aria-pressed="false" aria-label="Auto-play (A)">Auto</button>
+          <button type="button" id="btn-ai-move" aria-label="Ask the AI to move (Space)">AI Move</button>
+          <button type="button" id="btn-analyze" aria-label="Analyze without moving">Analyze</button>
+          <button type="button" id="btn-kanji" aria-pressed="true" aria-label="Kanji / English (K)">Kanji</button>
+          <button type="button" id="btn-flip" aria-pressed="false" aria-label="Flip board (F)">Flip</button>
+          <span role="separator" aria-orientation="vertical" style="opacity: 0"></span>
           <span class="zoom">
             <label for="zoom-range">Zoom</label>
-            <input id="zoom-range" type="range" min="70" max="180" step="5" value="100" />
+            <input id="zoom-range" type="range" min="70" max="180" step="5" value="100" aria-label="Board zoom" />
             <span id="zoom-label">100%</span>
           </span>
         </div>
         <div class="status-bar">
-          <span id="busy"></span>
-          <span id="status">Loading…</span>
+          <span id="busy" aria-live="polite"></span>
+          <span id="status" aria-live="polite">Loading…</span>
         </div>
       </header>
 
-      <main class="main">
+      <main class="main" id="content">
         <div class="board-wrap">
           <canvas id="board-canvas"></canvas>
         </div>
 
         <aside class="sidebar">
-          <section class="panel">
+          <section class="panel" aria-label="Position information">
             <h3>Position</h3>
             <div class="info-row"><span class="label">Turn</span><span class="value" id="info-turn">Black</span></div>
             <div class="info-row"><span class="label">Move</span><span class="value" id="info-move">1</span></div>
@@ -281,10 +74,10 @@
             <div class="info-row"><span class="label">Material (B)</span><span class="value" id="info-score">0</span></div>
             <div class="info-row"><span class="label">Eval (STM)</span><span class="value" id="info-eval">0</span></div>
             <div class="info-row"><span class="label">No-progress</span><span class="value" id="info-progress">0 / 1000</span></div>
-            <div id="status-msg" class="status-msg info">—</div>
+            <div id="status-msg" class="status-msg info" role="status">—</div>
           </section>
 
-          <section class="panel">
+          <section class="panel" aria-label="Engine information">
             <h3>Engine</h3>
             <div class="engine-grid">
               <div class="info-row"><span class="label">Version</span><span class="value" id="engine-version">—</span></div>
@@ -302,7 +95,7 @@
             <div class="engine-note">Last search telemetry reported by the Rust engine.</div>
           </section>
 
-          <section class="panel">
+          <section class="panel" aria-label="Piece inspector">
             <h3>Piece Inspector <span id="inspect-title" style="color:var(--muted);text-transform:none;letter-spacing:0">—</span></h3>
             <div class="info-row"><span class="label">Name</span><span class="value" id="inspect-name">Click a piece</span></div>
             <div class="info-row"><span class="label">Abbrev</span><span class="value" id="inspect-abbrev">—</span></div>
@@ -313,37 +106,62 @@
             <div id="inspect-hint" class="hint">Hover/click any piece to inspect its movement data.</div>
           </section>
 
-          <section class="panel">
+          <section class="panel" aria-label="Material balance chart">
             <h3>Material Balance</h3>
-            <canvas id="score-chart"></canvas>
+            <canvas id="score-chart" aria-label="Material balance over the game" role="img"></canvas>
           </section>
 
-          <section class="panel">
+          <section class="panel" aria-label="Move log">
             <h3>Move Log</h3>
             <div class="move-log" id="move-log"></div>
             <div class="button-row" style="margin-top:6px">
-              <button id="btn-export-game" title="Download a CLI-compatible JSON game file">Export JSON</button>
-              <button id="btn-export-game-pgn" title="Download the game in PGN notation">Export PGN</button>
+              <button type="button" id="btn-export-game" aria-label="Export game as JSON">Export JSON</button>
+              <button type="button" id="btn-export-game-pgn" aria-label="Export game as PGN">Export PGN</button>
             </div>
             <div class="hint">JSON reloads in the CLI with <code>load &lt;file.json&gt;</code>; PGN is for reading/sharing.</div>
           </section>
 
-          <section class="panel">
+          <section class="panel" aria-label="Position TSFEN">
             <h3>TSFEN · Save / Load</h3>
-            <textarea id="tsfen-box" class="tsfen-box" spellcheck="false" placeholder="Paste a TSFEN string to load a position…"></textarea>
+            <textarea id="tsfen-box" class="tsfen-box" spellcheck="false" placeholder="Paste a TSFEN string to load a position…" aria-label="Position in TSFEN format"></textarea>
             <div class="button-row">
-              <button id="btn-save">Export</button>
-              <button id="btn-copy">Copy</button>
-              <button id="btn-download">Download</button>
-              <button id="btn-load">Load</button>
+              <button type="button" id="btn-save" aria-label="Export current position as TSFEN">Export</button>
+              <button type="button" id="btn-copy" aria-label="Copy TSFEN to clipboard">Copy</button>
+              <button type="button" id="btn-download" aria-label="Download TSFEN as a file">Download</button>
+              <button type="button" id="btn-load" aria-label="Load position from TSFEN">Load</button>
             </div>
             <div class="shortcuts">
               <kbd>N</kbd> new · <kbd>U</kbd> undo · <kbd>A</kbd> auto · <kbd>K</kbd> kanji ·
-              <kbd>F</kbd> flip · <kbd>Space</kbd> AI move · <kbd>+</kbd>/<kbd>−</kbd> zoom
+              <kbd>F</kbd> flip · <kbd>Space</kbd> AI move · <kbd>+</kbd>/<kbd>−</kbd> zoom · <kbd>D</kbd> dev tools
             </div>
+          </section>
+
+          <!-- Developer tools panel — access to the project's investigation tools -->
+          <section class="panel dev-tools" aria-label="Developer tools" hidden>
+            <h3>
+              Developer Tools
+              <button type="button" class="dev-toggle" aria-label="Collapse developer tools">▾</button>
+            </h3>
+            <div class="dev-grid">
+              <button type="button" id="dev-nnue-pack" aria-label="Pack NNUE network">NNUE Pack</button>
+              <button type="button" id="dev-nnue-parity" aria-label="Run NNUE parity gate">NNUE Parity</button>
+              <button type="button" id="dev-version-race" aria-label="Run version strength race">Version Race</button>
+              <button type="button" id="dev-strength" aria-label="Run Elo strength report">Strength Report</button>
+              <button type="button" id="dev-coverage" aria-label="Run dataset coverage">Coverage</button>
+              <button type="button" id="dev-calibration" aria-label="Run bucket calibration">Calibration</button>
+            </div>
+            <div class="dev-note">Launches the matching Cargo / make target against the Rust backend.</div>
           </section>
         </aside>
       </main>
+
+      <!-- Native <dialog> for move disambiguation (promotion / igui) -->
+      <dialog id="choice-dialog" aria-labelledby="choice-title" aria-describedby="choice-description">
+        <h2 id="choice-title">Choose a move</h2>
+        <p id="choice-description"></p>
+        <div class="options" id="choice-options"></div>
+        <button type="button" class="cancel-row" aria-label="Cancel move selection">Cancel</button>
+      </dialog>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
