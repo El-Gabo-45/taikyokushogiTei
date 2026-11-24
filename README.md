@@ -2,6 +2,10 @@
 
 A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the largest known variant of shogi.
 
+Developed with AI assistance in some parts of the code and documentation.
+
+![Interface](docs/screenshots/full-view.png)
+
 - **36 x 36** board (1,296 squares)
 - **804 pieces** (402 per side)
 - **209 initial piece types** with distinct movement patterns
@@ -24,8 +28,9 @@ A complete engine for **Taikyoku Shogi** (大局将棋, "ultimate chess"), the l
 
 ### Requirements
 
-- A recent stable **Rust toolchain** (edition 2021). **Cargo 1.85+** is
+- A recent stable **Rust toolchain** (edition 2024). **Cargo 1.85+** is
   required because `Cargo.lock` is written in version 4 format.
+  Install Rust via [rustup](https://rustup.rs/) if you don't have it.
 - **Node.js + npm** only if you want to rebuild the `web/` frontend
   (TypeScript + Vite; a prebuilt `dist/` is committed).
 - **Python 3.11+** only for the NNUE training pipeline in `training/` (see
@@ -88,14 +93,6 @@ only after modifying `web/src/`:
 cd web && npm install && npm run build && cd ..
 ```
 
-## Screenshots
-
-The web GUI supports two piece-symbol modes: traditional Japanese kanji and English abbreviations.
-
-| Interface view | English names | Kanji / Japanese |
-| --------------------------- | ------------------ | ----------------- |
-| ![Interfaz completa](docs/screenshots/Screenshot_2026-10-31_14-30-08.png) | ![Siglas en inglés](docs/screenshots/Screenshot_2026-10-31_14-30-37.png) | ![Kanji / Japonés](docs/screenshots/Screenshot_2026-10-31_14-38-29.png) |
-
 ## Rules in brief
 
 - Capture **all** of the opponent's royal pieces (King + Crown Prince). Unlike standard shogi there is **no check or checkmate** — you may move your King into danger.
@@ -121,7 +118,7 @@ requests get a fresh session by default (`TAIKYOKU_ANON=auto`), never the
 shared board.
 
 Game modes (human/human/AI), piece inspector, analysis mode, TSFEN panel,
-material chart, JSON/PGN game export. Screenshots above. Feature list, the
+material chart, JSON/PGN game export. Feature list, the
 full REST API reference and the session mode details:
 **[docs/WEB.md](docs/WEB.md)**.
 
@@ -132,7 +129,7 @@ eval, save/load games, self-play, and Elo/SPRT strength measurement
 (`match` / `sprt`).
 
 ```bash
-./target/release/taikyokushogi-cli --threads 4 --go   # -> bestmove <mv> score <s> nodes <n>
+./target/release/taikyokushogi-cli --threads 4 --go   # -> bestmove <mv> score  nodes <n>
 ```
 
 Full flag + command reference and the ELO/SPRT guide:
