@@ -20,13 +20,14 @@
 
 use super::buffers::{PlyBuffers, SearchPool};
 use super::heuristics::Heuristics;
-use super::ordering::{self, piece_vals};
+use super::ordering;
 use super::params::{self, SearchConfig};
 use super::qsearch;
 use super::tt::{self, Tt};
 use crate::board::Board;
 use crate::eval::{MATE_SCORE, evaluate};
 use crate::types::*;
+use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
@@ -296,6 +297,7 @@ impl<'a> Ctx<'a> {
         // history tables are per-side, and the beta-cutoff blocks below run
         // after board.undo_move() has already restored the parent's side.
         let stm = self.board.side_to_move;
+        let values = ordering::piece_vals();
 
         // ── BEST MOVE AS SCALAR ───────────────────────────────────
         // Track the best move as its packed u32 instead of a cloned Move.
@@ -310,9 +312,9 @@ impl<'a> Ctx<'a> {
         // Quiets tried so far at this node (for history malus on beta cutoff).
         // Fixed stack array: at most the beam + 1 quiets are ever tried before
         // the beam break, so 64 slots always suffice — no heap allocation per
-        // node.
-        let mut quiet_tried: [(u16, u16); params::QUIETS_TRACKED_MAX] =
-            [(0, 0); params::QUIETS_TRACKED_MAX];
+        // node. MaybeUninit avoids zero-initialising 128 bytes on every node.
+        let mut quiet_tried: [MaybeUninit<(u16, u16)>; params::QUIETS_TRACKED_MAX] =
+            [MaybeUninit::uninit(); params::QUIETS_TRACKED_MAX];
         let mut quiet_tried_n = 0usize;
 
         // ── STAGED MOVE GENERATION ────────────────────────────────
@@ -351,25 +353,26 @@ impl<'a> Ctx<'a> {
                 .history_score(m.from_sq as usize, m.to_sq as usize, stm);
             let cntr = self.heur.counter_score(self.prev_move, packed);
             pb.cap_scores
-                .push(ordering::score_move(self.heur, m, iid_move, hist, cntr, d));
+                .push(ordering::score_move(self.heur, m, iid_move, hist, cntr, d, values));
         }
 
         let mut move_idx = 0usize;
         // ── Stage 1: captures + promotions ────────────────────────────
+        // Order capture indices by score once (O(n log n)) instead of
+        // linear-scanning for the max on every iteration (O(beam * n)).
+        pb.cap_order.clear();
+        pb.cap_order.extend(0..cap_moves.len() as u32);
+        pb.cap_order.sort_unstable_by(|&a, &b| {
+            pb.cap_scores[b as usize].cmp(&pb.cap_scores[a as usize])
+        });
+        let mut cap_order_pos = 0usize;
         loop {
-            // Pick the best remaining capture.
-            let mut idx = usize::MAX;
-            let mut order_score = i32::MIN;
-            for (i, &s) in pb.cap_scores.iter().enumerate() {
-                if s > order_score {
-                    order_score = s;
-                    idx = i;
-                }
-            }
-            if idx == usize::MAX {
+            if cap_order_pos >= pb.cap_order.len() {
                 break;
             }
-            pb.cap_scores[idx] = i32::MIN;
+            let idx = pb.cap_order[cap_order_pos] as usize;
+            cap_order_pos += 1;
+            let order_score = pb.cap_scores[idx];
             let packed = ordering::m_pack(&pb.caps[idx]);
             // 0-based index counting LEGAL captures searched so far. Illegal
             // pseudo-legal captures (verified below) never consume a beam slot:
@@ -392,7 +395,6 @@ impl<'a> Ctx<'a> {
                 && order_score < params::TACTICAL_BASE_SCORE
                 && params::mate_gate_ok(alpha)
             {
-                let values = piece_vals();
                 let from_pt = cell_piece(self.board.cells[m.from_sq as usize]);
                 let gain =
                     ordering::capture_qs_score(self.board, m, values) + values[from_pt as usize];
@@ -435,7 +437,8 @@ impl<'a> Ctx<'a> {
                 // History gravity: penalize the quiets that failed to cause a
                 // cutoff, so next time the cutting move (and similar ones) are
                 // tried first. (Standard technique: Stockfish's history malus.)
-                for &(hf, ht) in &quiet_tried[..quiet_tried_n] {
+                for i in 0..quiet_tried_n {
+                    let (hf, ht) = unsafe { quiet_tried[i].assume_init() };
                     self.heur.history_malus(hf as usize, ht as usize, d, stm);
                 }
                 break;
@@ -464,7 +467,7 @@ impl<'a> Ctx<'a> {
                     .heur
                     .history_score(m.from_sq as usize, m.to_sq as usize, stm);
                 let cntr = self.heur.counter_score(self.prev_move, packed);
-                let s = ordering::score_move(self.heur, m, iid_move, hist, cntr, d);
+                let s = ordering::score_move(self.heur, m, iid_move, hist, cntr, d, values);
                 pb.scored.push((s, i as u32, packed));
             }
             let n_quiets = pb.scored.len();
@@ -518,7 +521,7 @@ impl<'a> Ctx<'a> {
                 move_idx += 1;
                 searched = true;
                 if order_score < params::TACTICAL_BASE_SCORE && quiet_tried_n < quiet_tried.len() {
-                    quiet_tried[quiet_tried_n] = (m.from_sq, m.to_sq);
+                    quiet_tried[quiet_tried_n] = MaybeUninit::new((m.from_sq, m.to_sq));
                     quiet_tried_n += 1;
                 }
                 // Hash-move extension: give the TT's best move one extra ply.

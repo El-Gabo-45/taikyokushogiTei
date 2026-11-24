@@ -47,6 +47,7 @@ pub(crate) fn score_move(
     hist: i32,
     cntr: i32,
     depth: u32,
+    values: &'static [i32; 512],
 ) -> i32 {
     let packed = m_pack(m);
     // 1) Hash move (from TT)
@@ -55,13 +56,12 @@ pub(crate) fn score_move(
     }
     // 2) Captures: MVV-LVA
     if is_tactical(m) {
-        let vals = piece_vals();
         let mut score = params::TACTICAL_BASE_SCORE;
         if m.captured_piece != 0 {
-            score += vals[m.captured_piece as usize] * 100;
+            score += values[m.captured_piece as usize] * 100;
         }
         if m.mid_piece != 0 {
-            score += vals[m.mid_piece as usize] * 100;
+            score += values[m.mid_piece as usize] * 100;
         }
         if m.range_cap && m.caps_value != 0 {
             score += m.caps_value * 100;
