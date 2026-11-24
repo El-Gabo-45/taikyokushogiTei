@@ -206,7 +206,7 @@ impl Tt {
             let stored = t[idx].load(Ordering::Acquire);
             if stored == hash {
                 let entry = tt_unpack(t[idx + 1].load(Ordering::Acquire));
-                if t[idx].load(Ordering::Acquire) != stored {
+                if t[idx].load(Ordering::Relaxed) != stored {
                     continue; // slot overwritten mid-read — try next bucket slot
                 }
                 if entry.depth >= 0 {
