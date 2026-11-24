@@ -234,7 +234,7 @@ impl Searcher {
         &mut self,
         board: &mut Board,
         depth: u32,
-        time_limit_ms: u64,
+        _time_limit_ms: u64,
         deadline: Option<Instant>,
         stop: &AtomicBool,
         publish: Option<&SharedBest>,
@@ -259,7 +259,6 @@ impl Searcher {
         let mut nodes: u64 = 0;
         let mut root_hint: Option<u32> = None;
         let mut score_guess = best_result.score;
-        let mut prev_iter_ms: u64 = 0;
         let mut last_depth: u32 = 0;
 
         if depth == 0 {
@@ -285,20 +284,11 @@ impl Searcher {
                 }
             }
 
-            // ── PREDICTIVE TIME MANAGEMENT ────────────────────────
-            // The next iteration typically costs ~4x the previous one (branching
-            // factor). If the last completed iteration's duration times 4 no
-            // longer fits in the remaining budget, stop — starting it would burn
-            // the rest of the time on an unusable partial result. (Standard
-            // technique: predict the next iteration's cost from the previous
-            // one, as in Stockfish.)
-            if current_depth >= 2 && deadline.is_some() && prev_iter_ms > 0 {
-                let elapsed_ms = start.elapsed().as_millis() as u64;
-                let remaining = time_limit_ms.saturating_sub(elapsed_ms);
-                if prev_iter_ms.saturating_mul(params::NEXT_ITER_COST_FACTOR) > remaining {
-                    break;
-                }
-            }
+            // ── TIME MANAGEMENT ─────────────────────────────────────
+            // Each iteration internally respects the deadline (see pvs/root),
+            // so we simply keep deepening until the budget is exhausted.
+            // A partial iteration is only adopted when there is no completed
+            // result to fall back to (handled below).
 
             // Search context shared by every root move of this iteration. The
             // node counter, scratch pool and cached root move list all outlive the
@@ -397,7 +387,6 @@ impl Searcher {
             }
             root_hint = result.best_move.as_ref().map(ordering::m_pack);
             score_guess = result.score;
-            prev_iter_ms = result.time_ms;
             best_result = result;
             last_depth = current_depth;
             // Report the completed iteration to the caller (protocol

@@ -153,10 +153,6 @@ pub const ROOT_WINDOW_REFINE: i32 = 50;
 /// Root aspiration is only refined once the best score beats alpha clearly.
 pub const ROOT_WINDOW_REFINE_GATE: i32 = 100;
 
-// ── Iterative-deepening time management ─────────────────────────
-/// Predicted cost multiplier of the next iteration (branching factor).
-pub const NEXT_ITER_COST_FACTOR: u64 = 4;
-
 // ── Transposition table ─────────────────────────────────────────
 // The table size is a RUNTIME setting ([`super::set_hash_mb`]); these are the
 // default and the sanity bounds used when resizing. The historical
