@@ -7,8 +7,6 @@ Captures the current engine, model, and data state for later comparison.
 """
 import argparse
 import json
-import shutil
-import sys
 from datetime import datetime
 from pathlib import Path
 

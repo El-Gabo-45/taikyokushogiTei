@@ -7,7 +7,6 @@ profile-guided optimization.
     python3 deploy/tk_pgocorpus.py --games 256 --out data/pgo_corpus
 """
 import argparse
-import sys
 from pathlib import Path
 
 

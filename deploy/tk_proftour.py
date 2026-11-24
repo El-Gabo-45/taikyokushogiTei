@@ -7,7 +7,6 @@ a flamegraph-compatible profile.
     python3 deploy/tk_proftour.py --games 64 --out data/profiles
 """
 import argparse
-import sys
 from pathlib import Path
 
 

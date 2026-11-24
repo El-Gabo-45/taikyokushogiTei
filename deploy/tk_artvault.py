@@ -9,7 +9,6 @@ Read-only to normal writers; used to share models between hosts.
 """
 import argparse
 import hashlib
-import json
 import shutil
 import sys
 from pathlib import Path

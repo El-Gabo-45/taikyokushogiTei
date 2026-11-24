@@ -7,7 +7,6 @@ comparative training experiments.
     python3 deploy/tk_twin.py data/derived/positions
 """
 import argparse
-import json
 import sys
 from pathlib import Path
 

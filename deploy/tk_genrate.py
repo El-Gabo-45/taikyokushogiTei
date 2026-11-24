@@ -21,7 +21,7 @@ def estimate(champion, prior, games):
             sys.exit(1)
     print(f"==> Generation strength: {champion} vs {prior} ({games} games)")
     print("    (match simulation stub — implement engine comparison)")
-    print(f"✓ estimated strength delta: +0.0 Elo (placeholder)")
+    print("✓ estimated strength delta: +0.0 Elo (placeholder)")
 
 
 def main():

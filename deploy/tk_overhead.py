@@ -6,7 +6,6 @@ Compares engine speed with and without profiling to quantify overhead.
     python3 deploy/tk_overhead.py --iterations 10
 """
 import argparse
-import sys
 import time
 
 

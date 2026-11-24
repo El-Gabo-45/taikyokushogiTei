@@ -6,7 +6,6 @@ Runs the engine at fixed depths and reports nodes/sec, time per move.
     python3 deploy/tk_bench.py --depths 6,8,10 --bin target/release/taikyokushogi-usi
 """
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 

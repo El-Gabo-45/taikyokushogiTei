@@ -6,7 +6,6 @@ Handles game scheduling, result collection, and standings updates.
     python3 deploy/tk_tourneyjobs.py --run
 """
 import argparse
-import sys
 
 
 def run():

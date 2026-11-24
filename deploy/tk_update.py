@@ -8,9 +8,6 @@ downloads a new binary if available. (Download step is a stub.)
     python3 deploy/tk_update.py --apply
 """
 import argparse
-import json
-import sys
-from pathlib import Path
 
 MANIFEST_URL = "https://example.com/taikyokushogiTei/manifest.json"
 

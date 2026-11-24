@@ -8,10 +8,8 @@ Tracks the current champion and supports rollback to previous champions.
     python3 deploy/tk_champ.py --rollback
 """
 import argparse
-import json
 import shutil
 import sys
-from datetime import datetime
 from pathlib import Path
 
 CHAMPION = Path("models/champion.tkn")
@@ -43,7 +41,7 @@ def rollback():
         print("✗ no previous champion to roll back to", file=sys.stderr)
         sys.exit(1)
     shutil.copy2(PREVIOUS, CHAMPION)
-    print(f"✓ rolled back to previous champion")
+    print("✓ rolled back to previous champion")
 
 
 def main():

@@ -6,7 +6,6 @@ Verifies that background tournament processes are running and making progress.
     python3 deploy/tk_liveping.py
 """
 import argparse
-import sys
 
 
 def check():
@@ -17,7 +16,7 @@ def check():
 
 def main():
     ap = argparse.ArgumentParser(description="Check live tournament tasks.")
-    args = ap.parse_args()
+    ap.parse_args()
     check()
 
 

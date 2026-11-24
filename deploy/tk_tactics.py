@@ -8,7 +8,6 @@ and writes them to a tactical corpus for focused training.
 """
 import argparse
 import json
-import sys
 from pathlib import Path
 
 

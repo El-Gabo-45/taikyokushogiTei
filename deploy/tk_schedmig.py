@@ -6,8 +6,6 @@ Migrates scheduler state from one version to the next.
     python3 deploy/tk_schedmig.py --from v1 --to v2
 """
 import argparse
-import sys
-from pathlib import Path
 
 
 def upgrade(from_ver, to_ver):

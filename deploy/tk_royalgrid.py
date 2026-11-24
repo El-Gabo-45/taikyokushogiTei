@@ -7,7 +7,6 @@ before being admitted to the royal openings book.
     python3 deploy/tk_royalgrid.py benchmarks/royal_al_grid
 """
 import argparse
-import json
 import sys
 from pathlib import Path
 

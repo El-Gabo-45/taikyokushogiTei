@@ -8,7 +8,6 @@ the strength table in data/generation_strength.json.
 """
 import argparse
 import json
-import sys
 from pathlib import Path
 
 
@@ -22,7 +21,7 @@ def refresh():
 
 def main():
     ap = argparse.ArgumentParser(description="Refresh generation strength estimates.")
-    args = ap.parse_args()
+    ap.parse_args()
     refresh()
 
 

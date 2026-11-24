@@ -45,7 +45,7 @@ def main():
     reports = []
     seen = {}
 
-    with open(args.positions, "r", encoding="utf-8") as f:
+    with open(args.positions, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:

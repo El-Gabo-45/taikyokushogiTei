@@ -8,7 +8,6 @@ writing them to data/nnue_field.json.
 """
 import argparse
 import json
-import sys
 from pathlib import Path
 
 

@@ -7,7 +7,6 @@ optional rollback if the new teacher performs worse.
     python3 deploy/tk_refresher.py --games data/raw/games --iterations 5
 """
 import argparse
-import shutil
 import sys
 from pathlib import Path
 

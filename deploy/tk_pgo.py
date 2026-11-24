@@ -6,8 +6,6 @@ Orchestrates instrumented build, workload run, and final optimized build.
     python3 deploy/tk_pgo.py --games 128
 """
 import argparse
-import subprocess
-import sys
 
 
 def pgo_build(games):
