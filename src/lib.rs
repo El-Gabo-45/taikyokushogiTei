@@ -120,7 +120,7 @@ pub const BOARD_SIZE: usize = types::BOARD_SIZE;
 pub const NUM_SQUARES: usize = types::NUM_SQUARES;
 
 /// Crate version, exposed through the REST API (`/api/health`, `/api/engine-info`).
-pub const VERSION: &str = option_env!("TAIKYOKU_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+pub const VERSION: &str = env!("TAIKYOKU_VERSION");
 
 /// Side / player color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
