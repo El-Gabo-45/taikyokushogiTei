@@ -63,7 +63,7 @@ export function updatePanels(state: GameState): void {
   setText('search-time', search ? `${search.time_ms} ms` : '—');
 
   const engine = state.engineInfo;
-  setText('engine-version', engine ? `v${engine.version}` : '—');
+  setText('engine-version', engine ? engine.version : '—');
   setText('engine-backend', engine ? engine.eval_backend : '—');
   setText('engine-hash', engine ? `${engine.hash_mb} MB` : '—');
   setText('engine-pieces', engine ? `${engine.piece_types} types` : '—');
