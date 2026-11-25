@@ -105,7 +105,9 @@ impl Tt {
     /// `panic = "abort"`, but the test profile unwinds).
     #[inline]
     fn read_table(&self) -> std::sync::RwLockReadGuard<'_, Arc<TtStorage>> {
-        self.storage().read().unwrap_or_else(std::sync::PoisonError::into_inner)
+        self.storage()
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -163,7 +165,10 @@ impl Tt {
         let table = Arc::new(TtStorage::with_mb(mb));
         let actual = table.actual_mb();
         {
-            let mut guard = self.storage().write().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut guard = self
+                .storage()
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             *guard = table;
         }
         // Fresh table: nothing is worth keeping, and an aged generation would

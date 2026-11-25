@@ -84,8 +84,7 @@ impl RootState {
             for (i, m) in self.moves.iter().enumerate() {
                 let packed = ordering::m_pack(m);
                 let hist = heur.history_score(m.from_sq as usize, m.to_sq as usize, stm);
-                let mut s =
-                    ordering::score_move(heur, m, tt_move, hist, 0, depth, values);
+                let mut s = ordering::score_move(heur, m, tt_move, hist, 0, depth, values);
                 if root_hint == Some(packed) {
                     s += params::ROOT_HINT_SCORE;
                 }

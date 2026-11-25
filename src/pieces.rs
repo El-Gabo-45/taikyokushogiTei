@@ -1,5 +1,8 @@
 /// Piece definitions: 301 piece types, Betza parser, movements, promotions, setup.
-use crate::types::{RANK_NORMAL, RANK_RANGE_CAP, RANK_ROYAL, RANK_GREAT, RANK_VICE, Movement, N, E, S, W, NE, SE, SW, NW, HookType};
+use crate::types::{
+    E, HookType, Movement, N, NE, NW, RANK_GREAT, RANK_NORMAL, RANK_RANGE_CAP, RANK_ROYAL,
+    RANK_VICE, S, SE, SW, W,
+};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 

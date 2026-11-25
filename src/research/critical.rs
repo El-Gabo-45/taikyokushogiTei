@@ -34,10 +34,12 @@ struct Moment {
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
-    let db = positional(args).map(std::string::ToString::to_string).ok_or_else(|| {
-        "usage: nnue critical <games.db> [--net FILE] [--threshold N] [--limit G] [--top N]"
-            .to_string()
-    })?;
+    let db = positional(args)
+        .map(std::string::ToString::to_string)
+        .ok_or_else(|| {
+            "usage: nnue critical <games.db> [--net FILE] [--threshold N] [--limit G] [--top N]"
+                .to_string()
+        })?;
     let net = load_net(args)?;
     let threshold = num(args, "--threshold", 500i32)?;
     let limit = num_opt(args, "--limit")?;

@@ -1,7 +1,9 @@
 //! Precomputed lookup tables: ray table, Zobrist hash keys, promotion-zone tables.
 
-use super::constants::{NUM_SQUARES, NUM_DIRS, DIR_DR, DIR_DC, BOARD_SIZE, BLACK, PROMO_ZONE_DEPTH};
-use super::square::{sq_row, sq_col};
+use super::constants::{
+    BLACK, BOARD_SIZE, DIR_DC, DIR_DR, NUM_DIRS, NUM_SQUARES, PROMO_ZONE_DEPTH,
+};
+use super::square::{sq_col, sq_row};
 use std::sync::OnceLock;
 
 // ============================================================================

@@ -13,7 +13,7 @@ use crate::eval::families::Family;
 use crate::eval::families::family_value_fast;
 use crate::eval::zones::Zone;
 use crate::pieces;
-use crate::types::{BOARD_SIZE, NUM_SQUARES, EMPTY_CELL, cell_piece, BLACK};
+use crate::types::{BLACK, BOARD_SIZE, EMPTY_CELL, NUM_SQUARES, cell_piece};
 use std::sync::OnceLock;
 
 /// PSQT value for a piece of type `pt` at square `sq` for color `color`.

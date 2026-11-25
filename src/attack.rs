@@ -20,7 +20,11 @@
 
 use crate::board::Board;
 use crate::pieces;
-use crate::types::{N, S, E, W, NW, SE, NE, SW, BLACK, get_deltas, ray_table, INVALID_SQ, EMPTY_CELL, cell_piece, sq_row, sq_col, BOARD_SIZE, cell_color, NUM_DIRS, step_sq, Movement, RayTable, HookType, in_promo_zone, Cell};
+use crate::types::{
+    BLACK, BOARD_SIZE, Cell, E, EMPTY_CELL, HookType, INVALID_SQ, Movement, N, NE, NUM_DIRS, NW,
+    RayTable, S, SE, SW, W, cell_color, cell_piece, get_deltas, in_promo_zone, ray_table, sq_col,
+    sq_row, step_sq,
+};
 use std::sync::OnceLock;
 
 const MAX_JUMP_DELTAS: usize = 32;

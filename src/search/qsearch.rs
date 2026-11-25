@@ -13,7 +13,7 @@ use super::params;
 use super::pvs::Ctx;
 use super::tt;
 use crate::eval::{MATE_SCORE, evaluate};
-use crate::types::{GameResult, BLACK, WHITE};
+use crate::types::{BLACK, GameResult, WHITE};
 
 /// Quiescence entry (qd = 0 from the main search).
 pub(crate) fn run(ctx: &mut Ctx, alpha: i32, beta: i32) -> i32 {

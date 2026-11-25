@@ -12,7 +12,7 @@
 
 use crate::board::Board;
 use crate::pieces;
-use crate::types::{BOARD_SIZE, BLACK, WHITE, EMPTY_CELL, cell_piece, cell_color, make_cell};
+use crate::types::{BLACK, BOARD_SIZE, EMPTY_CELL, WHITE, cell_color, cell_piece, make_cell};
 
 /// Encode a board position as a TSFEN string.
 pub fn to_tsfen(board: &Board) -> String {

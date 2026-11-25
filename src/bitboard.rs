@@ -6,7 +6,9 @@
 //! Design inspired by the document's proposal for Taikyoku Shogi.
 
 #![allow(dead_code)] // precomputed-table / debug utilities kept intentionally
-use crate::types::{NUM_SQUARES, BOARD_SIZE, NUM_DIRS, INVALID_SQ, sq_row, sq_col, DIR_DR, DIR_DC, BLACK};
+use crate::types::{
+    BLACK, BOARD_SIZE, DIR_DC, DIR_DR, INVALID_SQ, NUM_DIRS, NUM_SQUARES, sq_col, sq_row,
+};
 
 /// Number of u64 words needed to represent 1,296 squares.
 pub const U64_COUNT: usize = NUM_SQUARES.div_ceil(64); // 21

@@ -11,7 +11,7 @@
 
 #![allow(dead_code)] // utility/debug API kept intentionally
 use crate::board::Board;
-use crate::types::{BLACK, NUM_SQUARES, EMPTY_CELL, cell_piece, BOARD_SIZE};
+use crate::types::{BLACK, BOARD_SIZE, EMPTY_CELL, NUM_SQUARES, cell_piece};
 
 /// Zone index from the perspective of the side to move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

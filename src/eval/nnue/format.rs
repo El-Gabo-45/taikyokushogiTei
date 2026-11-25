@@ -198,7 +198,11 @@ impl Network {
 
         // The accumulators are i32: prove they cannot overflow for any board.
         let max_ft = ft.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
-        let max_fb = ft_bias.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
+        let max_fb = ft_bias
+            .iter()
+            .map(|&w| i64::from(w).abs())
+            .max()
+            .unwrap_or(0);
         if MAX_BOARD_PIECES as i64 * max_ft + max_fb >= 1 << 31 {
             return Err(NnueError::Overflow(
                 "feature-transformer accumulator".into(),

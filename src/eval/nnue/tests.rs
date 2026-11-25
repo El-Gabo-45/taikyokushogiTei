@@ -1,6 +1,8 @@
 use super::*;
 use crate::Board as PubBoard;
 use crate::eval::nnue::format::{MAGIC, VERSION, ZSTD_MAGIC};
+use crate::types::WHITE;
+use crate::types::make_cell;
 
 fn net() -> Arc<Network> {
     Arc::new(Network::random(42))

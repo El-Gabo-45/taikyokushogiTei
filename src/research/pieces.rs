@@ -21,9 +21,11 @@ use super::{flag, load_net, num, num_opt, positional, print_replay_summary, repl
 const MAX_PT: usize = 302;
 
 pub fn run(args: &[String]) -> Result<(), String> {
-    let db = positional(args).map(std::string::ToString::to_string).ok_or_else(|| {
-        "usage: nnue pieces <games.db> [--limit G] [--top N] [--csv FILE]".to_string()
-    })?;
+    let db = positional(args)
+        .map(std::string::ToString::to_string)
+        .ok_or_else(|| {
+            "usage: nnue pieces <games.db> [--limit G] [--top N] [--csv FILE]".to_string()
+        })?;
     let net = load_net(args)?;
     let limit = num_opt(args, "--limit")?;
     let top = num(args, "--top", 15usize)?;

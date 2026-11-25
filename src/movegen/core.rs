@@ -1,6 +1,10 @@
 use crate::board::Board;
 use crate::pieces;
-use crate::types::{N, S, E, W, NW, SE, NE, SW, Move, NUM_SQUARES, INVALID_SQ, sq_row, sq_col, BLACK, BOARD_SIZE, ray_table, EMPTY_CELL, cell_piece, Movement, RayTable, in_promo_zone, cell_color, HookType, NUM_DIRS, get_deltas, Cell, is_farthest_rank, step_sq};
+use crate::types::{
+    BLACK, BOARD_SIZE, Cell, E, EMPTY_CELL, HookType, INVALID_SQ, Move, Movement, N, NE, NUM_DIRS,
+    NUM_SQUARES, NW, RayTable, S, SE, SW, W, cell_color, cell_piece, get_deltas, in_promo_zone,
+    is_farthest_rank, ray_table, sq_col, sq_row, step_sq,
+};
 use std::sync::OnceLock;
 
 const HOOK_ORTHO_NS: [usize; 2] = [N, S];

@@ -5,7 +5,7 @@
 //! the engine computed incrementally.
 
 use super::Network;
-use crate::types::{EMPTY_CELL, cell_piece, cell_color};
+use crate::types::{EMPTY_CELL, cell_color, cell_piece};
 
 /// Everything the Python reference needs to recompute one evaluation.
 pub struct PositionDump {

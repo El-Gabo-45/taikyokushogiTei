@@ -284,7 +284,9 @@ fn parse_move(board: &Board, token: &str) -> Result<crate::Move, String> {
     // Squares are `file + 1..2 digits`, so a from/to pair is NOT a fixed
     // 4-character slice: `e34A12` is `e34` + `A12`. Split where a file letter
     // follows a digit (the `=` igui spelling is an explicit separator).
-    let squares: (Option<u16>, Option<u16>) = if let Some((a, b)) = core.split_once('=') { (parse_square(a.trim()), parse_square(b.trim())) } else {
+    let squares: (Option<u16>, Option<u16>) = if let Some((a, b)) = core.split_once('=') {
+        (parse_square(a.trim()), parse_square(b.trim()))
+    } else {
         let cleaned: String = core.chars().filter(|c| *c != '-').collect();
         match split_two_squares(&cleaned) {
             Some((a, b)) => (parse_square(a), parse_square(b)),
@@ -504,10 +506,7 @@ impl UsiEngine {
     fn cmd_setoption(&mut self, rest: &[&str]) {
         // `setoption name <id> [value <x>]` — the value may contain spaces
         // (network file paths).
-        let idx = usize::from(
-            rest.first()
-                .is_some_and(|s| s.eq_ignore_ascii_case("name")),
-        );
+        let idx = usize::from(rest.first().is_some_and(|s| s.eq_ignore_ascii_case("name")));
         let Some(name) = rest.get(idx) else {
             self.send("info string setoption: expected `name <id> [value <x>]`");
             return;
@@ -622,7 +621,10 @@ impl UsiEngine {
         };
         // `moves <m1> <m2> ...`
         let mut moves: &[&str] = &rest[moves_from.min(rest.len())..];
-        if moves.first().is_some_and(|s| s.eq_ignore_ascii_case("moves")) {
+        if moves
+            .first()
+            .is_some_and(|s| s.eq_ignore_ascii_case("moves"))
+        {
             moves = &moves[1..];
         }
         for token in moves {
@@ -761,7 +763,9 @@ impl UsiEngine {
 
     /// Join a taken job's thread and put its searcher back into service.
     fn recover(&mut self, job: Job) {
-        if let Ok(searcher) = job.handle.join() { self.searcher = Some(searcher) } else {
+        if let Ok(searcher) = job.handle.join() {
+            self.searcher = Some(searcher)
+        } else {
             // The search thread panicked (debug builds only — the
             // release profile aborts): rebuild a fresh searcher.
             eprintln!("taikyokushogi-usi: search thread panicked; state reset");

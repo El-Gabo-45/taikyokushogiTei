@@ -1,7 +1,7 @@
 //! Parallel self-play for Taikyoku Shogi.
 use crate::board::Board;
 use crate::search::search;
-use crate::types::{GameResult, BLACK, EMPTY_CELL, cell_piece, cell_color};
+use crate::types::{BLACK, EMPTY_CELL, GameResult, cell_color, cell_piece};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -268,7 +268,9 @@ impl SelfPlayWorker {
                 (legal[(rng.next() % legal.len() as u64) as usize], 0, 0, 0)
             } else {
                 let r = search(&mut board, self.config.depth, self.config.time_limit_ms);
-                if let Some(m) = r.best_move { (m, r.score, r.nodes, r.time_ms) } else {
+                if let Some(m) = r.best_move {
+                    (m, r.score, r.nodes, r.time_ms)
+                } else {
                     result_val = if board.side_to_move == BLACK {
                         -1i8
                     } else {
@@ -633,14 +635,10 @@ impl SelfPlayCoordinator {
             }
             if last_print.elapsed().as_secs() >= 2 {
                 last_print = std::time::Instant::now();
-                println!(
-                    "[db] games={total} ({failures} failed) written to {db_path}"
-                );
+                println!("[db] games={total} ({failures} failed) written to {db_path}");
             }
         }
-        println!(
-            "[db] Done: {total} games written to {db_path} ({failures} failed)"
-        );
+        println!("[db] Done: {total} games written to {db_path} ({failures} failed)");
         if failures > 0 {
             Err(format!(
                 "{failures} of {total} games failed to persist in {db_path} \

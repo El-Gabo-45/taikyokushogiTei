@@ -1,7 +1,11 @@
 use crate::bitboard::Bitboard1296;
 use crate::eval::psqt;
 use crate::pieces;
-use crate::types::{Cell, NUM_SQUARES, MAX_PIECES_PER_SIDE, MAX_ROYALS, UndoInfo, EMPTY_CELL, BLACK, INVALID_SQ, WHITE, sq_index, make_cell, zobrist_piece_key, Move, cell_piece, cell_color, BOARD_SIZE, zobrist_side_key, GameResult, DRAW_PLIES};
+use crate::types::{
+    BLACK, BOARD_SIZE, Cell, DRAW_PLIES, EMPTY_CELL, GameResult, INVALID_SQ, MAX_PIECES_PER_SIDE,
+    MAX_ROYALS, Move, NUM_SQUARES, UndoInfo, WHITE, cell_color, cell_piece, make_cell, sq_index,
+    zobrist_piece_key, zobrist_side_key,
+};
 
 pub struct Board {
     pub cells: [Cell; NUM_SQUARES],

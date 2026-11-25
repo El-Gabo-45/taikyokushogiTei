@@ -31,7 +31,7 @@ pub mod format;
 use std::sync::Arc;
 
 use crate::board::Board;
-use crate::types::{MAX_PIECES_PER_SIDE, BLACK, EMPTY_CELL, cell_piece, cell_color};
+use crate::types::{BLACK, EMPTY_CELL, MAX_PIECES_PER_SIDE, cell_color, cell_piece};
 
 pub use arch::ArchSpec;
 pub use format::NnueError;

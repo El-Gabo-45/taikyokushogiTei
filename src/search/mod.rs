@@ -375,8 +375,8 @@ impl Searcher {
             // still ranks the root moves it reached, while for later
             // iterations the last COMPLETED iteration is the more reliable
             // answer.
-            let out_of_time = stop.load(Ordering::Relaxed)
-                || deadline.is_some_and(|dl| Instant::now() >= dl);
+            let out_of_time =
+                stop.load(Ordering::Relaxed) || deadline.is_some_and(|dl| Instant::now() >= dl);
             if out_of_time {
                 if best_result.best_move.is_none() && result.best_move.is_some() {
                     best_result = result;

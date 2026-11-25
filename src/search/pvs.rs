@@ -26,7 +26,7 @@ use super::qsearch;
 use super::tt::{self, Tt};
 use crate::board::Board;
 use crate::eval::{MATE_SCORE, evaluate};
-use crate::types::{GameResult, BLACK, WHITE, cell_piece};
+use crate::types::{BLACK, GameResult, WHITE, cell_piece};
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -352,8 +352,9 @@ impl Ctx<'_> {
                 .heur
                 .history_score(m.from_sq as usize, m.to_sq as usize, stm);
             let cntr = self.heur.counter_score(self.prev_move, packed);
-            pb.cap_scores
-                .push(ordering::score_move(self.heur, m, iid_move, hist, cntr, d, values));
+            pb.cap_scores.push(ordering::score_move(
+                self.heur, m, iid_move, hist, cntr, d, values,
+            ));
         }
 
         let mut move_idx = 0usize;
@@ -362,9 +363,8 @@ impl Ctx<'_> {
         // linear-scanning for the max on every iteration (O(beam * n)).
         pb.cap_order.clear();
         pb.cap_order.extend(0..cap_moves.len() as u32);
-        pb.cap_order.sort_unstable_by(|&a, &b| {
-            pb.cap_scores[b as usize].cmp(&pb.cap_scores[a as usize])
-        });
+        pb.cap_order
+            .sort_unstable_by(|&a, &b| pb.cap_scores[b as usize].cmp(&pb.cap_scores[a as usize]));
         let mut cap_order_pos = 0usize;
         loop {
             if cap_order_pos >= pb.cap_order.len() {
