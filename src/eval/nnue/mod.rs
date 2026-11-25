@@ -402,7 +402,7 @@ impl NnueState {
 
     #[inline]
     pub(crate) fn evaluate(&self, board: &Board) -> i32 {
-        let pc = board.piece_count[0] + board.piece_count[1];
+        let pc = board.piece_list_len[0] + board.piece_list_len[1];
         self.net.evaluate(&self.acc, board.side_to_move, pc)
     }
 }
@@ -493,7 +493,7 @@ pub fn explain(board: &crate::Board) -> Option<NnueExplain> {
     let state = b.nnue.as_deref()?;
     let net = &state.net;
     let stm = b.side_to_move;
-    let pieces = [b.piece_count[0], b.piece_count[1]];
+    let pieces = [b.piece_list_len[0], b.piece_list_len[1]];
     let bucket = net.bucket(pieces[0] + pieces[1]);
 
     let acc = [acc_stats(&state.acc.acc[0]), acc_stats(&state.acc.acc[1])];

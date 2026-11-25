@@ -12,7 +12,9 @@ pub struct Board {
     // Piece lists per color
     pub piece_list: [[u16; MAX_PIECES_PER_SIDE]; 2],
     pub piece_list_len: [usize; 2],
-    pub piece_count: [usize; 2],
+    // piece_count is intentionally omitted — it is always equal to
+    // piece_list_len and keeping both in sync costs 2 writes per apply/undo.
+    // Use piece_list_len[c] instead.
     // Royal piece tracking
     pub royal_list: [[u16; MAX_ROYALS]; 2],
     pub royal_count: [usize; 2],
@@ -56,7 +58,6 @@ impl Clone for Board {
             no_progress_plies: self.no_progress_plies,
             piece_list: self.piece_list,
             piece_list_len: self.piece_list_len,
-            piece_count: self.piece_count,
             royal_list: self.royal_list,
             royal_count: self.royal_count,
             piece_index: self.piece_index,
@@ -87,7 +88,6 @@ impl Board {
             no_progress_plies: self.no_progress_plies,
             piece_list: self.piece_list,
             piece_list_len: self.piece_list_len,
-            piece_count: self.piece_count,
             royal_list: self.royal_list,
             royal_count: self.royal_count,
             piece_index: self.piece_index,
@@ -166,7 +166,6 @@ impl Board {
             no_progress_plies: 0,
             piece_list: [[INVALID_SQ; MAX_PIECES_PER_SIDE]; 2],
             piece_list_len: [0; 2],
-            piece_count: [0; 2],
             royal_list: [[INVALID_SQ; MAX_ROYALS]; 2],
             royal_count: [0; 2],
             piece_index: [INVALID_SQ; NUM_SQUARES],
@@ -188,7 +187,6 @@ impl Board {
         self.no_progress_plies = 0;
         self.piece_list = [[INVALID_SQ; MAX_PIECES_PER_SIDE]; 2];
         self.piece_list_len = [0; 2];
-        self.piece_count = [0; 2];
         self.royal_list = [[INVALID_SQ; MAX_ROYALS]; 2];
         self.royal_count = [0; 2];
         self.piece_index = [INVALID_SQ; NUM_SQUARES];
@@ -234,7 +232,6 @@ impl Board {
         self.piece_index[sq] = idx as u16;
         self.piece_list[c][idx] = sq as u16;
         self.piece_list_len[c] = idx + 1;
-        self.piece_count[c] += 1;
 
         // Update bitboards
         self.occupancy[c].set_usize(sq);
@@ -283,8 +280,8 @@ impl Board {
 
         // ── NNUE: remember the accumulator for undo (ring, no allocation) ──
         let nnue_on = self.nnue.is_some();
-        if let Some(st) = self.nnue.as_deref_mut() {
-            st.push_snapshot();
+        if nnue_on {
+            self.nnue.as_deref_mut().unwrap().push_snapshot();
         }
 
         let mut undo = UndoInfo {
@@ -654,7 +651,6 @@ impl Board {
 
     fn rebuild_lists(&mut self) {
         self.piece_list_len = [0; 2];
-        self.piece_count = [0; 2];
         self.royal_count = [0; 2];
         self.occupancy = [Bitboard1296::new(), Bitboard1296::new()];
         self.all_occupancy = Bitboard1296::new();
@@ -671,7 +667,6 @@ impl Board {
                 self.piece_index[sq] = idx as u16;
                 self.piece_list[c][idx] = sq as u16;
                 self.piece_list_len[c] = idx + 1;
-                self.piece_count[c] += 1;
                 self.occupancy[c].set_usize(sq);
                 self.all_occupancy.set_usize(sq);
                 // Rebuild material score
@@ -729,7 +724,6 @@ impl Board {
         self.piece_list[color][len - 1] = INVALID_SQ;
         self.piece_index[sq] = INVALID_SQ;
         self.piece_list_len[color] = len - 1;
-        self.piece_count[color] -= 1;
     }
 
     fn remove_sq_from_royal_list(&mut self, sq: usize, color: usize) {
@@ -753,7 +747,6 @@ impl Board {
         self.piece_index[sq] = idx as u16;
         self.piece_list[color][idx] = sq as u16;
         self.piece_list_len[color] = idx + 1;
-        self.piece_count[color] += 1;
     }
 
     fn update_royal_status(&mut self, sq: usize, old_pt: u16, new_pt: u16, color: usize) {

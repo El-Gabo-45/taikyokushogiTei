@@ -586,7 +586,7 @@ impl Board {
 
     /// Number of pieces for the given color.
     pub fn piece_count(&self, color: Color) -> usize {
-        self.inner.piece_count[color.raw() as usize]
+        self.inner.piece_list_len[color.raw() as usize]
     }
 
     /// Material score from Black's perspective.

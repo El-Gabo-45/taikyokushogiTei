@@ -283,8 +283,8 @@ impl SelfPlayWorker {
             };
 
             let side = board.side_to_move;
-            let black_pieces = board.piece_count[0];
-            let white_pieces = board.piece_count[1];
+            let black_pieces = board.piece_list_len[0];
+            let white_pieces = board.piece_list_len[1];
 
             game_moves.push(GameMove {
                 move_number: (move_count + 1) as u16,

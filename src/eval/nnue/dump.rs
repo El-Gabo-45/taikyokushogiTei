@@ -42,7 +42,7 @@ pub fn dump_position(board: &crate::Board, net: &Network) -> PositionDump {
     features[1].sort_unstable();
     PositionDump {
         stm: b.side_to_move,
-        bucket: net.bucket(b.piece_count[0] + b.piece_count[1]),
+        bucket: net.bucket(b.piece_list_len[0] + b.piece_list_len[1]),
         pieces,
         features,
         eval: board.evaluate(),

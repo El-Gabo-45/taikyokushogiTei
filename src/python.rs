@@ -115,10 +115,10 @@ impl PyBoard {
     }
 
     fn black_piece_count(&self) -> usize {
-        self.inner.piece_count[BLACK as usize]
+        self.inner.piece_list_len[BLACK as usize]
     }
     fn white_piece_count(&self) -> usize {
-        self.inner.piece_count[WHITE as usize]
+        self.inner.piece_list_len[WHITE as usize]
     }
 
     fn game_result(&self) -> Option<String> {

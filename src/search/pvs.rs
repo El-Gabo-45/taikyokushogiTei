@@ -147,7 +147,7 @@ impl<'a> Ctx<'a> {
         }
         let side = self.board.side_to_move as usize;
         if self.board.no_progress_plies >= params::NMP_NO_PROGRESS_LIMIT
-            || self.board.piece_count[side] < params::NMP_MIN_SIDE_PIECES
+            || self.board.piece_list_len[side] < params::NMP_MIN_SIDE_PIECES
         {
             return None;
         }
@@ -228,7 +228,7 @@ impl<'a> Ctx<'a> {
         // shortcut that would fake depth. The fast capture generator + small
         // beams keep each node cheap enough to reach depth 6+.
         if d == 0 {
-            let total = self.board.piece_count[0] + self.board.piece_count[1];
+            let total = self.board.piece_list_len[0] + self.board.piece_list_len[1];
             if self.cfg.quiescence && total < params::QS_LEAF_PIECE_LIMIT {
                 return qsearch::run(self, alpha, beta);
             }

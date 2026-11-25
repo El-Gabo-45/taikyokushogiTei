@@ -443,10 +443,10 @@ fn igui_captures_without_moving() {
         .collect();
     assert!(!igui.is_empty(), "expected a non-promo igui move");
 
-    let before = b.piece_count[0] + b.piece_count[1];
+    let before = b.piece_list_len[0] + b.piece_list_len[1];
     b.apply_move(&igui[0]);
     assert_eq!(
-        b.piece_count[0] + b.piece_count[1],
+        b.piece_list_len[0] + b.piece_list_len[1],
         before - 1,
         "victim removed"
     );
@@ -457,7 +457,7 @@ fn igui_captures_without_moving() {
     );
     assert_eq!(b.cells[16 * 36 + 17], EMPTY_CELL, "victim square empty");
     b.undo_move();
-    assert_eq!(b.piece_count[0] + b.piece_count[1], before);
+    assert_eq!(b.piece_list_len[0] + b.piece_list_len[1], before);
     assert_eq!(cell_piece(b.cells[16 * 36 + 17]), victim, "victim restored");
 }
 
@@ -483,10 +483,10 @@ fn area_mid_capture_removes_both_pieces() {
         .find(|m| m.mid_piece != 0 && m.captured_piece != 0 && m.to_sq != m.from_sq)
         .expect("expected a mid-capture move");
 
-    let before = b.piece_count[0] + b.piece_count[1];
+    let before = b.piece_list_len[0] + b.piece_list_len[1];
     b.apply_move(&mid);
     assert_eq!(
-        b.piece_count[0] + b.piece_count[1],
+        b.piece_list_len[0] + b.piece_list_len[1],
         before - 2,
         "mid + landing both removed"
     );
@@ -497,7 +497,7 @@ fn area_mid_capture_removes_both_pieces() {
     );
     assert_eq!(b.cells[mid.mid_sq as usize], EMPTY_CELL, "mid square empty");
     b.undo_move();
-    assert_eq!(b.piece_count[0] + b.piece_count[1], before);
+    assert_eq!(b.piece_list_len[0] + b.piece_list_len[1], before);
 }
 
 // ── Promotion variants follow the promo-zone rules ──────────────
