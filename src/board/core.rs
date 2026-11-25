@@ -323,23 +323,17 @@ impl Board {
                 let sq = (r * BOARD_SIZE as i32 + c) as u16;
                 let cap_cell = self.cells[sq as usize];
                 if cap_cell != EMPTY_CELL {
-                    self.hash ^=
-                        zobrist_piece_key(cell_piece(cap_cell), sq as usize, cell_color(cap_cell));
-                    // Update incremental material score for captured piece
-                    let cap_val = pieces::value(cell_piece(cap_cell));
+                    let cap_pt = cell_piece(cap_cell);
                     let cap_c = cell_color(cap_cell);
+                    self.hash ^= zobrist_piece_key(cap_pt, sq as usize, cap_c);
+                    // Update incremental material and PSQT score for captured piece
+                    let cap_val = pieces::value(cap_pt);
                     if cap_c == BLACK {
                         self.material_score -= cap_val;
+                        self.psqt_score -= psqt::psqt(cap_pt, sq as usize, cap_c);
                     } else {
                         self.material_score += cap_val;
-                    }
-                    // Update incremental PSQT score
-                    let cap_pt = cell_piece(cap_cell);
-                    let cap_psq = psqt::psqt(cap_pt, sq as usize, cap_c);
-                    if cap_c == BLACK {
-                        self.psqt_score -= cap_psq;
-                    } else {
-                        self.psqt_score += cap_psq;
+                        self.psqt_score += psqt::psqt(cap_pt, sq as usize, cap_c);
                     }
                     self.remove_from_lists(sq as usize);
                     self.cells[sq as usize] = EMPTY_CELL;
