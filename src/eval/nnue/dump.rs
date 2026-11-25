@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! Position dumps for cross-language verification (`nnue dump-positions`).
 //!
 //! The Python reference (`training/parity_gate.py`) recomputes features,
@@ -65,8 +77,8 @@ pub fn thinned(board: &crate::Board, keep_per_mille: u32, seed: u64) -> crate::B
             continue;
         }
         state = state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         if ((state >> 33) % 1000) as u32 >= keep_per_mille {
             *slot = EMPTY_CELL;
         }

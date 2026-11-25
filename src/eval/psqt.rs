@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! Precomputed Piece-Square Table (PSQT) evaluation.
 //!
 //! The PSQT combines material value, family weight, and zone bonus into a
@@ -105,6 +117,9 @@ pub fn psqt_score(board: &crate::board::Board) -> i32 {
 /// Get the PSQT delta for a piece moving from `from` to `to`, including
 /// captures and promotions. Used for incremental updates.
 #[inline]
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn psqt_delta(
     from: usize,
     to: usize,

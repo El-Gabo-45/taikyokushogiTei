@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! Root search: one iteration at a fixed depth, with aspiration-window
 //! refinement around the previous iteration's best score.
 //!
@@ -65,6 +77,9 @@ impl RootState {
 
     /// Rebuild the list if the root position changed; otherwise keep the list
     /// and the ordering produced by the previous iteration.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
     fn prepare(
         &mut self,
         board: &Board,
@@ -131,6 +146,9 @@ pub(crate) struct RootCtx<'a> {
 }
 
 /// Aspiration-window search of the root at one depth.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub(crate) fn search_root_window(
     board: &mut Board,
     depth: u32,

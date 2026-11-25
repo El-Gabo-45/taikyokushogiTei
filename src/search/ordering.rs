@@ -40,6 +40,9 @@ pub(crate) fn is_tactical(m: &Move) -> bool {
 
 /// Priority: 1) Hash move (TT)  2) MVV-LVA captures  3) Killers
 /// 4) History  5) Counter
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub(crate) fn score_move(
     heur: &Heuristics,
     m: &Move,

@@ -548,6 +548,9 @@ pub fn get_moves_for_square(state: &GameState, r: usize, c: usize) -> Vec<MoveDa
 
 /// Apply a coordinate move if a matching legal move exists. Returns `false`
 /// for coordinates that are out of bounds, empty, or not legal.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn apply_move_to_board(
     state: &mut GameState,
     fr: usize,

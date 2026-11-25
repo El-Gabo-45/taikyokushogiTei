@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! Centralized correctness suite for the engine (runs with `cargo test`).
 //!
 //! Covers the invariants that used to live only in examples/ tools:
@@ -13,8 +25,8 @@ impl Lcg {
     fn next(&mut self) -> u64 {
         self.0 = self
             .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0 >> 33
     }
     fn pick(&mut self, n: usize) -> usize {
@@ -40,7 +52,7 @@ fn tsfen_roundtrip_initial() {
 
 #[test]
 fn tsfen_roundtrip_after_random_walk() {
-    let mut rng = Lcg(0xDEADBEEF);
+    let mut rng = Lcg(0xDEAD_BEEF);
     let mut board = Board::initial();
     for _ in 0..40 {
         let moves = board.legal_moves();
@@ -177,7 +189,7 @@ fn perft(board: &mut Board, depth: u32) -> u64 {
 // ── apply/undo state restoration ────────────────────────────────
 #[test]
 fn apply_undo_restores_state() {
-    let mut rng = Lcg(0xC0FFEE);
+    let mut rng = Lcg(0x00C0_FFEE);
     let mut board = Board::initial();
     for ply in 0..80 {
         let before_tsfen = board.to_tsfen();
@@ -299,7 +311,7 @@ fn legal_equals_pseudo_legal_random_walk() {
 // ── Zobrist + incremental scores restored by every undo ──────────
 #[test]
 fn undo_restores_hash_and_scores_every_ply() {
-    let mut rng = Lcg(0x0DDBA11);
+    let mut rng = Lcg(0x00DD_BA11);
     let mut b = initial_int();
     for ply in 0..60 {
         let (h, mat, psqt) = (b.hash, b.material_score, b.psqt_score);
@@ -312,7 +324,7 @@ fn undo_restores_hash_and_scores_every_ply() {
         assert_eq!(b.hash, h, "hash diverged at ply {}", ply);
         assert_eq!(b.material_score, mat, "material diverged at ply {}", ply);
         assert_eq!(b.psqt_score, psqt, "psqt diverged at ply {}", ply);
-        b.apply_move(&moves[(ply * 104729) % moves.len()]);
+        b.apply_move(&moves[(ply * 104_729) % moves.len()]);
     }
 }
 
@@ -436,8 +448,8 @@ fn igui_captures_without_moving() {
     put(&mut b, 16, 17, victim, WHITE);
     b.rebuild_lists_pub();
 
-    let moves = movegen::generate_pseudo_legal_moves(&b);
-    let igui: Vec<Move> = moves
+    let pawn_moves = movegen::generate_pseudo_legal_moves(&b);
+    let igui: Vec<Move> = pawn_moves
         .into_iter()
         .filter(|m| m.is_igui && m.captured_piece == victim && !m.promotion)
         .collect();
@@ -477,8 +489,8 @@ fn area_mid_capture_removes_both_pieces() {
     put(&mut b, 19, 17, victim, WHITE);
     b.rebuild_lists_pub();
 
-    let moves = movegen::generate_pseudo_legal_moves(&b);
-    let mid = *moves
+    let lion_moves = movegen::generate_pseudo_legal_moves(&b);
+    let mid = *lion_moves
         .iter()
         .find(|m| m.mid_piece != 0 && m.captured_piece != 0 && m.to_sq != m.from_sq)
         .expect("expected a mid-capture move");

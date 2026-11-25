@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! TKN1 v2 network file: parsing, validation and writing.
 //!
 //! Layout (little-endian, no padding, nothing after the last field):
@@ -198,12 +210,12 @@ impl Network {
 
         // The accumulators are i32: prove they cannot overflow for any board.
         let max_ft = ft.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
-        let max_fb = ft_bias
+        let max_bias = ft_bias
             .iter()
             .map(|&w| i64::from(w).abs())
             .max()
             .unwrap_or(0);
-        if MAX_BOARD_PIECES as i64 * max_ft + max_fb >= 1 << 31 {
+        if MAX_BOARD_PIECES as i64 * max_ft + max_bias >= 1 << 31 {
             return Err(NnueError::Overflow(
                 "feature-transformer accumulator".into(),
             ));

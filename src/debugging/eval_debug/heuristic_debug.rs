@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 #![allow(dead_code)] // utility/debug API kept intentionally
 use crate::eval::families::family_value;
 use crate::eval::zones::zone_score;
@@ -121,8 +133,8 @@ mod tests {
         let mut rng = 0x1234_5678_9ABC_DEF0u64;
         for ply in 1..=20u32 {
             rng = rng
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             let moves = b.legal_moves();
             if moves.is_empty() || b.game_result().is_some() {
                 break;
@@ -163,8 +175,8 @@ mod tests {
         let mut rng = 0x1234_5678_9ABC_DEF0u64;
         for ply in 1..=20u32 {
             rng = rng
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             let moves = b.legal_moves();
             if moves.is_empty() || b.game_result().is_some() {
                 break;

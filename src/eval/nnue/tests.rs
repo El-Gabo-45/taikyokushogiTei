@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 use super::*;
 use crate::Board as PubBoard;
 use crate::eval::nnue::format::{MAGIC, VERSION, ZSTD_MAGIC};
@@ -305,8 +317,8 @@ fn incremental_accumulator_matches_refresh_over_a_long_walk() {
     let mut state = 12345u64;
     let mut next = |n: usize| {
         state = state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         ((state >> 33) as usize) % n
     };
     let mut seen_tactical = 0usize;
@@ -364,8 +376,8 @@ fn deep_undo_beyond_the_ring_is_exact() {
             break;
         }
         state = state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         b.apply(&moves[((state >> 33) as usize) % moves.len()]);
         played += 1;
     }

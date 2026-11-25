@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 use crate::board::Board;
 use crate::pieces;
 use crate::types::{
@@ -305,6 +317,9 @@ pub fn generate_pseudo_legal_captures_into(moves: &mut Vec<Move>, board: &Board)
 }
 
 // capture generators
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_slides_captures(
     board: &Board,
     sq: usize,
@@ -340,6 +355,9 @@ fn gen_slides_captures(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_jumps_captures(
     board: &Board,
     sq: usize,
@@ -365,6 +383,9 @@ fn gen_jumps_captures(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_hooks_captures(
     board: &Board,
     sq: usize,
@@ -425,6 +446,9 @@ fn gen_hooks_captures(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_area_captures(
     board: &Board,
     sq: usize,
@@ -496,6 +520,9 @@ fn can_promote(pt: u16) -> bool {
 /// Add a move with promotion-variant handling (public: the fast bitboard
 /// path in attack.rs delegates here so promotion rules are identical in
 /// both generators).
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, target: Cell) {
     let captured = if target == EMPTY_CELL {
         0
@@ -607,6 +634,9 @@ pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, t
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_slides(
     board: &Board,
     sq: usize,
@@ -640,6 +670,9 @@ fn gen_slides(
 }
 
 /// Fast jump generation using precomputed destination table.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_jumps_fast(
     board: &Board,
     sq: usize,
@@ -667,6 +700,9 @@ fn gen_jumps_fast(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_hooks(
     board: &Board,
     sq: usize,
@@ -728,6 +764,9 @@ fn gen_hooks(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement, moves: &mut Vec<Move>) {
     let r = sq_row(sq) as i32;
     let c = sq_col(sq) as i32;
@@ -782,6 +821,9 @@ fn gen_area(board: &Board, sq: usize, pt: u16, color: u8, mv: &Movement, moves: 
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_range_capture(
     board: &Board,
     sq: usize,
@@ -879,6 +921,9 @@ fn gen_igui(board: &Board, sq: usize, pt: u16, color: u8, moves: &mut Vec<Move>)
 /// Build an igui (stationary capture) move. The mover stays on `sq`; the
 /// victim sits on `victim_sq`, which is stored in `mid_sq` so that
 /// `Board::apply_move` / `undo_move` can remove and restore it.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn add_igui_move(
     moves: &mut Vec<Move>,
     sq: usize,

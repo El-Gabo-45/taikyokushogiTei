@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! Elo measurement and statistical testing tools.
 //!
 //! Provides everything needed to measure engine strength changes:
@@ -177,8 +189,8 @@ impl OpeningRng {
     fn below(&mut self, n: usize) -> usize {
         self.0 = self
             .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         if n == 0 {
             0
         } else {
@@ -217,6 +229,9 @@ pub fn play_game(white: &EngineConfig, black: &EngineConfig, max_plies: u32) -> 
 /// reproducible while its games still diverge (a fixed single-threaded
 /// match without openings would otherwise replay the same game over and
 /// over — with `opening_plies = 0` the behaviour is exactly that).
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn play_game_seeded(
     white: &EngineConfig,
     black: &EngineConfig,
@@ -761,8 +776,8 @@ mod tests {
     #[test]
     fn match_callback_receives_every_game() {
         // See play_game_returns_valid_outcome: run alone (crate::test_lock).
-        let _serial = crate::test_lock::lock();
         use std::sync::atomic::{AtomicUsize, Ordering};
+        let _serial = crate::test_lock::lock();
         static COUNT: AtomicUsize = AtomicUsize::new(0);
         fn cb(_g: usize, _r: GameResult, _a_white: bool) {
             COUNT.fetch_add(1, Ordering::SeqCst);

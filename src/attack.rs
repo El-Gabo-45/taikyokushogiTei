@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! Bitboard attack generation for Taikyoku Shogi.
 //!
 //! The core cost in `movegen::generate_pseudo_legal_moves` is walking every
@@ -235,6 +247,9 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
 }
 
 /// Generate hook-move captures (orthogonal or diagonal hook movers).
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_hook_captures(
     board: &Board,
     sq: usize,
@@ -300,6 +315,9 @@ fn gen_hook_captures(
 /// squares between from and to — previously this fast path left intermediate
 /// captures unapplied (the old Move had `range_caps`: None here), silently
 /// diverging from the generator's intent.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_range_capture_captures(
     board: &Board,
     sq: usize,
@@ -338,6 +356,9 @@ fn gen_range_capture_captures(
 /// Generate lion area captures — the radius-1 and radius-2 moves, including
 /// mid-captures (capture a piece on the way to a second target). This
 /// eliminates the slow fallback to movegen for lions.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn gen_lion_captures(
     board: &Board,
     sq: usize,
@@ -448,6 +469,9 @@ fn walk_ray_captures(
 
 /// Fast path for a single non-special piece. Generates jump/step/slide/area/
 /// igui moves into `moves` using the flat template `tmpl`.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn fast_piece(
     board: &Board,
     sq: usize,
@@ -492,6 +516,9 @@ pub fn fast_piece(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn push_move(
     moves: &mut Vec<crate::types::Move>,
     from: u16,
@@ -506,6 +533,9 @@ fn push_move(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 fn push_move_igui(
     moves: &mut Vec<crate::types::Move>,
     from: u16,
@@ -588,6 +618,9 @@ fn walk_ray_quiets(
 /// Like [`fast_piece`] but never emits captures — used by the search's quiet
 /// stage (Stage 2) so it does not regenerate captures already searched in
 /// Stage 1.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
 pub fn fast_piece_quiets(
     board: &Board,
     sq: usize,

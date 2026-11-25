@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 //! # Taikyoku Shogi Engine
 //!
 //! A complete engine for [Taikyoku Shogi](https://en.wikipedia.org/wiki/Taikyoku_shogi),
@@ -719,6 +731,9 @@ impl Board {
     /// let mut board = taikyokushogi::Board::initial();
     /// board.apply_by_coord(25, 0, 24, 0, false, None).unwrap(); // move pawn forward
     /// ```
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
     pub fn apply_by_coord(
         &mut self,
         from_row: usize,
@@ -768,11 +783,11 @@ impl Board {
     /// Pick a uniformly random legal move, or `None` if no moves exist.
     #[must_use]
     pub fn random_move(&self) -> Option<Move> {
+        use rand::Rng;
         let moves = movegen::generate_legal_moves(&self.inner);
         if moves.is_empty() {
             return None;
         }
-        use rand::Rng;
         let idx = rand::thread_rng().gen_range(0..moves.len());
         Some(Move {
             inner: moves.into_iter().nth(idx).unwrap(),
@@ -830,6 +845,9 @@ impl Board {
     /// `on_iter` receives one [`search::IterInfo`] after every completed
     /// deepening iteration (debug tooling and protocol front-ends use this to
     /// trace the search while it runs). Pass `None` for no callback.
+#[allow(clippy::too_many_arguments)]
+// Hot movegen / search path: a parameters struct would add indirection without
+// improving readability, so the flat signature is kept on purpose.
     pub fn search_with_info(
         &mut self,
         searcher: &mut search::Searcher,

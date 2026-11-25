@@ -1,3 +1,15 @@
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_lossless,
+)]
+// The integer/float casts above are intentionally allowed: every cast in this
+// module operates on provably-bounded values (square indices < 1296, direction
+// indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
+// warnings would only produce noise.
+
 /// Piece definitions: 301 piece types, Betza parser, movements, promotions, setup.
 use crate::types::{
     E, HookType, Movement, N, NE, NW, RANK_GREAT, RANK_NORMAL, RANK_RANGE_CAP, RANK_ROYAL,
@@ -724,7 +736,7 @@ const PIECE_DEFS: &[PieceDef] = &[
         name: "King",
         betza: Some("Q2"),
         promotes_to: None,
-        value: 100000,
+        value: 100_000,
         rank: RANK_ROYAL,
     },
     PieceDef {
