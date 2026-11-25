@@ -28,6 +28,7 @@ pub const NODES_PER_CLOCK_CHECK_QS: u64 = 127;
 // ── Mate-score safety gate ──────────────────────────────────────
 // Pruning heuristics are disabled when a mate score may be in play.
 #[inline]
+#[must_use]
 pub fn mate_gate_ok(window_edge: i32) -> bool {
     window_edge > -MATE_SCORE + 100
 }
@@ -36,6 +37,7 @@ pub fn mate_gate_ok(window_edge: i32) -> bool {
 // Each returns Some(margin) only at the depths where the technique applies.
 
 /// Razoring: `static_eval + margin <= alpha` → prune low.
+#[must_use]
 pub fn razoring_margin(d: u32) -> Option<i32> {
     match d {
         0 => Some(400),
@@ -47,6 +49,7 @@ pub fn razoring_margin(d: u32) -> Option<i32> {
 
 /// Reverse futility (both directions at this node):
 /// `static_eval - margin >= beta` → prune high; `static_eval + margin <= alpha` → prune low.
+#[must_use]
 pub fn rfp_margin(d: u32) -> Option<i32> {
     if d <= 3 {
         Some(150 + 250 * d as i32)
@@ -56,6 +59,7 @@ pub fn rfp_margin(d: u32) -> Option<i32> {
 }
 
 /// Futility: `static_eval + margin <= alpha` → skip shallow quiet nodes.
+#[must_use]
 pub fn futility_margin(d: u32) -> Option<i32> {
     match d {
         0 => Some(80),
@@ -66,6 +70,7 @@ pub fn futility_margin(d: u32) -> Option<i32> {
 }
 
 /// Static-eval prune: `static_eval + margin <= alpha` → skip node.
+#[must_use]
 pub fn static_eval_prune_margin(d: u32) -> Option<i32> {
     if d >= 4 {
         Some(500 + 300 * d as i32)
@@ -79,11 +84,13 @@ pub const NMP_MIN_DEPTH: u32 = 3;
 pub const NMP_NO_PROGRESS_LIMIT: u32 = 100;
 pub const NMP_MIN_SIDE_PIECES: usize = 4; // piece_count > 3
 #[inline]
+#[must_use]
 pub fn nmp_reduction(d: u32) -> u32 {
     if d >= 6 { 3 } else { 2 }
 }
 
 // ── Capture beam (scaled by real branching) ─────────────────────
+#[must_use]
 pub fn capture_beam_base(d: u32) -> u32 {
     if d <= 2 {
         24
@@ -100,6 +107,7 @@ pub const BEAM_BRANCH_SCALE: usize = 128;
 pub const LMP_BRANCH_SCALE: usize = 128;
 pub const LMP_MAX: usize = 64;
 #[inline]
+#[must_use]
 pub fn lmp_base(d: u32, improving: bool) -> usize {
     (((3 + d * d) as i32).max(3) as usize) / if improving { 1 } else { 2 }
 }
@@ -107,6 +115,7 @@ pub fn lmp_base(d: u32, improving: bool) -> usize {
 // ── Futility at move level ──────────────────────────────────────
 pub const QUIET_FUTILITY_MAX_DEPTH: u32 = 2;
 #[inline]
+#[must_use]
 pub fn quiet_futility_margin(d: u32) -> i32 {
     120 * d as i32 + 60
 }
@@ -117,15 +126,18 @@ pub const LMR_MIN_MOVE_INDEX: usize = 3; // cur_move >= 3
 pub const LMR_MIN_DEPTH: u32 = 3;
 pub const TT_MOVE_EXT_MIN_DEPTH: u32 = 6;
 #[inline]
+#[must_use]
 pub fn lmr_base(cur_move: usize) -> u32 {
     (cur_move as u32 / 3).min(3)
 }
 #[inline]
+#[must_use]
 pub fn lmr_depth_factor(d: u32) -> u32 {
     (d / 3).min(2)
 }
 /// A quiet with a strong history is statistically good — soften its reduction.
 #[inline]
+#[must_use]
 pub fn lmr_history_soften(history: i32) -> u32 {
     (history / 8_000).min(2) as u32
 }
@@ -141,6 +153,7 @@ pub const IID_MIN_DEPTH: u32 = 4;
 
 // ── Root aspiration windows ─────────────────────────────────────
 #[inline]
+#[must_use]
 pub fn aspiration_window(depth: u32) -> i32 {
     if depth <= 4 { 64 } else { 200 }
 }
@@ -221,6 +234,7 @@ pub struct SearchConfig {
 
 impl SearchConfig {
     /// Everything on: the production default.
+    #[must_use]
     pub fn production() -> Self {
         SearchConfig {
             razoring: true,
@@ -243,6 +257,7 @@ impl SearchConfig {
 
     /// Everything off: plain alpha-beta with move ordering still active
     //   (ordering itself is not a "technique" that changes correctness).
+    #[must_use]
     pub fn minimal() -> Self {
         SearchConfig {
             razoring: false,
@@ -264,6 +279,7 @@ impl SearchConfig {
     }
 
     /// Only TT + killers + history (classic "engine" config without pruning).
+    #[must_use]
     pub fn classic() -> Self {
         let mut s = SearchConfig::minimal();
         s.killer_moves = true;

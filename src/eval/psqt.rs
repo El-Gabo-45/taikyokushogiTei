@@ -1,7 +1,7 @@
 //! Precomputed Piece-Square Table (PSQT) evaluation.
 //!
 //! The PSQT combines material value, family weight, and zone bonus into a
-//! single precomputed table indexed by (piece_type, square, color). This
+//! single precomputed table indexed by (`piece_type`, square, color). This
 //! makes `evaluate()` a simple O(pieces) sum over the piece list — and with
 //! incremental updates on the board, O(1) per call.
 //!
@@ -13,7 +13,7 @@ use crate::eval::families::Family;
 use crate::eval::families::family_value_fast;
 use crate::eval::zones::Zone;
 use crate::pieces;
-use crate::types::*;
+use crate::types::{BOARD_SIZE, NUM_SQUARES, EMPTY_CELL, cell_piece, BLACK};
 use std::sync::OnceLock;
 
 /// PSQT value for a piece of type `pt` at square `sq` for color `color`.

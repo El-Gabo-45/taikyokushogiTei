@@ -184,7 +184,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                 baseline.best, baseline.score, baseline.nodes
             ));
         }
-        for (name, agg) in rows.iter_mut() {
+        for (name, agg) in &mut rows {
             let cfg = if *name == "ALL-OFF (minimal)" {
                 SearchConfig::minimal()
             } else {
@@ -207,7 +207,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     r.best,
                     r.score,
                     r.nodes,
-                    if r.best != baseline.best { "⚠" } else { " " }
+                    if r.best == baseline.best { " " } else { "⚠" }
                 ));
             }
         }

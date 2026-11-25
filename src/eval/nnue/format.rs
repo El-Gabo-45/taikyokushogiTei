@@ -175,7 +175,7 @@ impl Network {
             return mismatch("class map differs from rules/nnue_arch.json");
         }
         let mut thresholds = [0u16; NUM_THRESHOLDS];
-        for t in thresholds.iter_mut() {
+        for t in &mut thresholds {
             *t = r.u16()?;
         }
         if thresholds.as_slice() != arch.thresholds_pieces.as_slice() {
@@ -197,8 +197,8 @@ impl Network {
         }
 
         // The accumulators are i32: prove they cannot overflow for any board.
-        let max_ft = ft.iter().map(|&w| (w as i64).abs()).max().unwrap_or(0);
-        let max_fb = ft_bias.iter().map(|&w| (w as i64).abs()).max().unwrap_or(0);
+        let max_ft = ft.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
+        let max_fb = ft_bias.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
         if MAX_BOARD_PIECES as i64 * max_ft + max_fb >= 1 << 31 {
             return Err(NnueError::Overflow(
                 "feature-transformer accumulator".into(),
@@ -213,7 +213,7 @@ impl Network {
                 .iter()
                 .skip(b)
                 .step_by(OUT_BUCKETS)
-                .map(|&w| (w as i64).abs())
+                .map(|&w| i64::from(w).abs())
                 .collect();
             let k = MAX_BOARD_PIECES.min(col.len());
             col.select_nth_unstable_by(k - 1, |a, b| b.cmp(a));
@@ -262,6 +262,7 @@ impl Network {
     }
 
     /// Serialise to the TKN1 v2 layout.
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut o = Vec::with_capacity(self.ft.len() * 2 + self.psqt.len() * 4 + 4096);
         o.extend_from_slice(MAGIC);
@@ -280,22 +281,22 @@ impl Network {
         for t in &self.thresholds {
             o.extend_from_slice(&t.to_le_bytes());
         }
-        for w in self.ft.iter() {
+        for w in &self.ft {
             o.extend_from_slice(&w.to_le_bytes());
         }
         for w in self.ft_bias.iter().chain(self.psqt.iter()) {
             o.extend_from_slice(&w.to_le_bytes());
         }
         o.extend(self.fc0_w.iter().map(|&w| w as u8));
-        for w in self.fc0_b.iter() {
+        for w in &self.fc0_b {
             o.extend_from_slice(&w.to_le_bytes());
         }
         o.extend(self.fc1_w.iter().map(|&w| w as u8));
-        for w in self.fc1_b.iter() {
+        for w in &self.fc1_b {
             o.extend_from_slice(&w.to_le_bytes());
         }
         o.extend(self.fc2_w.iter().map(|&w| w as u8));
-        for w in self.fc2_b.iter() {
+        for w in &self.fc2_b {
             o.extend_from_slice(&w.to_le_bytes());
         }
         o

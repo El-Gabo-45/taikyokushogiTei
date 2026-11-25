@@ -1,5 +1,5 @@
 /// Piece definitions: 301 piece types, Betza parser, movements, promotions, setup.
-use crate::types::*;
+use crate::types::{RANK_NORMAL, RANK_RANGE_CAP, RANK_ROYAL, RANK_GREAT, RANK_VICE, Movement, N, E, S, W, NE, SE, SW, NW, HookType};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -3347,7 +3347,7 @@ fn init_store() -> PieceStore {
         abbrev_to_id.insert(def.abbrev.to_string(), id);
     }
 
-    for def in PIECE_DEFS.iter() {
+    for def in PIECE_DEFS {
         // Movement
         let mv = if let Some(manual) = manual_movement(def.abbrev) {
             manual

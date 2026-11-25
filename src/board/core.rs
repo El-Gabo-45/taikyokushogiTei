@@ -1,7 +1,7 @@
 use crate::bitboard::Bitboard1296;
 use crate::eval::psqt;
 use crate::pieces;
-use crate::types::*;
+use crate::types::{Cell, NUM_SQUARES, MAX_PIECES_PER_SIDE, MAX_ROYALS, UndoInfo, EMPTY_CELL, BLACK, INVALID_SQ, WHITE, sq_index, make_cell, zobrist_piece_key, Move, cell_piece, cell_color, BOARD_SIZE, zobrist_side_key, GameResult, DRAW_PLIES};
 
 pub struct Board {
     pub cells: [Cell; NUM_SQUARES],
@@ -29,7 +29,7 @@ pub struct Board {
     // Reference: Chess Programming Wiki, "Incremental Updates".
     pub material_score: i32,
     /// Incremental PSQT score from Black's perspective. Combines material,
-    /// family weight, and zone bonuses. Makes evaluate() near O(1).
+    /// family weight, and zone bonuses. Makes `evaluate()` near O(1).
     pub psqt_score: i32,
     // Undo stack
     history: Vec<UndoInfo>,
@@ -653,7 +653,9 @@ impl Board {
 
         for sq in 0..NUM_SQUARES {
             let cell = self.cells[sq];
-            if cell != EMPTY_CELL {
+            if cell == EMPTY_CELL {
+                self.piece_index[sq] = INVALID_SQ;
+            } else {
                 let pt = cell_piece(cell);
                 let color = cell_color(cell);
                 let c = color as usize;
@@ -682,8 +684,6 @@ impl Board {
                     self.royal_list[c][ri] = sq as u16;
                     self.royal_count[c] = ri + 1;
                 }
-            } else {
-                self.piece_index[sq] = INVALID_SQ;
             }
         }
     }

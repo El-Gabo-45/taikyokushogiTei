@@ -131,6 +131,7 @@ pub enum Color {
 
 impl Color {
     /// The other color.
+    #[must_use]
     pub fn opponent(self) -> Self {
         match self {
             Color::Black => Color::White,
@@ -144,6 +145,7 @@ impl Color {
 
     /// Convert a raw `u8` (0 = Black, 1 = White) to a `Color`.
     /// Returns `None` for any other value.
+    #[must_use]
     pub fn from_raw(v: u8) -> Option<Self> {
         match v {
             0 => Some(Color::Black),
@@ -192,6 +194,7 @@ pub struct Square {
 }
 
 impl Square {
+    #[must_use]
     pub fn new(row: usize, col: usize) -> Self {
         Square { row, col }
     }
@@ -204,6 +207,7 @@ impl Square {
     }
 
     /// Convert to flat index (row * 36 + col).
+    #[must_use]
     pub fn index(&self) -> usize {
         self.row * BOARD_SIZE + self.col
     }
@@ -226,21 +230,25 @@ pub struct Piece {
 
 impl Piece {
     /// Abbreviation (e.g., `"K"`, `"CP"`, `"GG"`).
+    #[must_use]
     pub fn abbrev(&self) -> &'static str {
         pieces::abbrev(self.type_id)
     }
 
     /// Full English name.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         pieces::name(self.type_id)
     }
 
     /// Material value.
+    #[must_use]
     pub fn value(&self) -> i32 {
         pieces::value(self.type_id)
     }
 
     /// Whether this is a royal piece (King or Crown Prince).
+    #[must_use]
     pub fn is_royal(&self) -> bool {
         pieces::is_royal(self.type_id)
     }
@@ -269,26 +277,31 @@ pub struct Move {
 
 impl Move {
     /// Source square.
+    #[must_use]
     pub fn from(&self) -> Square {
         Square::from_index(self.inner.from_sq as usize)
     }
 
     /// Destination square.
+    #[must_use]
     pub fn to(&self) -> Square {
         Square::from_index(self.inner.to_sq as usize)
     }
 
     /// Whether this move promotes the piece.
+    #[must_use]
     pub fn is_promotion(&self) -> bool {
         self.inner.promotion
     }
 
     /// Whether this is an igui (capture without moving).
+    #[must_use]
     pub fn is_igui(&self) -> bool {
         self.inner.is_igui
     }
 
     /// The captured piece's abbreviation, if any.
+    #[must_use]
     pub fn captured(&self) -> Option<&'static str> {
         if self.inner.captured_piece != 0 {
             Some(pieces::abbrev(self.inner.captured_piece))
@@ -298,11 +311,13 @@ impl Move {
     }
 
     /// Access the internal move representation.
+    #[must_use]
     pub fn raw(&self) -> &types::Move {
         &self.inner
     }
 
     /// The mid-capture square for igui/range moves, if any.
+    #[must_use]
     pub fn mid_sq(&self) -> Option<usize> {
         (self.inner.mid_sq != types::INVALID_SQ).then_some(self.inner.mid_sq as usize)
     }
@@ -441,6 +456,7 @@ pub struct PieceInfo {
 /// assert_eq!(info.name, "King");
 /// assert!(info.value > 0);
 /// ```
+#[must_use]
 pub fn piece_info(abbrev: &str) -> Option<PieceInfo> {
     let pt = pieces::find_by_abbrev(abbrev)?;
     Some(piece_info_by_id(pt))
@@ -480,6 +496,7 @@ pub fn all_pieces() -> Vec<PieceInfo> {
 }
 
 /// Total number of defined piece types (base + promoted).
+#[must_use]
 pub fn num_piece_types() -> usize {
     pieces::num_piece_types()
 }
@@ -498,18 +515,21 @@ pub use eval::MATE_SCORE;
 /// Resize the transposition table to `mb` MiB (see `search::set_hash_mb`).
 /// Returns the size actually allocated, which is rounded down to a
 /// power-of-two bucket count.
+#[must_use]
 pub fn set_hash_mb(mb: usize) -> usize {
     search::set_hash_mb(mb)
 }
 
 /// Current transposition-table size in MiB.
+#[must_use]
 pub fn hash_mb() -> usize {
     search::hash_mb()
 }
 
-/// Whether the given piece_type ID is a royal piece (King, Crown Prince,
+/// Whether the given `piece_type` ID is a royal piece (King, Crown Prince,
 /// or any other piece type whose capture ends the game). Exposed for
 /// external tooling that has to tell royals apart from other pieces.
+#[must_use]
 pub fn is_royal_piece_type(piece_type: u16) -> bool {
     pieces::is_royal(piece_type)
 }
@@ -529,6 +549,7 @@ pub struct Board {
 
 impl Board {
     /// Create an empty board.
+    #[must_use]
     pub fn empty() -> Self {
         Board {
             inner: board::Board::new(),
@@ -542,6 +563,7 @@ impl Board {
     /// assert_eq!(board.piece_count(taikyokushogi::Color::Black), 402);
     /// assert_eq!(board.piece_count(taikyokushogi::Color::White), 402);
     /// ```
+    #[must_use]
     pub fn initial() -> Self {
         let mut b = board::Board::new();
         b.setup_initial();
@@ -549,12 +571,14 @@ impl Board {
     }
 
     /// Whose turn is it?
+    #[must_use]
     pub fn side_to_move(&self) -> Color {
         Color::from_raw(self.inner.side_to_move)
             .expect("invalid side_to_move value (must be 0 or 1)")
     }
 
     /// Current full-move number (starts at 1, increments after White moves).
+    #[must_use]
     pub fn move_number(&self) -> u32 {
         self.inner.move_number
     }
@@ -562,11 +586,13 @@ impl Board {
     /// Number of consecutive plies without a capture or promotion.
     /// The game is automatically drawn when this reaches 1,000
     /// (500 full moves without progress).
+    #[must_use]
     pub fn no_progress_plies(&self) -> u32 {
         self.inner.no_progress_plies
     }
 
     /// Get the piece at `(row, col)`, or `None` if empty or out of bounds.
+    #[must_use]
     pub fn get(&self, row: usize, col: usize) -> Option<Piece> {
         if row >= types::BOARD_SIZE || col >= types::BOARD_SIZE {
             return None;
@@ -585,12 +611,14 @@ impl Board {
     }
 
     /// Number of pieces for the given color.
+    #[must_use]
     pub fn piece_count(&self, color: Color) -> usize {
         self.inner.piece_list_len[color.raw() as usize]
     }
 
     /// Material score from Black's perspective.
     /// Positive = Black has more material.
+    #[must_use]
     pub fn material_score(&self) -> i32 {
         eval::material_score(&self.inner)
     }
@@ -599,6 +627,7 @@ impl Board {
     ///
     /// Uses the attached NNUE network if there is one
     /// ([`Board::set_network`]), the hand-crafted evaluator otherwise.
+    #[must_use]
     pub fn evaluate(&self) -> i32 {
         eval::evaluate(&self.inner)
     }
@@ -623,11 +652,13 @@ impl Board {
     }
 
     /// The attached NNUE network, if any.
+    #[must_use]
     pub fn network(&self) -> Option<&std::sync::Arc<Network>> {
         self.inner.network()
     }
 
     /// Check if the game is over.
+    #[must_use]
     pub fn game_result(&self) -> Option<GameResult> {
         self.inner.game_result().map(|r| match r {
             types::GameResult::BlackWins => GameResult::BlackWins,
@@ -637,6 +668,7 @@ impl Board {
     }
 
     /// Generate all legal moves for the side to move.
+    #[must_use]
     pub fn legal_moves(&self) -> Vec<Move> {
         movegen::generate_legal_moves(&self.inner)
             .into_iter()
@@ -734,6 +766,7 @@ impl Board {
     }
 
     /// Pick a uniformly random legal move, or `None` if no moves exist.
+    #[must_use]
     pub fn random_move(&self) -> Option<Move> {
         let moves = movegen::generate_legal_moves(&self.inner);
         if moves.is_empty() {
@@ -845,6 +878,7 @@ impl Board {
     }
 
     /// Render the board as a text string.
+    #[must_use]
     pub fn display(&self) -> String {
         self.inner.display()
     }
@@ -862,6 +896,7 @@ impl Board {
     /// let board2 = taikyokushogi::Board::from_tsfen(&tsfen).unwrap();
     /// assert_eq!(board2.to_tsfen(), tsfen);
     /// ```
+    #[must_use]
     pub fn to_tsfen(&self) -> String {
         tsfen::to_tsfen(&self.inner)
     }
@@ -881,6 +916,7 @@ impl Board {
     }
 
     /// Iterate over all pieces of a given color.
+    #[must_use]
     pub fn pieces(&self, color: Color) -> Vec<(Square, Piece)> {
         let c = color.raw() as usize;
         let mut result = Vec::new();
@@ -942,6 +978,7 @@ use pyo3::prelude::*;
 fn taikyokushogi(m: &Bound<'_, PyModule>) -> PyResult<()> {
     python::register(m)
 }
+#[must_use]
 pub fn eval_only(b: &Board) -> i32 {
     crate::eval::evaluate(&b.inner)
 }

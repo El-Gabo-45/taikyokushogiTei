@@ -31,7 +31,7 @@ pub mod format;
 use std::sync::Arc;
 
 use crate::board::Board;
-use crate::types::*;
+use crate::types::{MAX_PIECES_PER_SIDE, BLACK, EMPTY_CELL, cell_piece, cell_color};
 
 pub use arch::ArchSpec;
 pub use format::NnueError;
@@ -124,28 +124,35 @@ impl SplitMix {
 
 impl Network {
     /// Number of feature planes (`2 * classes`).
+    #[must_use]
     pub fn planes(&self) -> usize {
         self.planes
     }
     /// Input features per perspective.
+    #[must_use]
     pub fn dims(&self) -> usize {
         self.planes * NSQ
     }
+    #[must_use]
     pub fn num_classes(&self) -> usize {
         self.planes / 2
     }
+    #[must_use]
     pub fn thresholds(&self) -> &[u16] {
         &self.thresholds
     }
+    #[must_use]
     pub fn arch_hash(&self) -> &[u8; 32] {
         &self.arch_hash
     }
+    #[must_use]
     pub fn class_of(&self, piece_type: u16) -> usize {
         self.class_map[piece_type as usize] as usize
     }
 
     /// A deterministic pseudo-random network for tests, benchmarks and the
     /// parity tool. It is *not* a playing network.
+    #[must_use]
     pub fn random(seed: u64) -> Network {
         let arch = ArchSpec::embedded();
         let mut rng = SplitMix(seed);
@@ -192,6 +199,7 @@ impl Network {
 
     /// Feature index of a piece for one perspective (0 = Black, 1 = White).
     #[inline]
+    #[must_use]
     pub fn feature_index(&self, perspective: u8, piece_type: u16, color: u8, sq: usize) -> usize {
         let cls = self.class_map[piece_type as usize] as usize;
         let plane = if color == perspective {
@@ -209,6 +217,7 @@ impl Network {
 
     /// Output bucket for a total piece count.
     #[inline]
+    #[must_use]
     pub fn bucket(&self, piece_count: usize) -> usize {
         for (k, &t) in self.thresholds.iter().enumerate() {
             if piece_count < t as usize {
@@ -220,6 +229,7 @@ impl Network {
 
     /// Integer forward pass. Returns `(psqt_term, dense_out, total)` before
     /// the final clamp; `total` is the evaluation from the side to move.
+    #[must_use]
     pub fn forward(&self, acc: &Accumulator, stm: u8, bucket: usize) -> (i32, i32, i32) {
         let us = &acc.acc[stm as usize];
         let them = &acc.acc[(stm ^ 1) as usize];
@@ -237,7 +247,7 @@ impl Network {
             if p != 0 {
                 let row = &w0[i * H1..][..H1];
                 for j in 0..H1 {
-                    s0[j] += p * row[j] as i32;
+                    s0[j] += p * i32::from(row[j]);
                 }
             }
         }
@@ -253,14 +263,14 @@ impl Network {
             let p = h0[i];
             let row = &w1[i * H2..][..H2];
             for j in 0..H2 {
-                s1[j] += p * row[j] as i32;
+                s1[j] += p * i32::from(row[j]);
             }
         }
 
         let w2 = &self.fc2_w[bucket * H2..][..H2];
         let mut out = self.fc2_b[bucket];
         for j in 0..H2 {
-            out += (s1[j] >> 6).clamp(0, 127) * w2[j] as i32;
+            out += (s1[j] >> 6).clamp(0, 127) * i32::from(w2[j]);
         }
 
         // `/` truncates toward zero (as the Python reference does explicitly).
@@ -270,6 +280,7 @@ impl Network {
 
     /// Evaluation from the side to move, clamped to `±eval_limit`.
     #[inline]
+    #[must_use]
     pub fn evaluate(&self, acc: &Accumulator, stm: u8, piece_count: usize) -> i32 {
         let (_, _, total) = self.forward(acc, stm, self.bucket(piece_count));
         total.clamp(-self.eval_limit, self.eval_limit)
@@ -285,6 +296,7 @@ pub struct Accumulator {
 }
 
 impl Accumulator {
+    #[must_use]
     pub fn zero() -> Self {
         Accumulator {
             acc: [[0; L1]; 2],
@@ -311,7 +323,7 @@ impl Accumulator {
             let idx = net.feature_index(p, piece_type, color, sq);
             let row = &net.ft[idx * L1..][..L1];
             for (a, &w) in self.acc[p as usize].iter_mut().zip(row) {
-                *a += w as i32;
+                *a += i32::from(w);
             }
             let prow = &net.psqt[idx * OUT_BUCKETS..][..OUT_BUCKETS];
             for (a, &w) in self.psqt[p as usize].iter_mut().zip(prow) {
@@ -326,7 +338,7 @@ impl Accumulator {
             let idx = net.feature_index(p, piece_type, color, sq);
             let row = &net.ft[idx * L1..][..L1];
             for (a, &w) in self.acc[p as usize].iter_mut().zip(row) {
-                *a -= w as i32;
+                *a -= i32::from(w);
             }
             let prow = &net.psqt[idx * OUT_BUCKETS..][..OUT_BUCKETS];
             for (a, &w) in self.psqt[p as usize].iter_mut().zip(prow) {
@@ -433,7 +445,7 @@ fn acc_stats(acc: &[i32; L1]) -> AccStats {
     for &x in acc {
         min = min.min(x);
         max = max.max(x);
-        sum += x as i64;
+        sum += i64::from(x);
         let c = clip(x);
         if c == 0 {
             lo += 1;
@@ -488,6 +500,7 @@ pub struct NnueExplain {
 /// Returns `None` when no network is attached to the board. Note that the
 /// `eval`/`refresh_eval` fields are raw forward-pass outputs even for
 /// terminal positions (where `Board::evaluate()` returns mate/draw scores).
+#[must_use]
 pub fn explain(board: &crate::Board) -> Option<NnueExplain> {
     let b = &board.inner;
     let state = b.nnue.as_deref()?;

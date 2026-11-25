@@ -1,7 +1,7 @@
 //! Precomputed lookup tables: ray table, Zobrist hash keys, promotion-zone tables.
 
-use super::constants::*;
-use super::square::*;
+use super::constants::{NUM_SQUARES, NUM_DIRS, DIR_DR, DIR_DC, BOARD_SIZE, BLACK, PROMO_ZONE_DEPTH};
+use super::square::{sq_row, sq_col};
 use std::sync::OnceLock;
 
 // ============================================================================
@@ -101,7 +101,7 @@ fn zobrist_table() -> &'static ZobristTable {
         };
         // 512 slots: pt*2 + color, covers all piece types + promotions for both sides
         let mut piece_keys = vec![[0u64; NUM_SQUARES]; 512];
-        for row in piece_keys.iter_mut() {
+        for row in &mut piece_keys {
             for key in row.iter_mut() {
                 *key = rng();
             }

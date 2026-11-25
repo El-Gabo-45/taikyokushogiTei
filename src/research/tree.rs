@@ -22,7 +22,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let depth = num(args, "--depth", 2u32)?;
     let branching = num(args, "--branching", 3usize)?;
     let max_nodes = num(args, "--max-nodes", 2000u64)?;
-    let out = flag(args, "--out").map(|s| s.to_string());
+    let out = flag(args, "--out").map(std::string::ToString::to_string);
     if depth == 0 {
         return Err("--depth must be at least 1".into());
     }

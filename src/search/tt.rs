@@ -1,7 +1,7 @@
 //! Lock-free bucketed transposition table, with a runtime-configurable size.
 //!
 //! Layout: `buckets` buckets × `TT_BUCKET_WIDTH` entries; each entry is TWO
-//! AtomicU64 slots — hash and payload. Payload is published BEFORE the hash
+//! `AtomicU64` slots — hash and payload. Payload is published BEFORE the hash
 //! (Release) and re-verified after read (Acquire) so concurrent writers
 //! (Lazy SMP) never yield a torn entry: a reader that sees the hash is
 //! guaranteed to see at least that data snapshot.
@@ -105,7 +105,7 @@ impl Tt {
     /// `panic = "abort"`, but the test profile unwinds).
     #[inline]
     fn read_table(&self) -> std::sync::RwLockReadGuard<'_, Arc<TtStorage>> {
-        self.storage().read().unwrap_or_else(|e| e.into_inner())
+        self.storage().read().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -121,18 +121,18 @@ const TT_CHECK_MASK: u64 = 1 << 25;
 pub(crate) fn tt_pack(entry: &TTEntry, generation: u8) -> u64 {
     let sc = entry.score.clamp(-32000, 32000) as i16 as u16;
     let mv = entry.best_move & (TT_MOVE_MASK as u32);
-    ((sc as u64) << 48)
+    (u64::from(sc) << 48)
         | ((entry.depth as u64 & 0x7F) << 41)
-        | ((entry.flag as u64 & 0x03) << 39)
-        | ((generation as u64) << 31)
+        | ((u64::from(entry.flag) & 0x03) << 39)
+        | (u64::from(generation) << 31)
         | if entry.in_check { TT_CHECK_MASK } else { 0 }
-        | (mv as u64)
+        | u64::from(mv)
 }
 
 #[inline]
 pub(crate) fn tt_unpack(packed: u64) -> TTEntry {
     TTEntry {
-        score: ((packed >> 48) & 0xFFFF) as u16 as i16 as i32,
+        score: i32::from(((packed >> 48) & 0xFFFF) as u16 as i16),
         depth: ((packed >> 41) & 0x7F) as i8,
         flag: ((packed >> 39) & 0x03) as u8,
         generation: ((packed >> 31) & 0xFF) as u8,
@@ -163,7 +163,7 @@ impl Tt {
         let table = Arc::new(TtStorage::with_mb(mb));
         let actual = table.actual_mb();
         {
-            let mut guard = self.storage().write().unwrap_or_else(|e| e.into_inner());
+            let mut guard = self.storage().write().unwrap_or_else(std::sync::PoisonError::into_inner);
             *guard = table;
         }
         // Fresh table: nothing is worth keeping, and an aged generation would
@@ -186,7 +186,7 @@ impl Tt {
     /// Clear every entry (new game / test isolation).
     pub fn clear(&self) {
         let table = self.read_table().clone();
-        for slot in table.slots.iter() {
+        for slot in &table.slots {
             slot.store(0, Ordering::Relaxed);
         }
         self.new_generation();
@@ -238,7 +238,7 @@ impl Tt {
             }
             let old = tt_unpack(t[idx + 1].load(Ordering::Relaxed));
             let score =
-                ((old.depth as i32) << 16) - (generation.wrapping_sub(old.generation) as i32);
+                (i32::from(old.depth) << 16) - i32::from(generation.wrapping_sub(old.generation));
             if score < replace_score {
                 replace_score = score;
                 replace_idx = idx;

@@ -26,7 +26,7 @@ use super::qsearch;
 use super::tt::{self, Tt};
 use crate::board::Board;
 use crate::eval::{MATE_SCORE, evaluate};
-use crate::types::*;
+use crate::types::{GameResult, BLACK, WHITE, cell_piece};
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -64,7 +64,7 @@ pub(crate) struct Ctx<'a> {
     pub heur: &'a mut Heuristics,
 }
 
-impl<'a> Ctx<'a> {
+impl Ctx<'_> {
     #[inline]
     pub(crate) fn past_deadline(&self) -> bool {
         if self.stop.load(Ordering::Relaxed) {
@@ -161,7 +161,7 @@ impl<'a> Ctx<'a> {
     /// Static-eval prune (depth ≥ 4): if the static eval is far enough below
     /// alpha, skip searching this node because no move can realistically raise
     /// it above alpha. This is a static-evaluation cut, *not* the statistical
-    /// ProbCut technique (Kotani, Computer Shogi) which uses a reduced search.
+    /// `ProbCut` technique (Kotani, Computer Shogi) which uses a reduced search.
     fn static_eval_prune(
         &mut self,
         d: u32,
@@ -188,7 +188,7 @@ impl<'a> Ctx<'a> {
         }
         let iid_d = d / 2 - 1;
         let _ = self.pvs(iid_d, -beta, -alpha);
-        self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0)
+        self.tt.probe(hash).map_or(0, |e| e.best_move)
     }
 
     /// Entry point kept free of state plumbing (see `Ctx`).
@@ -213,7 +213,7 @@ impl<'a> Ctx<'a> {
         // ── TT PROBE ──────────────────────────────────────────────
         let hash = self.board.tt_key();
         let tt_move = if self.cfg.transposition_table {
-            self.tt.probe(hash).map(|e| e.best_move).unwrap_or(0)
+            self.tt.probe(hash).map_or(0, |e| e.best_move)
         } else {
             0
         };
@@ -346,7 +346,7 @@ impl<'a> Ctx<'a> {
         // remaining move: O(k·n) with k ≈ rps_beam (6-24) instead of a full
         // O(n log n) sort of the capture list at every node.
         pb.cap_scores.clear();
-        for m in cap_moves.iter() {
+        for m in cap_moves {
             let packed = ordering::m_pack(m);
             let hist = self
                 .heur
@@ -488,7 +488,7 @@ impl<'a> Ctx<'a> {
                 pb.scored.sort_unstable_by_key(|e| std::cmp::Reverse(e.0));
             }
 
-            for &(order_score, idx, packed) in pb.scored.iter() {
+            for &(order_score, idx, packed) in &pb.scored {
                 let idx = idx as usize;
                 // cur_move = count of quiets searched so far; only moves that are
                 // actually searched consume a slot (the increment is after any

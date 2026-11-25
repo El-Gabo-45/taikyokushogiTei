@@ -6,7 +6,7 @@
 //! Design inspired by the document's proposal for Taikyoku Shogi.
 
 #![allow(dead_code)] // precomputed-table / debug utilities kept intentionally
-use crate::types::*;
+use crate::types::{NUM_SQUARES, BOARD_SIZE, NUM_DIRS, INVALID_SQ, sq_row, sq_col, DIR_DR, DIR_DC, BLACK};
 
 /// Number of u64 words needed to represent 1,296 squares.
 pub const U64_COUNT: usize = NUM_SQUARES.div_ceil(64); // 21
@@ -220,14 +220,14 @@ impl Bitboard1296 {
     }
 
     /// Get the last (highest-index) set square as usize, or None if empty.
-    /// Used together with first_usize to find the "first blocker" along a
+    /// Used together with `first_usize` to find the "first blocker" along a
     /// ray depending on whether the ray's square indices increase or
-    /// decrease in the direction of travel (see is_in_check_bitboard).
+    /// decrease in the direction of travel (see `is_in_check_bitboard`).
     #[inline(always)]
     pub fn last_usize(&self) -> Option<usize> {
         for (word_idx, &word) in self.words.iter().enumerate().rev() {
             if word != 0 {
-                let bit = 63 - word.leading_zeros();
+                let bit = word.ilog2();
                 return Some((word_idx << 6) | bit as usize);
             }
         }
@@ -373,9 +373,9 @@ impl std::ops::Not for &Bitboard1296 {
 /// For each square and each direction, the set of squares along that ray.
 /// Stored as bitboards for fast attack generation.
 pub struct AttackTable {
-    /// rays[sq * NUM_DIRS + dir] = bitboard of squares along that ray
+    /// rays[sq * `NUM_DIRS` + dir] = bitboard of squares along that ray
     pub rays: Vec<Bitboard1296>,
-    /// first_blocker[sq * NUM_DIRS + dir] = first blocker square (or INVALID_SQ)
+    /// `first_blocker`[sq * `NUM_DIRS` + dir] = first blocker square (or `INVALID_SQ`)
     pub first_blocker: Vec<u16>,
 }
 
@@ -449,7 +449,7 @@ pub fn attack_table() -> &'static AttackTable {
 
 // ── Precomputed king area (1-step) table ───────────────────────
 pub struct KingAreaTable {
-    /// king_area[sq] = bitboard of all squares within 1 step
+    /// `king_area`[sq] = bitboard of all squares within 1 step
     pub areas: Vec<Bitboard1296>,
 }
 
@@ -492,7 +492,7 @@ pub fn king_area_table() -> &'static KingAreaTable {
 // ── Precomputed limited range tables ───────────────────────────
 // For pieces that move 1-3 squares in a direction
 pub struct LimitedRangeTable {
-    /// For each (sq, dir, max_dist), the bitboard of reachable squares
+    /// For each (sq, dir, `max_dist`), the bitboard of reachable squares
     pub attacks: Vec<Bitboard1296>,
 }
 

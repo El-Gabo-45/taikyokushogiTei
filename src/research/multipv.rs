@@ -1,4 +1,4 @@
-//! `nnue multipv` — MultiPV: the best N candidate moves, compared.
+//! `nnue multipv` — `MultiPV`: the best N candidate moves, compared.
 //!
 //! Method (documented because it shapes the output):
 //!
@@ -40,7 +40,7 @@ pub(crate) struct Line {
     pub terminal: bool,
 }
 
-/// Result of one MultiPV analysis.
+/// Result of one `MultiPV` analysis.
 pub(crate) struct Analysis {
     /// Total legal root moves seen (before `--max-root` capping).
     pub root_moves: usize,
@@ -171,7 +171,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         "  #  {:<12} {:>10} {:>10} {:>9}  {:<12} {:>10} {:>7}",
         "move", "static", "search", "Δ", "reply", "nodes", "ms"
     );
-    let best = analysis.lines.first().map(|l| l.score).unwrap_or(0);
+    let best = analysis.lines.first().map_or(0, |l| l.score);
     for (i, l) in analysis.lines.iter().take(n).enumerate() {
         let delta = l.score - best;
         println!(

@@ -102,6 +102,7 @@ pub struct Searcher {
 
 impl Searcher {
     /// Creates a searcher with the production config (all techniques enabled).
+    #[must_use]
     pub fn new() -> Self {
         Self::with_config(SearchConfig::production())
     }
@@ -115,6 +116,7 @@ impl Searcher {
     /// let cfg = SearchConfig::minimal();
     /// let s = Searcher::with_config(cfg);
     /// ```
+    #[must_use]
     pub fn with_config(cfg: SearchConfig) -> Self {
         Searcher {
             cfg,
@@ -127,6 +129,7 @@ impl Searcher {
     }
 
     /// Returns a reference to this searcher's technique config.
+    #[must_use]
     pub fn config(&self) -> SearchConfig {
         self.cfg
     }
@@ -137,6 +140,7 @@ impl Searcher {
     /// This is the shape Lazy SMP wants (workers pool what they learn into the
     /// shared table), and it is also how a self-play pool avoids allocating one
     /// table per worker.
+    #[must_use]
     pub fn share_tt(&self) -> Self {
         Searcher {
             cfg: self.cfg,
@@ -151,11 +155,13 @@ impl Searcher {
     /// Resize this searcher's transposition table to `mb` MiB; returns the size
     /// actually allocated (rounded down to a power-of-two bucket count). Safe
     /// to call at any time, including while a search is running.
+    #[must_use]
     pub fn set_hash_mb(&self, mb: usize) -> usize {
         self.tt.resize_mb(mb)
     }
 
     /// This searcher's current transposition-table size in MiB.
+    #[must_use]
     pub fn hash_mb(&self) -> usize {
         self.tt.size_mb()
     }
@@ -370,7 +376,7 @@ impl Searcher {
             // iterations the last COMPLETED iteration is the more reliable
             // answer.
             let out_of_time = stop.load(Ordering::Relaxed)
-                || deadline.map(|dl| Instant::now() >= dl).unwrap_or(false);
+                || deadline.is_some_and(|dl| Instant::now() >= dl);
             if out_of_time {
                 if best_result.best_move.is_none() && result.best_move.is_some() {
                     best_result = result;
@@ -457,11 +463,13 @@ pub fn search(board: &mut Board, depth: u32, time_limit_ms: u64) -> SearchResult
 
 /// Resize the default (per-thread) searcher's transposition table to `mb` MiB.
 /// See [`Searcher::set_hash_mb`] for a searcher you own.
+#[must_use]
 pub fn set_hash_mb(mb: usize) -> usize {
     DEFAULT_SEARCHER.with(|s| s.borrow().set_hash_mb(mb))
 }
 
 /// The default (per-thread) searcher's transposition-table size in MiB.
+#[must_use]
 pub fn hash_mb() -> usize {
     DEFAULT_SEARCHER.with(|s| s.borrow().hash_mb())
 }

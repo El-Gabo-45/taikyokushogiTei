@@ -21,6 +21,7 @@ pub struct HeuristicDebugReport {
 }
 
 /// Devuelve un reporte legible del valor heurístico actual.
+#[must_use]
 pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
     let b = &board.inner;
     let mut material = 0i32;
@@ -83,6 +84,7 @@ pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
 }
 
 /// Convierte el reporte en una cadena formateada para impresión o logs.
+#[must_use]
 pub fn format_heuristic_debug(board: &crate::Board) -> String {
     let report = debug_heuristic(board);
     let mut lines = vec![

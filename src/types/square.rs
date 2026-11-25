@@ -1,6 +1,6 @@
 //! Square indexing helpers: row/column lookup tables, direction deltas, step.
 
-use super::constants::*;
+use super::constants::{NUM_SQUARES, BOARD_SIZE, BLACK, DIR_DR, DIR_DC};
 
 // Per-square row lookup (compile-time precomputed), replacing `sq / BOARD_SIZE`.
 // Division by a non-power-of-two in a hot per-piece movegen loop is measurably

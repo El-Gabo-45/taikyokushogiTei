@@ -56,7 +56,7 @@ impl SharedBest {
     pub fn publish(&self, depth: u32, score: i32, packed: u32) {
         if depth > self.depth.load(Ordering::Relaxed) {
             self.score.store(score, Ordering::Relaxed);
-            self.packed.store(packed as u64, Ordering::Relaxed);
+            self.packed.store(u64::from(packed), Ordering::Relaxed);
             self.depth.store(depth, Ordering::Release);
         }
     }

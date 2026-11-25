@@ -1,7 +1,7 @@
 //! Parallel self-play for Taikyoku Shogi.
 use crate::board::Board;
 use crate::search::search;
-use crate::types::*;
+use crate::types::{GameResult, BLACK, EMPTY_CELL, cell_piece, cell_color};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -117,8 +117,7 @@ fn max_db_game_id(db_path: &str) -> u64 {
                 r.get::<_, i64>(0)
             })
         })
-        .map(|v| if v < 0 { 0 } else { v as u64 + 1 })
-        .unwrap_or(0)
+        .map_or(0, |v| if v < 0 { 0 } else { v as u64 + 1 })
 }
 
 impl TrainingSample {
@@ -191,7 +190,7 @@ impl SelfPlayStats {
         let nodes = self.total_nodes.load(Ordering::Relaxed);
         let time = self.total_time_ms.load(Ordering::Relaxed);
         println!("=== Self-Play Stats ===");
-        println!("Games: {}", games);
+        println!("Games: {games}");
         if games > 0 {
             println!(
                 "Moves: {} ({:.1} moves/game)",
@@ -269,16 +268,13 @@ impl SelfPlayWorker {
                 (legal[(rng.next() % legal.len() as u64) as usize], 0, 0, 0)
             } else {
                 let r = search(&mut board, self.config.depth, self.config.time_limit_ms);
-                match r.best_move {
-                    Some(m) => (m, r.score, r.nodes, r.time_ms),
-                    None => {
-                        result_val = if board.side_to_move == BLACK {
-                            -1i8
-                        } else {
-                            1i8
-                        };
-                        break;
-                    }
+                if let Some(m) = r.best_move { (m, r.score, r.nodes, r.time_ms) } else {
+                    result_val = if board.side_to_move == BLACK {
+                        -1i8
+                    } else {
+                        1i8
+                    };
+                    break;
                 }
             };
 
@@ -290,7 +286,7 @@ impl SelfPlayWorker {
                 move_number: (move_count + 1) as u16,
                 from: best_move.from_sq,
                 to: best_move.to_sq,
-                promo: best_move.promotion as u8,
+                promo: u8::from(best_move.promotion),
                 captured_piece: best_move.captured_piece,
                 side,
                 black_pieces,
@@ -312,7 +308,7 @@ impl SelfPlayWorker {
                     if cell != EMPTY_CELL {
                         // Color goes in bit 9: piece types go up to 301 (9 bits).
                         sample.board[sq] =
-                            (cell_piece(cell) & 0x1FF) | ((cell_color(cell) as u16) << 9);
+                            (cell_piece(cell) & 0x1FF) | (u16::from(cell_color(cell)) << 9);
                     }
                 }
                 game_samples.push(sample);
@@ -329,9 +325,9 @@ impl SelfPlayWorker {
 
         for s in &mut game_samples {
             let from_perspective = if s.side_to_move == BLACK {
-                result_val as f32
+                f32::from(result_val)
             } else {
-                -(result_val as f32)
+                -f32::from(result_val)
             };
             s.result = from_perspective as i8;
         }
@@ -417,6 +413,7 @@ pub struct SelfPlayCoordinator {
 }
 
 impl SelfPlayCoordinator {
+    #[must_use]
     pub fn new(config: SelfPlayConfig) -> Self {
         // ── Reserve a game-id range unique across runs ──────────────
         // Sources of truth: the per-directory state file and (when enabled)
@@ -428,7 +425,7 @@ impl SelfPlayCoordinator {
         }
         let reserved_end = offset + config.num_games as u64;
         assert!(
-            reserved_end <= u32::MAX as u64,
+            u32::try_from(reserved_end).is_ok(),
             "game id space exhausted: the TKD1 sample format stores u32 game ids"
         );
         if let Err(e) = write_next_game_id(&config.output_dir, reserved_end) {
@@ -545,7 +542,7 @@ impl SelfPlayCoordinator {
     /// does not yet exist. Used to avoid clobbering samples from earlier runs.
     fn next_free_index(output_dir: &str) -> usize {
         let mut n = 0usize;
-        while std::path::Path::new(&format!("{}/samples_{:06}.bin", output_dir, n)).exists() {
+        while std::path::Path::new(&format!("{output_dir}/samples_{n:06}.bin")).exists() {
             n += 1;
         }
         n
@@ -591,7 +588,7 @@ impl SelfPlayCoordinator {
             total += 1;
             if let Err(e) = conn.execute(
                 "INSERT INTO games (id, result, total_moves, depth, duration_ms) VALUES (?, ?, ?, ?, ?)",
-                rusqlite::params![record.game_id as i64, record.result as i64, record.total_moves as i64, record.depth as i64, record.duration_ms as i64]
+                rusqlite::params![record.game_id as i64, i64::from(record.result), i64::from(record.total_moves), i64::from(record.depth), record.duration_ms as i64]
             ) {
                 failures += 1;
                 last_err = format!("insert game {}: {e}", record.game_id);
@@ -604,8 +601,8 @@ impl SelfPlayCoordinator {
                         if let Err(e) = t.execute(
                             "INSERT INTO moves (game_id, move_number, from_sq, to_sq, promo, captured, side, black_pieces, white_pieces) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             rusqlite::params![
-                                record.game_id as i64, m.move_number as i64, m.from as i64, m.to as i64,
-                                m.promo as i64, m.captured_piece as i64, m.side as i64,
+                                record.game_id as i64, i64::from(m.move_number), i64::from(m.from), i64::from(m.to),
+                                i64::from(m.promo), i64::from(m.captured_piece), i64::from(m.side),
                                 m.black_pieces as i64, m.white_pieces as i64,
                             ]
                         ) {
@@ -637,14 +634,12 @@ impl SelfPlayCoordinator {
             if last_print.elapsed().as_secs() >= 2 {
                 last_print = std::time::Instant::now();
                 println!(
-                    "[db] games={} ({} failed) written to {}",
-                    total, failures, db_path
+                    "[db] games={total} ({failures} failed) written to {db_path}"
                 );
             }
         }
         println!(
-            "[db] Done: {} games written to {} ({} failed)",
-            total, db_path, failures
+            "[db] Done: {total} games written to {db_path} ({failures} failed)"
         );
         if failures > 0 {
             Err(format!(

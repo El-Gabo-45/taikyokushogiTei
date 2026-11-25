@@ -72,7 +72,7 @@ fn class_key(pt: u16) -> (u8, u8, u8) {
     }
     if orth == 0 {
         // Diagonal-only sliders.
-        return (8, if n <= 2 { 0 } else { 1 }, 0);
+        return (8, u8::from(n > 2), 0);
     }
     // Mixed (orthogonal + diagonal) sliders, by number of directions.
     match n {
@@ -100,6 +100,7 @@ pub fn generate_class_map() -> Vec<u8> {
 }
 
 /// Number of classes of a class map (max id + 1).
+#[must_use]
 pub fn num_classes(map: &[u8]) -> usize {
     map.iter()
         .skip(1)
@@ -111,12 +112,13 @@ pub fn num_classes(map: &[u8]) -> usize {
 /// Mean material value (engine units, pawn = 500) of the pieces of each
 /// class. Not part of the architecture: the trainer uses it to start the
 /// PSQT as a plain material count.
+#[must_use]
 pub fn class_values(map: &[u8]) -> Vec<i32> {
     (0..num_classes(map))
         .map(|cls| {
             let vals: Vec<i64> = (1..map.len())
                 .filter(|&pt| map[pt] as usize == cls)
-                .map(|pt| pieces::value(pt as u16) as i64)
+                .map(|pt| i64::from(pieces::value(pt as u16)))
                 .collect();
             ((vals.iter().sum::<i64>() as f64) / vals.len() as f64).round() as i32
         })
@@ -124,6 +126,7 @@ pub fn class_values(map: &[u8]) -> Vec<i32> {
 }
 
 /// Human-readable table: class id, member count and member abbreviations.
+#[must_use]
 pub fn describe(map: &[u8]) -> String {
     let c = num_classes(map);
     let mut out = String::new();

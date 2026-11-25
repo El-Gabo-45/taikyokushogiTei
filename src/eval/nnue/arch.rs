@@ -101,23 +101,26 @@ impl ArchSpec {
     }
 
     /// Number of feature planes: own and enemy plane for every class.
+    #[must_use]
     pub fn planes(&self) -> usize {
         2 * self.num_classes
     }
 
     /// Number of input features per perspective.
+    #[must_use]
     pub fn dims(&self) -> usize {
         self.planes() * NSQ
     }
 
     /// Canonical architecture descriptor. Python builds the identical string.
+    #[must_use]
     pub fn descriptor(&self) -> String {
         let cmap = Sha256::digest(&self.class_map);
         let cmap_hex: String = cmap[..8].iter().map(|b| format!("{b:02x}")).collect();
         let th: Vec<String> = self
             .thresholds_pieces
             .iter()
-            .map(|t| t.to_string())
+            .map(std::string::ToString::to_string)
             .collect();
         format!(
             "taikyoku-nnue-S;kb=1;planes={};sq={};L1={};ob={};acc=i32;ftshift={};\
@@ -134,6 +137,7 @@ act=clip0_127;pairwise=shr7;stack=16-32-1;classes={};cmap={};buckets=[{}]",
     }
 
     /// SHA-256 of the descriptor; stored in every network file.
+    #[must_use]
     pub fn arch_hash(&self) -> [u8; 32] {
         Sha256::digest(self.descriptor().as_bytes()).into()
     }

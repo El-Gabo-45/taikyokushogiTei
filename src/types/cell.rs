@@ -1,6 +1,6 @@
 //! Cell encoding: 0 = empty, otherwise `(piece_type << 1) | color`.
 
-use super::constants::*;
+use super::constants::BOARD_SIZE;
 
 /// Cell encoding: 0 = empty, otherwise `(piece_type << 1) | color`.
 pub type Cell = u16;
@@ -14,7 +14,7 @@ pub const INVALID_SQ: u16 = 0xFFFF;
 /// Create a cell from a piece type and color.
 #[inline]
 pub fn make_cell(piece_type: u16, color: u8) -> Cell {
-    (piece_type << 1) | (color as u16)
+    (piece_type << 1) | u16::from(color)
 }
 
 /// Extract the piece type ID from a cell.

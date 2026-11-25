@@ -49,7 +49,7 @@ impl Heuristics {
         let d = depth.min(params::KILLER_MAX_PLY) as usize;
         let mv0 = self.killers[d] as u32;
         if mv != mv0 {
-            self.killers[d] = mv as u64 | ((mv0 as u64) << 32);
+            self.killers[d] = u64::from(mv) | (u64::from(mv0) << 32);
         }
     }
 

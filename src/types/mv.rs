@@ -4,7 +4,7 @@
 //! eliminates needless `.clone()` calls in the hot movegen path
 //! (`dedup_piece_range`, move list compaction, etc.).
 
-use super::cell::*;
+use super::cell::{INVALID_SQ, Cell};
 
 /// A move in the game (internal representation).
 ///

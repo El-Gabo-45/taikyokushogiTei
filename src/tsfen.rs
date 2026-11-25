@@ -12,7 +12,7 @@
 
 use crate::board::Board;
 use crate::pieces;
-use crate::types::*;
+use crate::types::{BOARD_SIZE, BLACK, WHITE, EMPTY_CELL, cell_piece, cell_color, make_cell};
 
 /// Encode a board position as a TSFEN string.
 pub fn to_tsfen(board: &Board) -> String {
@@ -144,7 +144,7 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
             }
             let count: usize = rank_str[start..i]
                 .parse()
-                .map_err(|_| format!("invalid number in rank {}", row))?;
+                .map_err(|_| format!("invalid number in rank {row}"))?;
             col += count;
         } else if ch == '(' {
             // Multi-character abbreviation
@@ -154,7 +154,7 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
                 i += 1;
             }
             if i >= n {
-                return Err(format!("unclosed parenthesis in rank {}", row));
+                return Err(format!("unclosed parenthesis in rank {row}"));
             }
             let abbrev_raw = &rank_str[start..i];
             i += 1; // skip ')'
@@ -190,9 +190,9 @@ fn decode_rank(board: &mut Board, row: usize, rank_str: &str) -> Result<(), Stri
     Ok(())
 }
 
-/// Parse a piece token (from inside parens or single char) into (color, uppercase_abbrev).
+/// Parse a piece token (from inside parens or single char) into (color, `uppercase_abbrev`).
 fn parse_piece_token(token: &str) -> (u8, String) {
-    let first_alpha = token.chars().find(|c| c.is_ascii_alphabetic());
+    let first_alpha = token.chars().find(char::is_ascii_alphabetic);
     let color = match first_alpha {
         Some(c) if c.is_ascii_uppercase() => BLACK,
         _ => WHITE,

@@ -1,6 +1,6 @@
 use crate::board::Board;
 use crate::pieces;
-use crate::types::*;
+use crate::types::{N, S, E, W, NW, SE, NE, SW, Move, NUM_SQUARES, INVALID_SQ, sq_row, sq_col, BLACK, BOARD_SIZE, ray_table, EMPTY_CELL, cell_piece, Movement, RayTable, in_promo_zone, cell_color, HookType, NUM_DIRS, get_deltas, Cell, is_farthest_rank, step_sq};
 use std::sync::OnceLock;
 
 const HOOK_ORTHO_NS: [usize; 2] = [N, S];
@@ -17,12 +17,12 @@ const HOOK_TURN_NW: [usize; 2] = [NE, SW];
 /// pass removes them with no hash table and no thread-local state.
 #[inline]
 fn effect_key(m: &Move) -> u64 {
-    (m.from_sq as u64)
-        | ((m.to_sq as u64) << 11)
-        | ((m.promotion as u64) << 22)
-        | ((m.captured_piece as u64) << 23)
-        | (((m.mid_piece != 0) as u64) << 32)
-        | (((m.mid_sq as u64) & 0xFFF) << 33)
+    u64::from(m.from_sq)
+        | (u64::from(m.to_sq) << 11)
+        | (u64::from(m.promotion) << 22)
+        | (u64::from(m.captured_piece) << 23)
+        | (u64::from(m.mid_piece != 0) << 32)
+        | ((u64::from(m.mid_sq) & 0xFFF) << 33)
 }
 
 /// Remove duplicate-effect moves appended in `moves[start..]`.
@@ -89,9 +89,9 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
                             break;
                         }
                         let (dr, dc) = if color == BLACK as usize {
-                            (jdr as i32, jdc as i32)
+                            (i32::from(jdr), i32::from(jdc))
                         } else {
-                            (-(jdr as i32), -(jdc as i32))
+                            (-i32::from(jdr), -i32::from(jdc))
                         };
                         let nr = r + dr;
                         let nc = c + dc;
@@ -378,7 +378,7 @@ fn gen_hooks_captures(
 
     for &d in dirs {
         let ray = rt.ray_for_color(sq, d, color);
-        for &mid_sq in ray.iter() {
+        for &mid_sq in ray {
             let mid = mid_sq as usize;
             let target = board.cells[mid];
             if target != EMPTY_CELL {
@@ -413,9 +413,8 @@ fn gen_hooks_captures(
                     } else if cell_color(t) != color {
                         add_move(moves, sq as u16, tsq, pt, color, t);
                         break;
-                    } else {
-                        break;
                     }
+                    break;
                 }
             }
         }
@@ -494,15 +493,15 @@ fn can_promote(pt: u16) -> bool {
 /// path in attack.rs delegates here so promotion rules are identical in
 /// both generators).
 pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, target: Cell) {
-    let captured = if target != EMPTY_CELL {
+    let captured = if target == EMPTY_CELL {
+        0
+    } else {
         cell_piece(target)
-    } else {
-        0
     };
-    let cap_color = if target != EMPTY_CELL {
-        cell_color(target)
-    } else {
+    let cap_color = if target == EMPTY_CELL {
         0
+    } else {
+        cell_color(target)
     };
 
     if !can_promote(pt) {
@@ -681,7 +680,7 @@ fn gen_hooks(
 
     for &d in dirs {
         let ray = rt.ray_for_color(sq, d, color);
-        for &mid_sq in ray.iter() {
+        for &mid_sq in ray {
             let mid = mid_sq as usize;
             let target = board.cells[mid];
             if target != EMPTY_CELL {

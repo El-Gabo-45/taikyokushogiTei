@@ -8,7 +8,7 @@
 //!
 //! | subcommand | question it answers |
 //! |---|---|
-//! | `nnue multipv` | Which candidate moves exist and how far apart are they? (MultiPV) |
+//! | `nnue multipv` | Which candidate moves exist and how far apart are they? (`MultiPV`) |
 //! | `nnue tree` | What does the shallow tree below a position look like? (JSON) |
 //! | `nnue stability` | How much do score and best move change with depth? |
 //! | `nnue critical` | Which plies of self-play games swung the evaluation most? |
@@ -37,14 +37,14 @@ pub(crate) fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
         .position(|a| a == name)
         .and_then(|i| args.get(i + 1))
-        .map(|s| s.as_str())
+        .map(std::string::String::as_str)
 }
 
 /// First positional (non-`--`) argument, if present.
 pub(crate) fn positional(args: &[String]) -> Option<&str> {
     args.first()
         .filter(|a| !a.starts_with("--"))
-        .map(|s| s.as_str())
+        .map(std::string::String::as_str)
 }
 
 /// Parsed numeric `--flag VALUE`, or `default` when the flag is absent.
@@ -131,8 +131,7 @@ fn piece_type_at_sq(board: &crate::Board, index: usize) -> u16 {
     let size = crate::types::BOARD_SIZE;
     board
         .get(index / size, index % size)
-        .map(|p| p.type_id)
-        .unwrap_or(0)
+        .map_or(0, |p| p.type_id)
 }
 
 // ── Self-play game replay (shared by `critical` and `pieces`) ───────────
@@ -273,7 +272,7 @@ where
         let m = row.map_err(|e| format!("read move row: {e}"))?;
 
         // The recorded side must be the side to move on the replayed board.
-        let side_now = board.side_to_move().raw() as i64;
+        let side_now = i64::from(board.side_to_move().raw());
         if m.side != side_now {
             return Err(format!(
                 "move {}: database says side {}, replayed board says {side_now}",
@@ -287,7 +286,7 @@ where
         let mv_str = mv.to_string();
         board.apply(&mv);
         let eval_after = board.evaluate(); // now the opponent speaks
-        let gain = ((-(eval_after as i64)) - eval_stm as i64) as i32;
+        let gain = ((-i64::from(eval_after)) - i64::from(eval_stm)) as i32;
         let view = PlyView {
             game_id,
             ply: (m.move_number.max(1) - 1) as u32,
@@ -316,7 +315,7 @@ fn match_legal(board: &mut crate::Board, m: &DbMove) -> Result<crate::Move, Stri
         .into_iter()
         .filter(|mv| {
             let r = mv.raw();
-            r.from_sq as i64 == m.from && r.to_sq as i64 == m.to && r.promotion == m.promo
+            i64::from(r.from_sq) == m.from && i64::from(r.to_sq) == m.to && r.promotion == m.promo
         })
         .collect();
     match matches.len() {
@@ -327,7 +326,7 @@ fn match_legal(board: &mut crate::Board, m: &DbMove) -> Result<crate::Move, Stri
         1 => Ok(matches.remove(0)),
         _ => matches
             .into_iter()
-            .find(|mv| mv.raw().captured_piece as i64 == m.captured)
+            .find(|mv| i64::from(mv.raw().captured_piece) == m.captured)
             .ok_or_else(|| "several legal moves match the recording (ambiguous)".to_string()),
     }
 }

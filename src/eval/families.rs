@@ -21,7 +21,7 @@
 
 #![allow(dead_code)] // utility/debug API kept intentionally
 use crate::pieces;
-use crate::types::*;
+use crate::types::RANK_ROYAL;
 use std::sync::OnceLock;
 
 /// Symbolic family of a piece type.  Pieces can belong to multiple families
@@ -261,7 +261,7 @@ pub fn classify_fast(piece_type: u16) -> Family {
     family_table()[index]
 }
 
-/// Fast family_value via precomputed table — O(1) lookup.
+/// Fast `family_value` via precomputed table — O(1) lookup.
 ///
 /// Use this in hot paths like `evaluate()` instead of `family_value()`.
 /// The table is built once on first call (lazy init via `OnceLock`).

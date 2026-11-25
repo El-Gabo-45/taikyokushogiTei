@@ -28,6 +28,7 @@ use crate::types::Move;
 /// assert!((expected_score(0.0) - 0.5).abs() < 1e-9);
 /// assert!((expected_score(400.0) - 10.0f64 / 11.0).abs() < 1e-9);
 /// ```
+#[must_use]
 pub fn expected_score(d: f64) -> f64 {
     1.0 / (1.0 + 10f64.powf(-d / 400.0))
 }
@@ -35,6 +36,7 @@ pub fn expected_score(d: f64) -> f64 {
 /// Inverse of [`expected_score`]: the Elo difference implied by an average
 /// score `s` in `[0, 1]`. Clamped so `s = 0` or `s = 1` saturate to ±1200
 /// instead of producing infinities.
+#[must_use]
 pub fn elo_from_score(s: f64) -> f64 {
     let s = s.clamp(1e-6, 1.0 - 1e-6);
     -400.0 * (1.0 / s - 1.0).log10()
@@ -49,11 +51,13 @@ pub struct Wdl {
 }
 
 impl Wdl {
+    #[must_use]
     pub fn total(&self) -> u64 {
         self.wins + self.draws + self.losses
     }
 
     /// Average score in points (win = 1, draw = 0.5, loss = 0).
+    #[must_use]
     pub fn score(&self) -> f64 {
         let n = self.total();
         if n == 0 {
@@ -63,6 +67,7 @@ impl Wdl {
     }
 
     /// Variance of the per-game score (trinomial).
+    #[must_use]
     pub fn variance(&self) -> f64 {
         let n = self.total();
         if n == 0 {
@@ -73,6 +78,7 @@ impl Wdl {
     }
 
     /// Elo difference of A over B.
+    #[must_use]
     pub fn elo(&self) -> f64 {
         elo_from_score(self.score())
     }
@@ -81,6 +87,7 @@ impl Wdl {
     /// Uses the delta method on the logistic transform; degenerate score
     /// distributions (all wins / all losses) fall back to a conservative
     /// estimate so the interval stays finite.
+    #[must_use]
     pub fn elo_margin95(&self) -> f64 {
         let n = self.total();
         if n == 0 {
@@ -97,6 +104,7 @@ impl Wdl {
         1.96 * (var / n as f64).sqrt() * (400.0 / (std::f64::consts::LN_10 * s * (1.0 - s)))
     }
 
+    #[must_use]
     pub fn elo_interval95(&self) -> (f64, f64) {
         let e = self.elo();
         let m = self.elo_margin95();
@@ -124,6 +132,7 @@ pub struct EngineConfig {
 }
 
 impl EngineConfig {
+    #[must_use]
     pub fn depth(d: u32) -> Self {
         EngineConfig {
             depth: d,
@@ -197,6 +206,7 @@ fn cfg_for_side<'a>(stm: u8, white: &'a EngineConfig, black: &'a EngineConfig) -
 /// the Black ones. The game ends when the rules end it, or after
 /// `max_plies` plies (`0` = unlimited), in which case it is scored as a
 /// draw.
+#[must_use]
 pub fn play_game(white: &EngineConfig, black: &EngineConfig, max_plies: u32) -> GameOutcome {
     play_game_seeded(white, black, max_plies, 0, 0, 0)
 }
@@ -245,12 +255,9 @@ pub fn play_game_seeded(
             };
         }
         let cfg = cfg_for_side(board.side_to_move, white, black);
-        match apply_best(&mut board, cfg) {
-            Some(m) => board.apply_move(&m),
-            None => {
-                let r = board.game_result().map_or(GameResult::Draw, to_public);
-                return GameOutcome { result: r, plies };
-            }
+        if let Some(m) = apply_best(&mut board, cfg) { board.apply_move(&m) } else {
+            let r = board.game_result().map_or(GameResult::Draw, to_public);
+            return GameOutcome { result: r, plies };
         }
         plies += 1;
     }
@@ -350,13 +357,14 @@ impl MatchReport {
         );
         if !self.plies.is_empty() {
             let avg: f64 =
-                self.plies.iter().map(|&p| p as f64).sum::<f64>() / self.plies.len() as f64;
-            println!("Avg plies/game: {:.1}", avg);
+                self.plies.iter().map(|&p| f64::from(p)).sum::<f64>() / self.plies.len() as f64;
+            println!("Avg plies/game: {avg:.1}");
         }
     }
 }
 
 /// Run a full match and return the aggregate report.
+#[must_use]
 pub fn run_match(cfg: &MatchConfig) -> MatchReport {
     let mut wdl = Wdl::default();
     let mut plies = Vec::with_capacity(cfg.games);
@@ -429,6 +437,7 @@ impl Sprt {
 
     /// Log-likelihood ratio after the given WDL, under the Gaussian
     /// approximation used by fishtest / bayeselo.
+    #[must_use]
     pub fn llr(&self, wdl: &Wdl) -> f64 {
         let n = wdl.total();
         if n == 0 {
@@ -442,6 +451,7 @@ impl Sprt {
     }
 
     /// Current decision.
+    #[must_use]
     pub fn decision(&self, wdl: &Wdl) -> SprtDecision {
         let (lb, ub) = self.bounds();
         let llr = self.llr(wdl);
@@ -498,6 +508,7 @@ impl SprtReport {
 }
 
 /// Run games until SPRT decides or `cfg.games` are exhausted.
+#[must_use]
 pub fn run_sprt(cfg: &MatchConfig, sprt: &Sprt) -> SprtReport {
     let mut wdl = Wdl::default();
     let mut games = 0usize;

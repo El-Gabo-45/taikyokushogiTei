@@ -7,7 +7,7 @@ use super::heuristics::Heuristics;
 use super::params;
 use crate::board::Board;
 use crate::pieces;
-use crate::types::*;
+use crate::types::{Move, cell_piece};
 use std::sync::OnceLock;
 
 /// Material values indexed by piece type (0 = empty), computed once.
@@ -25,7 +25,7 @@ pub(crate) fn piece_vals() -> &'static [i32; 512] {
 /// Compact key for TT/killer/history tables: from | to<<11 | promo<<24.
 #[inline]
 pub(crate) fn m_pack(m: &Move) -> u32 {
-    (m.from_sq as u32) | ((m.to_sq as u32) << 12) | (if m.promotion { 1 << 24 } else { 0 })
+    u32::from(m.from_sq) | (u32::from(m.to_sq) << 12) | (if m.promotion { 1 << 24 } else { 0 })
 }
 
 /// A capture/igui/mid-capture/range-capture/promotion — searched in stage 1.

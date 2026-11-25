@@ -3,9 +3,9 @@
 //! The core cost in `movegen::generate_pseudo_legal_moves` is walking every
 //! piece and, for each, iterating its `Movement` Vecs (heap reads) plus
 //! per-jump bounds checks. On a 36×36 board with ~400 pieces that's
-//! O(pieces × movement_vectors) pointer chases and divisions.
+//! O(pieces × `movement_vectors`) pointer chases and divisions.
 //!
-//! This module precomputes, per (piece_type, color), a **compact relative
+//! This module precomputes, per (`piece_type`, color), a **compact relative
 //! attack template** in flat arrays (no heap Vecs):
 //! - `jumps[(dr, dc); N]` — non-sliding deltas (jumps, steps, area, igui)
 //! - `slides[(dir, max_range); N]` — sliding move specifiers
@@ -20,7 +20,7 @@
 
 use crate::board::Board;
 use crate::pieces;
-use crate::types::*;
+use crate::types::{N, S, E, W, NW, SE, NE, SW, BLACK, get_deltas, ray_table, INVALID_SQ, EMPTY_CELL, cell_piece, sq_row, sq_col, BOARD_SIZE, cell_color, NUM_DIRS, step_sq, Movement, RayTable, HookType, in_promo_zone, Cell};
 use std::sync::OnceLock;
 
 const MAX_JUMP_DELTAS: usize = 32;
@@ -33,9 +33,9 @@ const HOOK_TURN_SE: [usize; 2] = [NE, SW];
 const HOOK_TURN_SW: [usize; 2] = [SE, NW];
 const HOOK_TURN_NW: [usize; 2] = [NE, SW];
 
-/// Flat movement template per (piece_type, color). Only valid for pieces
+/// Flat movement template per (`piece_type`, color). Only valid for pieces
 /// whose moves are pure jumps/steps/slides/area/igui (no hook, no
-/// range_capture, no lion mid-capture). `valid=false` → must use fallback.
+/// `range_capture`, no lion mid-capture). `valid=false` → must use fallback.
 #[derive(Clone, Copy)]
 pub struct Template {
     pub jumps: [(i8, i8); MAX_JUMP_DELTAS],
@@ -198,8 +198,8 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
 
         // Jumps/steps/area: only capture if target is an enemy piece.
         for &(dr, dc) in tmpl.jumps.iter().take(tmpl.n_jumps as usize) {
-            let nr = sq_r + dr as i32;
-            let nc = sq_c + dc as i32;
+            let nr = sq_r + i32::from(dr);
+            let nc = sq_c + i32::from(dc);
             if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
                 continue;
             }
@@ -247,7 +247,7 @@ fn gen_hook_captures(
     };
     for &d in dirs {
         let ray = rt.ray_for_color(sq, d, color);
-        for &mid_sq in ray.iter() {
+        for &mid_sq in ray {
             let mid = mid_sq as usize;
             let target = board.cells[mid];
             if target != EMPTY_CELL {
@@ -283,9 +283,8 @@ fn gen_hook_captures(
                     if cell_color(t) != color {
                         push_move(moves, sq as u16, tsq, pt, color, t);
                         break;
-                    } else {
-                        break;
                     }
+                    break;
                 }
             }
         }
@@ -293,9 +292,9 @@ fn gen_hook_captures(
 }
 
 /// Generate range-capture moves (captures pieces of lower rank along rays).
-/// `range_cap = true` makes apply_move recompute and capture ALL occupied
+/// `range_cap = true` makes `apply_move` recompute and capture ALL occupied
 /// squares between from and to — previously this fast path left intermediate
-/// captures unapplied (the old Move had range_caps: None here), silently
+/// captures unapplied (the old Move had `range_caps`: None here), silently
 /// diverging from the generator's intent.
 fn gen_range_capture_captures(
     board: &Board,
@@ -458,8 +457,8 @@ pub fn fast_piece(
     let sq_c = sq_col(sq) as i32;
 
     for &(dr, dc) in tmpl.jumps.iter().take(tmpl.n_jumps as usize) {
-        let nr = sq_r + dr as i32;
-        let nc = sq_c + dc as i32;
+        let nr = sq_r + i32::from(dr);
+        let nc = sq_c + i32::from(dc);
         if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
             continue;
         }
@@ -599,8 +598,8 @@ pub fn fast_piece_quiets(
 
     // Jumps/steps/area: only quiet when target is empty.
     for &(dr, dc) in tmpl.jumps.iter().take(tmpl.n_jumps as usize) {
-        let nr = sq_r + dr as i32;
-        let nc = sq_c + dc as i32;
+        let nr = sq_r + i32::from(dr);
+        let nc = sq_c + i32::from(dc);
         if nr < 0 || nr >= BOARD_SIZE as i32 || nc < 0 || nc >= BOARD_SIZE as i32 {
             continue;
         }

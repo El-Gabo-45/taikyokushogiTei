@@ -10,6 +10,7 @@ fn main() {
         .filter(|s| s.contains('.'))
         .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
-    println!("cargo:rustc-env=TAIKYOKU_VERSION={}", version);
+    println!("cargo:rustc-env=TAIKYOKU_VERSION={version}");
+
     println!("cargo:rerun-if-changed=.git/HEAD");
 }

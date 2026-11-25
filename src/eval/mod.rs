@@ -25,7 +25,7 @@ pub mod psqt;
 pub mod zones;
 
 use crate::board::Board;
-use crate::types::*;
+use crate::types::{GameResult, BLACK, WHITE, INVALID_SQ, NUM_SQUARES};
 
 pub const MATE_SCORE: i32 = 1_000_000;
 

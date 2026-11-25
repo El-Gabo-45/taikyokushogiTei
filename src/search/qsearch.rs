@@ -2,7 +2,7 @@
 //!
 //! Reuses the TT for shallow results (captures transpose constantly on a
 //! 36×36 board, so caching here saves whole quiescence subtrees) and is
-//! depth-capped (MAX_QDEPTH) because without a cap a single call once
+//! depth-capped (`MAX_QDEPTH`) because without a cap a single call once
 //! consumed 300,000 nodes on this game's open boards.
 //!
 //! Like `pvs`, this module allocates nothing: the capture list and the
@@ -13,14 +13,14 @@ use super::params;
 use super::pvs::Ctx;
 use super::tt;
 use crate::eval::{MATE_SCORE, evaluate};
-use crate::types::*;
+use crate::types::{GameResult, BLACK, WHITE};
 
 /// Quiescence entry (qd = 0 from the main search).
 pub(crate) fn run(ctx: &mut Ctx, alpha: i32, beta: i32) -> i32 {
     ctx.qsearch(alpha, beta, 0)
 }
 
-impl<'a> Ctx<'a> {
+impl Ctx<'_> {
     fn qsearch(&mut self, mut alpha: i32, beta: i32, qd: u32) -> i32 {
         *self.nodes += 1;
         let init_q_alpha = alpha;

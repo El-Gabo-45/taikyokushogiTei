@@ -34,7 +34,7 @@ struct Moment {
 }
 
 pub fn run(args: &[String]) -> Result<(), String> {
-    let db = positional(args).map(|s| s.to_string()).ok_or_else(|| {
+    let db = positional(args).map(std::string::ToString::to_string).ok_or_else(|| {
         "usage: nnue critical <games.db> [--net FILE] [--threshold N] [--limit G] [--top N]"
             .to_string()
     })?;

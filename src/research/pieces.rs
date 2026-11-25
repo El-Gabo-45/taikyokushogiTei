@@ -21,13 +21,13 @@ use super::{flag, load_net, num, num_opt, positional, print_replay_summary, repl
 const MAX_PT: usize = 302;
 
 pub fn run(args: &[String]) -> Result<(), String> {
-    let db = positional(args).map(|s| s.to_string()).ok_or_else(|| {
+    let db = positional(args).map(std::string::ToString::to_string).ok_or_else(|| {
         "usage: nnue pieces <games.db> [--limit G] [--top N] [--csv FILE]".to_string()
     })?;
     let net = load_net(args)?;
     let limit = num_opt(args, "--limit")?;
     let top = num(args, "--top", 15usize)?;
-    let csv = flag(args, "--csv").map(|s| s.to_string());
+    let csv = flag(args, "--csv").map(std::string::ToString::to_string);
 
     let mut matrix = vec![vec![0u64; MAX_PT]; MAX_PT];
     let summary = replay_games(&db, net, limit, |v| {

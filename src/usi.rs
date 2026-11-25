@@ -284,14 +284,11 @@ fn parse_move(board: &Board, token: &str) -> Result<crate::Move, String> {
     // Squares are `file + 1..2 digits`, so a from/to pair is NOT a fixed
     // 4-character slice: `e34A12` is `e34` + `A12`. Split where a file letter
     // follows a digit (the `=` igui spelling is an explicit separator).
-    let squares: (Option<u16>, Option<u16>) = match core.split_once('=') {
-        Some((a, b)) => (parse_square(a.trim()), parse_square(b.trim())),
-        None => {
-            let cleaned: String = core.chars().filter(|c| *c != '-').collect();
-            match split_two_squares(&cleaned) {
-                Some((a, b)) => (parse_square(a), parse_square(b)),
-                None => return Err(format!("cannot parse `{token}` (expected e.g. `a26a25`)")),
-            }
+    let squares: (Option<u16>, Option<u16>) = if let Some((a, b)) = core.split_once('=') { (parse_square(a.trim()), parse_square(b.trim())) } else {
+        let cleaned: String = core.chars().filter(|c| *c != '-').collect();
+        match split_two_squares(&cleaned) {
+            Some((a, b)) => (parse_square(a), parse_square(b)),
+            None => return Err(format!("cannot parse `{token}` (expected e.g. `a26a25`)")),
         }
     };
     let (from, to) = match squares {
@@ -473,6 +470,7 @@ impl UsiEngine {
     }
 
     /// Whether a `quit` was received.
+    #[must_use]
     pub fn quit_requested(&self) -> bool {
         self.quit
     }
@@ -508,8 +506,7 @@ impl UsiEngine {
         // (network file paths).
         let idx = usize::from(
             rest.first()
-                .map(|s| s.eq_ignore_ascii_case("name"))
-                .unwrap_or(false),
+                .is_some_and(|s| s.eq_ignore_ascii_case("name")),
         );
         let Some(name) = rest.get(idx) else {
             self.send("info string setoption: expected `name <id> [value <x>]`");
@@ -625,7 +622,7 @@ impl UsiEngine {
         };
         // `moves <m1> <m2> ...`
         let mut moves: &[&str] = &rest[moves_from.min(rest.len())..];
-        if moves.first().map(|s| s.eq_ignore_ascii_case("moves")) == Some(true) {
+        if moves.first().is_some_and(|s| s.eq_ignore_ascii_case("moves")) {
             moves = &moves[1..];
         }
         for token in moves {
@@ -764,14 +761,11 @@ impl UsiEngine {
 
     /// Join a taken job's thread and put its searcher back into service.
     fn recover(&mut self, job: Job) {
-        match job.handle.join() {
-            Ok(searcher) => self.searcher = Some(searcher),
-            Err(_) => {
-                // The search thread panicked (debug builds only — the
-                // release profile aborts): rebuild a fresh searcher.
-                eprintln!("taikyokushogi-usi: search thread panicked; state reset");
-                self.searcher = Some(Searcher::new());
-            }
+        if let Ok(searcher) = job.handle.join() { self.searcher = Some(searcher) } else {
+            // The search thread panicked (debug builds only — the
+            // release profile aborts): rebuild a fresh searcher.
+            eprintln!("taikyokushogi-usi: search thread panicked; state reset");
+            self.searcher = Some(Searcher::new());
         }
     }
 }

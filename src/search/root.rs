@@ -11,7 +11,7 @@
 //! What the root must NOT do is rebuild that list from scratch every
 //! iteration. It used to: each iteration generated the captures, scored and
 //! sorted them, then generated the ~700 quiets, scored and sorted those too —
-//! four `Vec` allocations plus ~1_400 ordering-score computations per
+//! four `Vec` allocations plus ~`1_400` ordering-score computations per
 //! iteration, repeated for every depth. [`RootState`] instead caches the move
 //! list for the position and keeps a best-first permutation across
 //! iterations: iteration *n+1* searches the moves in the order that iteration
@@ -28,7 +28,7 @@ use super::tt::Tt;
 use crate::board::Board;
 use crate::eval::{MATE_SCORE, evaluate};
 use crate::movegen::generate_pseudo_legal_moves_into;
-use crate::types::*;
+use crate::types::Move;
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
@@ -169,7 +169,7 @@ pub(crate) fn search_root_window(
     // every depth runs the real alpha-beta root below.
     let mut best_move = None;
     let mut best_score = -MATE_SCORE - 1;
-    let root_tt_move = tt.probe(board.tt_key()).map(|e| e.best_move).unwrap_or(0);
+    let root_tt_move = tt.probe(board.tt_key()).map_or(0, |e| e.best_move);
 
     // A depth-2 preliminary search warms the TT and gives the ordering a
     // cheap head start before the real iteration.
@@ -217,7 +217,7 @@ pub(crate) fn search_root_window(
     // depth from 1 upwards runs this loop — no per-depth branch is needed.)
     let n_moves = root.moves.len();
     for rank in 0..n_moves {
-        if deadline.map(|dl| Instant::now() >= dl).unwrap_or(false) {
+        if deadline.is_some_and(|dl| Instant::now() >= dl) {
             break;
         }
         if stop.load(std::sync::atomic::Ordering::Relaxed) {

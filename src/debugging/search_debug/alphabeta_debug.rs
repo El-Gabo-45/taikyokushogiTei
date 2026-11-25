@@ -21,6 +21,7 @@ pub struct AlphaBetaDebugFrame {
 // Espeja el marco de la búsqueda: una struct con los escalares no reduciría
 // los valores pasados en los puntos de llamada.
 #[allow(clippy::too_many_arguments)]
+#[must_use]
 pub fn debug_alphabeta_frame(
     board: &Board,
     depth: u32,
@@ -53,6 +54,7 @@ pub fn debug_alphabeta_frame(
 
 /// Formato legible para log o depuración interactiva.
 #[allow(clippy::too_many_arguments)]
+#[must_use]
 pub fn format_alphabeta_debug(
     board: &Board,
     depth: u32,
@@ -81,6 +83,7 @@ pub fn format_alphabeta_debug(
 }
 
 /// Mensaje corto para reportar una poda.
+#[must_use]
 pub fn debug_prune(reason: &str, depth: u32, alpha: i32, beta: i32) -> String {
     format!("prune reason={reason} depth={depth} alpha={alpha} beta={beta}")
 }

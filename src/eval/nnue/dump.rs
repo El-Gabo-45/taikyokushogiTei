@@ -5,7 +5,7 @@
 //! the engine computed incrementally.
 
 use super::Network;
-use crate::types::*;
+use crate::types::{EMPTY_CELL, cell_piece, cell_color};
 
 /// Everything the Python reference needs to recompute one evaluation.
 pub struct PositionDump {
@@ -24,6 +24,7 @@ pub struct PositionDump {
 /// Describe `board`. The board must have `net` attached (so `eval` is the
 /// engine's incremental result); positions that are over are not dumped
 /// by the caller because `evaluate()` returns mate/draw scores for them.
+#[must_use]
 pub fn dump_position(board: &crate::Board, net: &Network) -> PositionDump {
     let b = &board.inner;
     let mut pieces = Vec::new();
@@ -53,11 +54,12 @@ pub fn dump_position(board: &crate::Board, net: &Network) -> PositionDump {
 /// (`keep_per_mille` of them are kept), used to exercise every output bucket
 /// in the parity gate. The network of `board` is not carried over: attach one
 /// with `set_network` afterwards.
+#[must_use]
 pub fn thinned(board: &crate::Board, keep_per_mille: u32, seed: u64) -> crate::Board {
     let mut inner = board.inner.clone();
     inner.set_network(None);
     let mut state = seed ^ 0x9E37_79B9_7F4A_7C15;
-    for slot in inner.cells.iter_mut() {
+    for slot in &mut inner.cells {
         let cell = *slot;
         if cell == EMPTY_CELL || crate::pieces::is_royal(cell_piece(cell)) {
             continue;

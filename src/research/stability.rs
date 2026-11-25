@@ -65,10 +65,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     for it in &ladder {
         let best = it
             .best_move
-            .as_ref()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "-".to_string());
-        let delta = prev_score.map_or(0i64, |p| (it.score - p) as i64);
+            .as_ref().map_or_else(|| "-".to_string(), std::string::ToString::to_string);
+        let delta = prev_score.map_or(0i64, |p| i64::from(it.score - p));
         if delta.abs() > max_delta {
             max_delta = delta.abs();
         }
@@ -95,9 +93,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
             result.score,
             result
                 .best_move
-                .as_ref()
-                .map(|m| m.to_string())
-                .unwrap_or_else(|| "-".to_string())
+                .as_ref().map_or_else(|| "-".to_string(), std::string::ToString::to_string)
         );
     }
     println!("max |Δ| between iterations: {max_delta} engine units (a pawn is 500)");
