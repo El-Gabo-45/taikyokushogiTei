@@ -95,3 +95,12 @@ name = "play"
 [[bin]]
 name = "selfplay"
 path = "src/selfplay_main.rs"
+
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+cognitive_complexity = "warn"
+
+unwrap_used = "warn"
+expect_used = "warn"

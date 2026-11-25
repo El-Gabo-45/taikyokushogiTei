@@ -1,0 +1,6 @@
+cognitive-complexity-threshold = 15
+too-many-lines-threshold = 70
+too-many-arguments-threshold = 5
+type-complexity-threshold = 75
+max-fn-params-bools = 2
+max-struct-bools = 3
