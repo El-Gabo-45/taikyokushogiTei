@@ -64,7 +64,7 @@ sha2 = "0.10"
 # Optional zstd-compressed network files (.tkn.zst); TKN1 itself stays raw.
 zstd = "0.14"
 tokio = { version = "1", features = ["full"], optional = true }
-tower-http = { version = "0.5", features = ["cors", "fs"], optional = true }
+tower-http = { version = "0.5", features = ["cors", "fs", "limit"], optional = true }
 crossbeam = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 wgpu = { version = "22", features = ["vulkan-portability"], optional = true }

@@ -257,5 +257,26 @@ fn king_piece_info_has_royal_flag_and_betza() {
 
 #[test]
 fn version_constant_matches_package() {
-    assert_eq!(taikyokushogi::VERSION, env!("CARGO_PKG_VERSION"));
+    // build.rs derives VERSION from `git describe`, which appends
+    // `-N-gHASH` when HEAD is past the version tag. The package version is
+    // always the prefix; the suffix is intentional development metadata.
+    assert!(
+        taikyokushogi::VERSION.starts_with(env!("CARGO_PKG_VERSION")),
+        "VERSION {} must start with CARGO_PKG_VERSION {}",
+        taikyokushogi::VERSION,
+        env!("CARGO_PKG_VERSION")
+    );
+    // The suffix, when present, must be a valid `-<count>-g<hash>` tail.
+    let rest = &taikyokushogi::VERSION[env!("CARGO_PKG_VERSION").len()..];
+    if !rest.is_empty() {
+        let tail = rest
+            .strip_prefix('-')
+            .expect("version suffix starts with -");
+        let (count, hash) = tail.split_once("-g").expect("suffix is -N-gHASH");
+        assert!(count.chars().all(|c| c.is_ascii_digit()), "commit count");
+        assert!(
+            !hash.is_empty() && hash.chars().all(|c| c.is_ascii_hexdigit()),
+            "git hash"
+        );
+    }
 }

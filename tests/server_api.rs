@@ -161,7 +161,15 @@ async fn health_reports_engine_identity() {
     assert_eq!(body["name"], "taikyokushogi");
     assert_eq!(body["board_size"], 36);
     assert!(body["piece_types"].as_u64().unwrap() >= 301);
-    assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
+    // build.rs appends `-N-gHASH` to VERSION when HEAD is past the tag, so
+    // the package version is the prefix rather than the whole string.
+    assert!(
+        body["version"]
+            .as_str()
+            .unwrap()
+            .starts_with(env!("CARGO_PKG_VERSION")),
+        "health version must start with the package version"
+    );
 }
 
 #[tokio::test]
@@ -1127,4 +1135,38 @@ async fn cors_origin_list_restricts_allowed_origins() {
         .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
         .expect("allow-origin header");
     assert_eq!(origin, "https://example.org");
+}
+
+// ============================================================
+// Request body size limit (safety belt against memory exhaustion)
+// ============================================================
+
+#[tokio::test]
+async fn oversized_request_body_is_rejected_with_413() {
+    let (_state, app) = game();
+    // One byte over the configured cap: the limit layer must reject the body
+    // before axum's Json extractor ever parses it.
+    let huge = "x".repeat(taikyokushogi::server::MAX_BODY_BYTES + 1);
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/api/load")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(huge))
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "a body over MAX_BODY_BYTES must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn normal_sized_position_body_is_accepted() {
+    let (_state, app) = game();
+    // A legitimate TSFEN is far below the cap and must still work.
+    let board = taikyokushogi::Board::initial();
+    let body = json!({ "tsfen": board.to_tsfen() });
+    let (status, _) = call(&app, Method::POST, "/api/position", Some(body)).await;
+    assert_eq!(status, StatusCode::OK);
 }

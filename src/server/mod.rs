@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
 
 use crate::{Board, Color, GameResult, Network};
@@ -104,6 +105,15 @@ pub struct AppStateConfig {
 
 /// Default cap on the number of live session games.
 pub const DEFAULT_MAX_SESSIONS: usize = 64;
+
+/// Maximum accepted HTTP request body (128 KiB).
+///
+/// The largest legitimate payload is a full 36×36 TSFEN (~15 KiB even with
+/// every promoted multi-letter piece), so 128 KiB leaves ample headroom while
+/// stopping a client from streaming an unbounded body into `/api/load` or
+/// `/api/position` and exhausting server memory. Requests over this limit get
+/// a `413 Payload Too Large` from `RequestBodyLimitLayer`.
+pub const MAX_BODY_BYTES: usize = 128 * 1024;
 
 /// Shared application state.
 ///
@@ -696,6 +706,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             state.clone(),
             sessions_middleware,
         ))
+        // Safety belt: cap request bodies so a client cannot exhaust memory
+        // with a multi-GB JSON payload on /api/position, /api/load, etc.
+        // CORS is added last (outermost) so even a 413 carries CORS headers.
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(cors)
         .with_state(state)
 }

@@ -135,3 +135,23 @@ whole router in-process).
 Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
 `400` for invalid coordinates/TSFEN, `404` for unknown pieces/endpoints and
 `409` when a move conflicts with the current game state.
+
+### Safety limits
+
+- **Request body cap** — every request body is limited to
+  `MAX_BODY_BYTES` (128 KiB, `src/server/mod.rs`), enforced by
+  `tower_http::limit::RequestBodyLimitLayer`. A body larger than that is
+  rejected with `413 Payload Too Large` **before** JSON parsing, so a client
+  cannot exhaust server memory by streaming a huge payload to
+  `/api/load` or `/api/position`. A full 36×36 TSFEN is ~15 KiB at most, so
+  legitimate requests stay far below the cap. CORS is the outermost layer, so
+  even 413 responses carry the configured CORS headers.
+- **Session id validation** — ids are restricted to
+  `[A-Za-z0-9_-]{1,64}`; anything else is treated as "no id" and follows
+  `TAIKYOKU_ANON`. Session ids minted by the server are `anon-` + 128 random
+  bits.
+- **CORS validation** — a malformed `TAIKYOKU_CORS_ORIGIN` aborts startup
+  instead of silently falling back to the permissive mirror policy.
+- **Search bounds** — `depth` and `movetime` on `/api/ai-move` and `/api/search`
+  are clamped to `MAX_DEPTH`/`MAX_TIME_MS`, and searches run on
+  `spawn_blocking` so a long think never blocks the async executor.

@@ -119,8 +119,9 @@ shared board.
 
 Game modes (human/human/AI), piece inspector, analysis mode, TSFEN panel,
 material chart, JSON/PGN game export. Feature list, the
-full REST API reference and the session mode details:
-**[docs/WEB.md](docs/WEB.md)**.
+full REST API reference, the session mode details and the safety limits
+(128 KiB request-body cap, session-id validation, CORS validation, clamped
+search bounds): **[docs/WEB.md](docs/WEB.md)**.
 
 ### CLI (`taikyokushogi-cli`)
 
