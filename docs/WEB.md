@@ -170,6 +170,18 @@ Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
   built once and cached in a `OnceLock`; `/api/engine-info` reuses the same
   cached list for its royal count. This avoids ~1000 string clones on every
   UI load/refresh for data that cannot change at runtime.
+- **Cache policy** — `/api/*` responses carry `Cache-Control: no-store,
+  no-cache, must-revalidate` (game state changes on every move), while Vite's
+  content-hashed `/assets/*` files get `public, max-age=31536000, immutable`.
+  CORS preflights are cached for 600 s via `Access-Control-Max-Age`.
+- **`Retry-After`** — a 429 (full search queue) includes `Retry-After: 2`,
+  matching the 2 s permit wait, so clients know when to retry.
+- **Input validation** — `mid_sq` on `/api/move` must be a flat square index
+  in `0..1296`; out-of-range values get a 400 naming the field instead of a
+  misleading "Illegal move".
+- **Graceful shutdown** — SIGINT (Ctrl+C) and SIGTERM trigger
+  `with_graceful_shutdown`, draining in-flight requests (including searches)
+  before exit instead of dropping connections. Important for containers.
 
 ### Frontend safety belt
 

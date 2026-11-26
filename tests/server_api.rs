@@ -1247,3 +1247,64 @@ async fn security_headers_on_success_and_error_responses() {
         "nosniff"
     );
 }
+
+#[tokio::test]
+async fn cache_control_and_retry_after_headers() {
+    let (_state, app) = game();
+
+    // Dynamic API responses must not be cached by browsers/proxies.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.headers().get(header::CACHE_CONTROL).unwrap(),
+        "no-store, no-cache, must-revalidate"
+    );
+
+    // Held permits force a 429, which must carry Retry-After.
+    let (state, app) = game();
+    let mut held = Vec::new();
+    for _ in 0..taikyokushogi::server::MAX_CONCURRENT_SEARCHES {
+        held.push(state.search_permits.clone().acquire_owned().await.unwrap());
+    }
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/search")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"depth":1,"time_limit":100}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.headers().get(header::RETRY_AFTER).unwrap(), "2");
+    drop(held);
+}
+
+#[tokio::test]
+async fn out_of_range_mid_sq_returns_400() {
+    let (_state, app) = game();
+    let (status, body) = call(
+        &app,
+        Method::POST,
+        "/api/move",
+        Some(json!({
+            "from": [0, 0],
+            "to": [0, 0],
+            "promotion": false,
+            "mid_sq": 999999
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("mid_sq"));
+}

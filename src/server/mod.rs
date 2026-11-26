@@ -711,6 +711,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // nested Vite assets resolve and `..` cannot escape the directory.
         .nest_service("/assets", ServeDir::new(dist_dir().join("assets")))
         .fallback(get(serve_frontend))
+        .route("/api/ready", get(handlers::get_ready))
         // Anonymous-request policy for `/api/*` while session mode is on.
         // CORS stays the outermost layer (added last): preflights carry no
         // session id, so they must be answered by CORS before the policy
@@ -741,8 +742,25 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// - `Permissions-Policy` disables powerful browser features the app does not
 ///   use (camera, microphone, geolocation, payment, USB).
 async fn security_headers(req: Request, next: Next) -> Response {
+    // Capture the path before moving the request into `next`.
+    let is_api = req.uri().path().starts_with("/api/");
+    let is_asset = req.uri().path().starts_with("/assets/");
     let mut res = next.run(req).await;
     let h = res.headers_mut();
+    // Dynamic API responses must never be cached (game state changes on every
+    // move). Vite emits content-hashed asset names, so those can be cached
+    // forever; the SPA shell (index.html) stays revalidated by the browser.
+    if is_api {
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+        );
+    } else if is_asset {
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
+    }
     h.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
@@ -781,6 +799,9 @@ fn cors_layer(origins: &[String]) -> CorsLayer {
         .allow_origin(allow_origin)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any)
+        // Preflights are identical for 10 minutes; let the browser cache them
+        // instead of sending OPTIONS before every POST.
+        .max_age(std::time::Duration::from_secs(600))
 }
 
 /// Session-mode middleware: applies the [`AnonPolicy`] to `/api/*` requests
@@ -928,8 +949,35 @@ pub async fn run_with_network(net: Option<Arc<Network>>) {
         );
     }
     axum::serve(listener, build_router(new_state_with_network(net)))
+        .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap_or_else(|e| panic!("server should start successfully: {e}"));
+}
+
+/// Resolve on Ctrl+C (SIGINT) or SIGTERM so `axum::serve` can drain in-flight
+/// requests instead of dropping connections mid-search. Useful in containers,
+/// where the orchestrator stops a process with SIGTERM.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+    println!("Shutdown signal received — draining in-flight requests...");
 }
 
 #[cfg(test)]

@@ -72,11 +72,21 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (
+        let retry = self.status == StatusCode::TOO_MANY_REQUESTS;
+        let mut res = (
             self.status,
             Json(json!({ "ok": false, "error": self.message })),
         )
-            .into_response()
+            .into_response();
+        if retry {
+            // The search permit wait is SEARCH_PERMIT_WAIT_MS (2 s); tell the
+            // client when it is worth trying again instead of guessing.
+            res.headers_mut().insert(
+                axum::http::header::RETRY_AFTER,
+                axum::http::HeaderValue::from_static("2"),
+            );
+        }
+        res
     }
 }
 
@@ -521,6 +531,16 @@ pub async fn post_move(
             return Err(ApiError::bad_request(format!(
                 "{which} out of bounds: {v} (expected 0..={})",
                 BOARD - 1
+            )));
+        }
+    }
+    // `mid_sq` is a flat square index, not a row/col. Reject nonsense early
+    // with a 400 instead of a misleading "Illegal move".
+    if let Some(ms) = body.mid_sq {
+        if ms >= crate::NUM_SQUARES {
+            return Err(ApiError::bad_request(format!(
+                "mid_sq out of bounds: {ms} (expected 0..={})",
+                crate::NUM_SQUARES - 1
             )));
         }
     }
