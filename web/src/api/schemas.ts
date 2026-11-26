@@ -265,3 +265,37 @@ export const healthInfoSchema = checked<HealthInfo>(
     piece_types: z.number(),
   }),
 );
+
+// ── Observability ─────────────────────────────────────────────────
+
+/** One structured server log entry (`GET /api/logs`). */
+export const logEntrySchema = z.object({
+  ts_ms: z.number(),
+  level: z.enum(['error', 'warn', 'info', 'debug']),
+  request_id: z.string(),
+  target: z.string(),
+  message: z.string(),
+});
+
+export const logsResponseSchema = z.object({
+  total: z.number(),
+  returned: z.number(),
+  entries: z.array(logEntrySchema),
+});
+
+/** Public runtime limits (`GET /api/config`). */
+export const configSchema = z.object({
+  version: z.string(),
+  board_size: z.number(),
+  max_body_bytes: z.number(),
+  max_concurrent_searches: z.number(),
+  max_sessions: z.number(),
+  sessions: z.boolean(),
+  anon_policy: z.enum(['auto', 'error', 'shared']),
+  log_capacity: z.number(),
+  log_file_enabled: z.boolean(),
+});
+
+export type LogEntry = z.infer<typeof logEntrySchema>;
+export type LogsResponse = z.infer<typeof logsResponseSchema>;
+export type ServerConfig = z.infer<typeof configSchema>;

@@ -28,11 +28,13 @@ import type {
 } from '../types/board';
 import {
   boardStateSchema,
+  configSchema,
   engineInfoSchema,
   evalInfoSchema,
   healthInfoSchema,
   historyInfoSchema,
   legalMovesSchema,
+  logsResponseSchema,
   moveListSchema,
   moveResponseSchema,
   newGameSchema,
@@ -44,6 +46,7 @@ import {
   statusInfoSchema,
   undoResponseSchema,
 } from './schemas';
+import type { LogsResponse, ServerConfig } from './schemas';
 import type { ZodType } from 'zod';
 
 const BASE = '';
@@ -259,6 +262,16 @@ export function fetchEval(): Promise<EvalInfo> {
 /** Liveness probe / server discovery. */
 export function health(): Promise<HealthInfo> {
   return get('/api/health', healthInfoSchema);
+}
+
+/** Public runtime limits, so the UI never hard-codes them. */
+export function fetchConfig(): Promise<ServerConfig> {
+  return get('/api/config', configSchema);
+}
+
+/** Most recent structured log entries (newest last). */
+export function fetchLogs(limit = 50): Promise<LogsResponse> {
+  return get(`/api/logs?limit=${limit}`, logsResponseSchema);
 }
 
 export type { SearchStats };

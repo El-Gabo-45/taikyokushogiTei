@@ -14,11 +14,12 @@
 //! ```
 
 pub mod handlers;
+pub mod log;
 pub mod types;
 
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -27,6 +28,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Semaphore;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
@@ -152,6 +154,8 @@ pub struct AppState {
     pub cors_origins: Vec<String>,
     /// Bounds how many searches may run at once (CPU safety belt).
     pub search_permits: Arc<Semaphore>,
+    /// Structured logs: stderr + ring buffer + optional JSONL file.
+    pub logs: Arc<log::LogBuffer>,
 }
 
 impl AppState {
@@ -165,7 +169,7 @@ impl AppState {
 
     /// The anonymous-request policy in session mode. `Shared` when session
     /// mode is off (the policy never applies there).
-    fn anon_policy(&self) -> AnonPolicy {
+    pub fn anon_policy(&self) -> AnonPolicy {
         match &self.sessions {
             Some(map) => map.anon,
             None => AnonPolicy::Shared,
@@ -187,6 +191,11 @@ struct SessionEntry {
 }
 
 impl SessionMap {
+    /// Configured maximum number of live sessions.
+    pub fn max(&self) -> usize {
+        self.max
+    }
+
     /// The caller's session game: reused when the id is known, otherwise
     /// created. At capacity the least recently used session is evicted (its
     /// next request simply starts a fresh game).
@@ -269,6 +278,10 @@ pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> 
         network: net,
         cors_origins: cfg.cors_origins,
         search_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_SEARCHES)),
+        logs: Arc::new(
+            log::LogBuffer::new(log_capacity(), log_file().as_deref())
+                .unwrap_or_else(|e| panic!("cannot open TAIKYOKU_LOG_FILE: {e}")),
+        ),
     })
 }
 
@@ -712,6 +725,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest_service("/assets", ServeDir::new(dist_dir().join("assets")))
         .fallback(get(serve_frontend))
         .route("/api/ready", get(handlers::get_ready))
+        // ── Observability ──
+        .route("/api/logs", get(handlers::get_logs))
+        .route("/api/config", get(handlers::get_config))
         // Anonymous-request policy for `/api/*` while session mode is on.
         // CORS stays the outermost layer (added last): preflights carry no
         // session id, so they must be answered by CORS before the policy
@@ -724,11 +740,65 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // with a multi-GB JSON payload on /api/position, /api/load, etc.
         // CORS is added last (outermost) so even a 413 carries CORS headers.
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
+        .layer(CompressionLayer::new())
         .layer(cors)
         // Outermost: security headers reach every response — API, static
         // assets, CORS preflights, 413s and session-policy rejections.
         .layer(middleware::from_fn(security_headers))
+        // Absolute outermost: every response (including ones short-circuited
+        // by an inner layer) carries a correlation id and is logged.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            request_context,
+        ))
         .with_state(state)
+}
+
+/// Maximum length of a caller-supplied `X-Request-Id`.
+const MAX_REQUEST_ID_LEN: usize = 64;
+
+/// Assign a correlation id to every request, echo it in the response, and log
+/// method/path/status/duration. A client-supplied `X-Request-Id` (sane charset
+/// and length) is preserved so logs can be correlated across proxy and client.
+async fn request_context(State(app): State<Arc<AppState>>, req: Request, next: Next) -> Response {
+    let id = req
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| {
+            !s.is_empty()
+                && s.len() <= MAX_REQUEST_ID_LEN
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("req-{:016x}", rand::random::<u64>()));
+
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
+    let started = std::time::Instant::now();
+
+    let mut res = next.run(req).await;
+    let status = res.status();
+    if let Ok(v) = HeaderValue::from_str(&id) {
+        res.headers_mut()
+            .insert(HeaderName::from_static("x-request-id"), v);
+    }
+    let elapsed = started.elapsed().as_millis();
+    let level = if status.is_server_error() {
+        log::LogLevel::Error
+    } else if status.is_client_error() {
+        log::LogLevel::Warn
+    } else {
+        log::LogLevel::Info
+    };
+    app.logs.record(
+        level,
+        &id,
+        "http",
+        format!("{method} {path} -> {} ({elapsed}ms)", status.as_u16()),
+    );
+    res
 }
 
 /// Add baseline security headers to every response.
@@ -813,8 +883,18 @@ async fn sessions_middleware(
     req: Request,
     next: Next,
 ) -> Response {
-    // The policy only exists in session mode, and only the API uses games.
-    if app.sessions.is_none() || !req.uri().path().starts_with("/api/") {
+    // The policy only exists in session mode, and only game endpoints use
+    // games. Liveness/readiness probes must work without a session id, or a
+    // load balancer / container orchestrator would see a 400 and kill a
+    // perfectly healthy instance.
+    let path = req.uri().path();
+    if app.sessions.is_none()
+        || !path.starts_with("/api/")
+        || matches!(
+            path,
+            "/api/health" | "/api/ready" | "/api/logs" | "/api/config"
+        )
+    {
         return next.run(req).await;
     }
 
@@ -861,6 +941,24 @@ async fn sessions_middleware(
             res
         }
     }
+}
+
+/// Entries kept in the in-memory log ring (`TAIKYOKU_LOG_CAPACITY`).
+pub fn log_capacity() -> usize {
+    std::env::var("TAIKYOKU_LOG_CAPACITY")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(256)
+        .clamp(1, 4096)
+}
+
+/// Optional JSONL log file (`TAIKYOKU_LOG_FILE`).
+pub fn log_file() -> Option<std::path::PathBuf> {
+    std::env::var("TAIKYOKU_LOG_FILE")
+        .ok()
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty() && !matches!(v.as_str(), "none" | "off"))
+        .map(std::path::PathBuf::from)
 }
 
 /// Directory holding the built frontend (`TAIKYOKU_DIST` overrides).

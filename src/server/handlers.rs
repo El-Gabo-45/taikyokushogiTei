@@ -26,10 +26,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::{Board, Color, GameResult, Move as EngineMove};
 
 use crate::server::types::{
-    AiMoveBody, BoardResponse, EngineInfoResponse, EvalResponse, HealthResponse, HistoryResponse,
-    LastMoveData, LoadBody, MoveBody, MoveData, MoveListResponse, MoveQuery, MoveResponse,
-    NewGameResponse, PieceInfoResponse, PieceListResponse, PositionResponse, SaveBody, SearchBody,
-    SearchResponse, SearchStats, StatusResponse, UndoBody, UndoResponse,
+    AiMoveBody, BoardResponse, ConfigResponse, EngineInfoResponse, EvalResponse, HealthResponse,
+    HistoryResponse, LastMoveData, LoadBody, LogQuery, LogsResponse, MoveBody, MoveData,
+    MoveListResponse, MoveQuery, MoveResponse, NewGameResponse, PieceInfoResponse,
+    PieceListResponse, PositionResponse, SaveBody, SearchBody, SearchResponse, SearchStats,
+    StatusResponse, UndoBody, UndoResponse,
 };
 use crate::server::{GameState as ServerGameState, SessionGame, apply_move_to_board, record_move};
 
@@ -154,6 +155,62 @@ fn failed_move_response(msg: impl Into<String>) -> Json<MoveResponse> {
 // ============================================================
 // GET /api/health — liveness / client discovery
 // ============================================================
+
+/// Readiness probe: 200 when the instance can accept a search, 503 when all
+/// search slots are busy (a load balancer should route elsewhere). Unlike
+/// `/api/health` (liveness), this reports capacity rather than identity.
+pub async fn get_ready(
+    State(app): State<Arc<crate::server::AppState>>,
+) -> axum::response::Response {
+    let slots = app.search_permits.available_permits();
+    let (code, ready) = if slots > 0 {
+        (StatusCode::OK, true)
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, false)
+    };
+    (
+        code,
+        Json(json!({
+            "ready": ready,
+            "available_search_slots": slots,
+            "max_search_slots": crate::server::MAX_CONCURRENT_SEARCHES
+        })),
+    )
+        .into_response()
+}
+
+/// Most recent structured log entries (newest last). `?limit=N` (1..=200).
+pub async fn get_logs(
+    State(app): State<Arc<crate::server::AppState>>,
+    Query(query): Query<LogQuery>,
+) -> Json<LogsResponse> {
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let entries = app.logs.recent(limit);
+    Json(LogsResponse {
+        total: app.logs.len(),
+        returned: entries.len(),
+        entries,
+    })
+}
+
+/// Public runtime limits, so the frontend does not hard-code them.
+pub async fn get_config(State(app): State<Arc<crate::server::AppState>>) -> Json<ConfigResponse> {
+    let sessions = app.sessions.is_some();
+    Json(ConfigResponse {
+        version: crate::VERSION,
+        board_size: BOARD,
+        max_body_bytes: crate::server::MAX_BODY_BYTES,
+        max_concurrent_searches: crate::server::MAX_CONCURRENT_SEARCHES,
+        max_sessions: app
+            .sessions
+            .as_ref()
+            .map_or(crate::server::DEFAULT_MAX_SESSIONS, |m| m.max()),
+        sessions,
+        anon_policy: app.anon_policy().as_str(),
+        log_capacity: app.logs.capacity(),
+        log_file_enabled: app.logs.file_enabled(),
+    })
+}
 
 pub async fn get_health() -> Json<HealthResponse> {
     Json(HealthResponse {
@@ -624,6 +681,7 @@ async fn execute_search(
     depth: u32,
     time_limit: u64,
     permits: std::sync::Arc<tokio::sync::Semaphore>,
+    logs: std::sync::Arc<crate::server::log::LogBuffer>,
 ) -> Result<SearchOutcome, ApiError> {
     let permit = tokio::time::timeout(
         std::time::Duration::from_millis(SEARCH_PERMIT_WAIT_MS),
@@ -660,7 +718,7 @@ async fn execute_search(
     })
     .await
     .unwrap_or_else(|e| {
-        eprintln!("[api] search join error: {e}");
+        logs.error("search", format!("spawn_blocking join error: {e}"));
         SearchOutcome {
             best_move: None,
             score: 0,
@@ -692,7 +750,14 @@ pub async fn post_ai_move(
     let (depth, time_limit) = search_plan(body.depth, body.time_limit);
 
     let (snapshot, snapshot_version) = snapshot_for_search(&game)?;
-    let outcome = execute_search(snapshot, depth, time_limit, app.search_permits.clone()).await?;
+    let outcome = execute_search(
+        snapshot,
+        depth,
+        time_limit,
+        app.search_permits.clone(),
+        app.logs.clone(),
+    )
+    .await?;
 
     if outcome.no_moves {
         // Distinguish a terminal position from a search that stopped early
@@ -788,7 +853,14 @@ pub async fn post_search(
     let (snapshot, _) = snapshot_for_search(&game)?;
     let tsfen_of_snapshot = snapshot.to_tsfen();
 
-    let outcome = execute_search(snapshot, depth, time_limit, app.search_permits.clone()).await?;
+    let outcome = execute_search(
+        snapshot,
+        depth,
+        time_limit,
+        app.search_permits.clone(),
+        app.logs.clone(),
+    )
+    .await?;
 
     Ok(Json(SearchResponse {
         ok: outcome.best_move.is_some(),

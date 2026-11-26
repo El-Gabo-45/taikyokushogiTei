@@ -23,6 +23,7 @@ Developed with AI assistance in some parts of the code and documentation.
 | Use it as a Rust crate | [docs/LIBRARY.md](docs/LIBRARY.md) |
 | Understand the codebase | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/MODULE_GUIDE.md](docs/MODULE_GUIDE.md) |
 | Work on the NNUE evaluator | [docs/NNUE.md](docs/NNUE.md) |
+| Compare tooling with Stockfish | [docs/STOCKFISH_TOOLS.md](docs/STOCKFISH_TOOLS.md) |
 
 ## Installation
 
@@ -121,8 +122,11 @@ Game modes (human/human/AI), piece inspector, analysis mode, TSFEN panel,
 material chart, JSON/PGN game export. Feature list, the
 full REST API reference, the session mode details and the safety limits
 (128 KiB request-body cap, max 4 concurrent searches with 429 + `Retry-After`,
-security/cache headers, graceful shutdown, session-id/CORS validation, cached
-piece database, clamped search bounds): **[docs/WEB.md](docs/WEB.md)**.
+security/cache headers, gzip, request IDs, liveness/readiness probes, graceful
+shutdown, session-id/CORS validation, cached piece database, clamped search
+bounds). Every request is auto-logged with a correlation id to stderr, a ring
+buffer (`/api/logs`) and an optional JSONL file (`TAIKYOKU_LOG_FILE`):
+**[docs/WEB.md](docs/WEB.md)**.
 
 ### CLI (`taikyokushogi-cli`)
 

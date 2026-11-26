@@ -782,6 +782,23 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         "version" => {
             println!("taikyokushogi-cli version {}", env!("CARGO_PKG_VERSION"));
         }
+        "compiler" => {
+            println!("{}", taikyokushogi::compiler_info());
+        }
+        "export_net" => {
+            let path = rest.first().copied().unwrap_or("");
+            if path.is_empty() {
+                println!("usage: export_net <output.tkn>");
+            } else {
+                match board.network() {
+                    Some(net) => match net.save(path) {
+                        Ok(()) => println!("wrote {path} (raw TKN1 v2)"),
+                        Err(e) => println!("cannot export network: {e}"),
+                    },
+                    None => println!("no network attached (start with --net PATH)"),
+                }
+            }
+        }
         "quit" | "exit" => {
             return false;
         }

@@ -232,6 +232,38 @@ pub struct SearchResponse {
 }
 
 // ============================================================
+// observability responses
+// ============================================================
+
+#[derive(Serialize)]
+pub struct LogsResponse {
+    /// Entries currently in the ring buffer.
+    pub total: usize,
+    /// Entries returned by this call.
+    pub returned: usize,
+    pub entries: Vec<crate::server::log::LogEntry>,
+}
+
+#[derive(Deserialize)]
+pub struct LogQuery {
+    /// Number of most-recent entries to return (1..=200, default 50).
+    pub limit: Option<usize>,
+}
+
+#[derive(Serialize)]
+pub struct ConfigResponse {
+    pub version: &'static str,
+    pub board_size: usize,
+    pub max_body_bytes: usize,
+    pub max_concurrent_searches: usize,
+    pub max_sessions: usize,
+    pub sessions: bool,
+    pub anon_policy: &'static str,
+    pub log_capacity: usize,
+    pub log_file_enabled: bool,
+}
+
+// ============================================================
 // request bodies
 // ============================================================
 

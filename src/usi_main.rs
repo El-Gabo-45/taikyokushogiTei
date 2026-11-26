@@ -18,7 +18,7 @@
 //! ```text
 //! $ printf 'usi\nisready\nposition startpos\ngo depth 2\nquit\n' \
 //!     | cargo run --release --bin taikyokushogi-usi
-//! id name TaikyokuShogi 0.1.0
+//! id name TaikyokuShogi <version>
 //! ...
 //! usiok
 //! readyok
@@ -28,5 +28,23 @@
 //! ```
 
 fn main() {
-    taikyokushogi::usi::run();
+    // GUIs start the binary with no arguments, so these flags cannot affect
+    // the USI handshake. They are conveniences for humans/tests only.
+    match std::env::args().nth(1).as_deref() {
+        Some("--version" | "-V") => {
+            println!("taikyokushogi-usi {}", taikyokushogi::VERSION);
+            return;
+        }
+        Some("--help" | "-h") => {
+            println!(
+                "taikyokushogi-usi — USI front-end for Taikyoku Shogi\n\n\
+                 Usage: taikyokushogi-usi [--version] [--help]\n\n\
+                 With no arguments it speaks USI over stdin/stdout. Configure\n\
+                 it with the `usi`/`setoption`/`position`/`go` commands (see\n\
+                 docs/USI.md) or the TAIKYOKU_NET environment variable."
+            );
+            return;
+        }
+        _ => taikyokushogi::usi::run(),
+    }
 }

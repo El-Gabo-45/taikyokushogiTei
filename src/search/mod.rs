@@ -90,6 +90,8 @@ pub struct IterInfo {
     pub time_ms: u64,
     /// Best move of this iteration.
     pub best_move: Option<crate::Move>,
+    /// Approximate transposition-table occupancy in per mille (`hashfull`).
+    pub hashfull: u16,
 }
 
 /// A complete search engine in a box: transposition table, killer/history
@@ -151,6 +153,7 @@ fn report_iteration(
         nodes: state.nodes,
         time_ms: state.start.elapsed().as_millis() as u64,
         best_move: result.best_move.map(|m| crate::Move { inner: m }),
+        hashfull: state.hashfull,
     });
     if let Some(shared) = publish {
         if let Some(m) = result.best_move.as_ref() {
@@ -168,6 +171,7 @@ struct SearchState {
     hint: Option<u32>,
     guess: i32,
     last_depth: u32,
+    hashfull: u16,
 }
 
 impl SearchState {
@@ -186,6 +190,7 @@ impl SearchState {
             nodes: 0,
             hint: None,
             last_depth: 0,
+            hashfull: 0,
         }
     }
 }
@@ -442,6 +447,7 @@ impl Searcher {
             state.guess = result.score;
             state.best = result;
             state.last_depth = current_depth;
+            state.hashfull = self.tt.hashfull();
             report_iteration(&state, current_depth, &result, on_iter, publish);
         }
 

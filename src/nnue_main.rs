@@ -506,6 +506,19 @@ fn main() {
             Network::random(seed).save(out).unwrap_or_else(|e| die(e));
             println!("wrote {out} (random weights, seed {seed}; NOT a playing network)");
         }
+        // Stockfish-style `export_net`: load (raw or zstd) and write raw TKN1.
+        // Handy for unpacking a shipped `.tkn.zst` or re-saving an attached net.
+        Some("export") => {
+            let input = rest
+                .first()
+                .unwrap_or_else(|| die("usage: nnue export <input.tkn[.zst]> <output.tkn>"));
+            let output = rest
+                .get(1)
+                .unwrap_or_else(|| die("usage: nnue export <input.tkn[.zst]> <output.tkn>"));
+            let net = Network::load(input).unwrap_or_else(|e| die(e));
+            net.save(output).unwrap_or_else(|e| die(e));
+            println!("wrote {output} (raw TKN1 v2)");
+        }
         Some("dump-positions") => cmd_dump(rest),
         Some("explain") => cmd_explain(rest),
         Some("bench") => cmd_bench(rest.first().map(std::string::String::as_str)),
@@ -519,7 +532,7 @@ fn main() {
         Some("ablate") => taikyokushogi::research::ablate::run(rest).unwrap_or_else(|e| die(e)),
         _ => {
             eprintln!(
-                "usage: nnue <classes|gen-classes|info|verify|random-net|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
+                "usage: nnue <classes|gen-classes|info|verify|random-net|export|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
             );
             std::process::exit(if args.is_empty() { 0 } else { 2 });
         }

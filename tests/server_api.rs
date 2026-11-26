@@ -1308,3 +1308,165 @@ async fn out_of_range_mid_sq_returns_400() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body["error"].as_str().unwrap().contains("mid_sq"));
 }
+
+// ============================================================
+// Request correlation + readiness probe
+// ============================================================
+
+#[tokio::test]
+async fn request_id_is_generated_and_echoed() {
+    let (_state, app) = game();
+    // Generated when the client sends none.
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let id = res
+        .headers()
+        .get("x-request-id")
+        .expect("every response has a request id")
+        .to_str()
+        .unwrap();
+    assert!(id.starts_with("req-"));
+    assert!(id.len() <= 64);
+
+    // Honoured when the client sends a valid one.
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .header("x-request-id", "client-abc123")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.headers().get("x-request-id").unwrap(), "client-abc123");
+}
+
+#[tokio::test]
+async fn readiness_probe_reports_search_capacity() {
+    let (state, app) = game();
+    let (status, body) = get(&app, "/api/ready").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["ready"], true);
+    assert_eq!(
+        body["available_search_slots"],
+        taikyokushogi::server::MAX_CONCURRENT_SEARCHES
+    );
+
+    // Saturate the search pool → not ready.
+    let mut held = Vec::new();
+    for _ in 0..taikyokushogi::server::MAX_CONCURRENT_SEARCHES {
+        held.push(state.search_permits.clone().acquire_owned().await.unwrap());
+    }
+    let (status, body) = get(&app, "/api/ready").await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(body["ready"], false);
+    assert_eq!(body["available_search_slots"], 0);
+    drop(held);
+}
+
+#[tokio::test]
+async fn health_and_ready_bypass_session_policy() {
+    use taikyokushogi::server::{AnonPolicy, AppStateConfig};
+    let state = taikyokushogi::server::new_state_with_config(
+        None,
+        AppStateConfig {
+            sessions: true,
+            anon: AnonPolicy::Error,
+            ..Default::default()
+        },
+    );
+    let app = build_router(state);
+    // No X-Session-Id: a normal /api/state would be rejected, but probes must work.
+    for path in ["/api/health", "/api/ready"] {
+        let (status, _) = get(&app, path).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{path} must be probeable without a session"
+        );
+    }
+    let (status, _) = get(&app, "/api/state").await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "game endpoints still require a session"
+    );
+}
+
+// ============================================================
+// Observability: logs + public config
+// ============================================================
+
+#[tokio::test]
+async fn logs_endpoint_records_requests_with_request_id() {
+    let (_state, app) = game();
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .header("x-request-id", "trace-me")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.headers().get("x-request-id").unwrap(), "trace-me");
+
+    let (status, body) = get(&app, "/api/logs?limit=10").await;
+    assert_eq!(status, StatusCode::OK);
+    // The current /api/logs request is recorded only after it responds, so
+    // the ring holds at least the earlier health request at this point.
+    assert!(body["total"].as_u64().unwrap() >= 1);
+    let entries = body["entries"].as_array().unwrap();
+    let hit = entries
+        .iter()
+        .find(|e| e["message"].as_str().unwrap().contains("/api/health"))
+        .expect("the health request must be in the log ring");
+    assert_eq!(hit["request_id"], "trace-me");
+    assert_eq!(hit["level"], "info");
+    assert_eq!(hit["target"], "http");
+}
+
+#[tokio::test]
+async fn client_errors_are_logged_as_warnings() {
+    let (_state, app) = game();
+    let (status, _) = get(&app, "/api/nope").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (_, body) = get(&app, "/api/logs").await;
+    let entries = body["entries"].as_array().unwrap();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e["level"] == "warn" && e["message"].as_str().unwrap().contains("/api/nope")),
+        "a 404 must be recorded as a warning"
+    );
+}
+
+#[tokio::test]
+async fn config_endpoint_exposes_public_limits() {
+    let (_state, app) = game();
+    let (status, body) = get(&app, "/api/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body["max_body_bytes"],
+        taikyokushogi::server::MAX_BODY_BYTES
+    );
+    assert_eq!(
+        body["max_concurrent_searches"],
+        taikyokushogi::server::MAX_CONCURRENT_SEARCHES
+    );
+    assert_eq!(body["board_size"], 36);
+    assert_eq!(body["sessions"], false);
+    assert_eq!(body["anon_policy"], "shared");
+}

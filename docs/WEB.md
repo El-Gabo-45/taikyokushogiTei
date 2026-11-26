@@ -47,6 +47,8 @@ Settings (environment variables; the server binary also accepts `--sessions`,
 
 | Variable | Default | Meaning |
 | ---------- | --------- | --------- |
+| `TAIKYOKU_LOG_FILE` | *(none)* | Append structured JSON lines to this file (e.g. `logs/server.jsonl`); `none`/`off` disables |
+| `TAIKYOKU_LOG_CAPACITY` | `256` | Entries kept in the in-memory ring served by `/api/logs` (1–4096) |
 | `TAIKYOKU_SESSIONS` | unset | `1`/`true`/`on`/`yes` enables session mode |
 | `TAIKYOKU_ANON` | `auto` | Session-mode policy for id-less `/api/*` requests: `auto` mints a fresh session (cookie + `X-Session-Id`), `error` rejects with 400, `shared` serves the legacy shared board |
 | `TAIKYOKU_MAX_SESSIONS` | `64` | Live session games before the least recently used one is evicted (its next request simply starts a fresh game) |
@@ -182,6 +184,46 @@ Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
 - **Graceful shutdown** — SIGINT (Ctrl+C) and SIGTERM trigger
   `with_graceful_shutdown`, draining in-flight requests (including searches)
   before exit instead of dropping connections. Important for containers.
+- **Request correlation** — every response carries `X-Request-Id`. A valid
+  client-supplied id (`[A-Za-z0-9_-]{1,64}`) is preserved; otherwise one is
+  generated (`req-<64-bit hex>`). Each request is logged as
+  `[http] <method> <path> -> <status> (<ms>ms, id=<id>)` so a report can be
+  traced through proxy and server logs.
+- **Liveness vs readiness** — `GET /api/health` answers identity data
+  (liveness), while `GET /api/ready` answers `200` with the number of free
+  search slots, or `503` when all slots are busy (a load balancer should route
+  elsewhere). Both bypass the anonymous-request policy, so probes work even
+  with `TAIKYOKU_ANON=error` and no session id.
+- **Server CLI** — `taikyokushogi-server --help` / `--version` (also `-h`/`-V`).
+
+## Logging & error capture (the easy way)
+
+Every request is recorded automatically — no manual `log()` calls needed in
+handlers:
+
+1. `request_context` (outermost middleware) assigns a correlation id, then
+   records one structured entry with method, path, status and duration.
+   Levels are assigned from the status: **2xx → info**, **4xx → warn**,
+   **5xx → error**. So a client error or a failed search shows up as a WARN /
+   ERROR entry with the exact `X-Request-Id` the client saw.
+2. Entries go to **stderr**, to a bounded **in-memory ring** (256 entries by
+   default, `TAIKYOKU_LOG_CAPACITY`, max 4096), and optionally to an
+   append-only **JSONL file** via `TAIKYOKU_LOG_FILE=/path/to/server.jsonl`.
+3. `GET /api/logs?limit=N` (1–200, default 50) returns the newest entries as
+   JSON: `{ total, returned, entries: [{ ts_ms, level, request_id, target, message }] }`.
+   No session id needed (like health/ready).
+4. `GET /api/config` returns the public runtime limits (body cap, search slot
+   count, session cap, anon policy, log capacity) so clients/tests can read
+   them instead of hard-coding.
+5. The frontend has `api.fetchLogs(limit)` and `api.fetchConfig()` with Zod
+   validation, so a diagnostics panel can be added without new protocol work.
+
+Background tasks (e.g. a `spawn_blocking` join failure in the search) use
+`logs.error("search", …)` with request id `-`, so they land in the same ring.
+
+Responses are also gzip-compressed when the client sends
+`Accept-Encoding: gzip` (`tower_http::compression`), which shrinks the large
+`/api/pieces` payload considerably.
 
 ### Frontend safety belt
 

@@ -390,6 +390,7 @@ fn format_info(info: &IterInfo) -> String {
     {
         let _ = write!(line, " nps {nps}");
     }
+    let _ = write!(line, " hashfull {}", info.hashfull);
     if let Some(m) = &info.best_move {
         let _ = write!(line, " pv {}", usi_move_str(&m.inner));
     }
@@ -468,6 +469,13 @@ impl UsiEngine {
         match cmd.as_str() {
             "usi" => self.cmd_usi(),
             "isready" => self.send("readyok"),
+            // Stockfish-style non-protocol debugging commands.
+            "compiler" => {
+                for line in crate::compiler_info().lines() {
+                    self.send(&format!("info string {line}"));
+                }
+            }
+            "d" => self.send(&format!("info string {}", self.board.display())),
             "setoption" => self.cmd_setoption(&rest),
             "usinewgame" => {
                 self.join_search(true);
@@ -1063,6 +1071,7 @@ mod tests {
             best_move: Some(crate::Move {
                 inner: crate::types::Move::simple(0, 37),
             }),
+            hashfull: 123,
         };
         let line = format_info(&info);
         assert!(
@@ -1071,6 +1080,7 @@ mod tests {
         );
         assert!(line.contains(" score cp 1234 "), "{line}");
         assert!(line.contains(" nps 19752 "), "{line}");
+        assert!(line.contains(" hashfull 123 "), "{line}");
         assert!(line.ends_with(" pv a1b2"), "{line}");
 
         let mate = IterInfo {
@@ -1079,6 +1089,7 @@ mod tests {
             nodes: 1,
             time_ms: 10,
             best_move: None,
+            hashfull: 0,
         };
         let line = format_info(&mate);
         assert!(line.contains(" score mate 2 "), "{line}");
@@ -1088,6 +1099,7 @@ mod tests {
             nodes: 1,
             time_ms: 10,
             best_move: None,
+            hashfull: 0,
         };
         assert!(
             format_info(&mated).contains(" score mate -1 "),

@@ -70,3 +70,9 @@ with the engine's own position format (documented in full in the
 ```bash
 TAIKYOKU_NET=nets/experimental-v1.tkn cargo run --release --bin taikyokushogi-usi
 ```
+
+`taikyokushogi-usi --version` prints the engine version and exits; `--help`
+lists the USI options. Non-protocol debug commands, borrowed from Stockfish:
+`compiler` (build provenance as `info string` lines) and `d` (dump the current
+board). The search `info` lines also carry `nps` and `hashfull` (TT occupancy
+in per mille), like Stockfish.

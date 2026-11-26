@@ -134,6 +134,43 @@ pub const NUM_SQUARES: usize = types::NUM_SQUARES;
 /// Crate version, exposed through the REST API (`/api/health`, `/api/engine-info`).
 pub const VERSION: &str = env!("TAIKYOKU_VERSION");
 
+/// Stockfish-style build provenance, embedded at compile time by `build.rs`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildInfo {
+    pub version: &'static str,
+    /// Short git commit (`unknown` when built outside a git checkout).
+    pub sha: &'static str,
+    /// Commit date in ISO-8601 (`unknown` when unavailable).
+    pub date: &'static str,
+    /// `rustc --version` at build time.
+    pub rustc: &'static str,
+    /// Compilation target triple.
+    pub target: &'static str,
+}
+
+/// Build provenance, for bug reports and the `compiler` command.
+#[must_use]
+pub const fn build_info() -> BuildInfo {
+    BuildInfo {
+        version: VERSION,
+        sha: env!("TAIKYOKU_BUILD_SHA"),
+        date: env!("TAIKYOKU_BUILD_DATE"),
+        rustc: env!("TAIKYOKU_RUSTC"),
+        target: env!("TAIKYOKU_BUILD_TARGET"),
+    }
+}
+
+/// One-line `compiler`/`--version` banner (Stockfish-style).
+#[must_use]
+pub fn compiler_info() -> String {
+    let b = build_info();
+    format!(
+        "Taikyoku Shogi {} (commit {}, {})\n\
+         Compiled with {} for {}",
+        b.version, b.sha, b.date, b.rustc, b.target
+    )
+}
+
 /// Side / player color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {

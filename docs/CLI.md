@@ -60,6 +60,8 @@ arguments the CLI reads commands from stdin (REPL). Examples:
 | `match <G> <dA> <dB> [movetime MS] [maxplies N] [threadsA N] [threadsB N] [open K] [seed S]` | match between two configs + **Elo estimate** |
 | `sprt <elo0> <elo1> [G] [dA] [dB] [MS] [threadsA N] [threadsB N] [open K] [seed S]` | SPRT test between two configs |
 | `setoption depth <N> \| movetime <MS> \| threads <N> \| hash <MiB> \| nnue <on\|off>` | engine options |
+| `compiler` | Stockfish-style build banner: version, commit, date, rustc, target |
+| `export_net <file.tkn>` | save the attached NNUE network as raw TKN1 (needs `--net`) |
 | `about`, `help`, `version`, `quit` | info, help, engine version, exit |
 
 Notes on behavior (so the docs match the engine):
@@ -194,5 +196,6 @@ cargo run --release --bin selfplay 100 3 0 4 200
 (defaults: 10 / 2 / 0 = unlimited / 4 / 500).
 
 The NNUE tool is `cargo run --release --bin nnue --
-<classes|gen-classes|info|verify|random-net|dump-positions|explain|bench>` —
-see [NNUE.md](NNUE.md).
+<classes|gen-classes|info|verify|random-net|export|dump-positions|explain|bench>`
+(`export <in.tkn[.zst]> <out.tkn>` re-saves a network as raw TKN1, also handy
+for unpacking a shipped `.tkn.zst`) — see [NNUE.md](NNUE.md).

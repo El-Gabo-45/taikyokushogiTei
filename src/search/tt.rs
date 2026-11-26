@@ -203,6 +203,31 @@ impl Tt {
         self.read_table().slots.len()
     }
 
+    /// Approximate occupancy in per mille (Stockfish's `hashfull`).
+    /// Samples at most 4096 hash slots, so it is cheap enough to call on every
+    /// completed iteration without scanning the whole 256 MiB table.
+    pub(crate) fn hashfull(&self) -> u16 {
+        let table = self.read_table();
+        let slots = &table.slots;
+        // Hash slots are every second slot in a bucket; stride by 2 to sample
+        // only hash words (payload words can be non-zero after a torn write).
+        let step = (slots.len() / 2 / 4096).max(1) * 2;
+        let mut sampled = 0u32;
+        let mut used = 0u32;
+        let mut i = 0usize;
+        while i < slots.len() && sampled < 4096 {
+            if slots[i].load(Ordering::Relaxed) != 0 {
+                used += 1;
+            }
+            sampled += 1;
+            i += step;
+        }
+        if sampled == 0 {
+            return 0;
+        }
+        ((used * 1000) / sampled) as u16
+    }
+
     /// Clear every entry (new game / test isolation).
     pub fn clear(&self) {
         let table = self.read_table().clone();

@@ -55,6 +55,10 @@ fn apply_flags() {
                     unsafe { std::env::set_var("TAIKYOKU_NET", v) };
                 }
             }
+            "--version" | "-V" => {
+                println!("taikyokushogi-server {}", taikyokushogi::VERSION);
+                std::process::exit(0);
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -72,7 +76,7 @@ fn print_help() {
     println!(
         "taikyokushogi-server — Taikyoku Shogi HTTP server + web GUI\n\n\
          Usage: taikyokushogi-server [--sessions] [--anon auto|error|shared]\n\
-                [--bind ADDR] [--net PATH|none]\n\n\
+                [--bind ADDR] [--net PATH|none] [--version]\n\n\
          Options:\n  \
          --sessions    Every visitor gets an isolated game (per-session\n  \
                        game state instead of one shared board)\n  \

@@ -5634,6 +5634,39 @@ object({
 	board_size: number(),
 	piece_types: number()
 });
+/** One structured server log entry (`GET /api/logs`). */
+var logEntrySchema = object({
+	ts_ms: number(),
+	level: _enum([
+		"error",
+		"warn",
+		"info",
+		"debug"
+	]),
+	request_id: string(),
+	target: string(),
+	message: string()
+});
+object({
+	total: number(),
+	returned: number(),
+	entries: array(logEntrySchema)
+});
+object({
+	version: string(),
+	board_size: number(),
+	max_body_bytes: number(),
+	max_concurrent_searches: number(),
+	max_sessions: number(),
+	sessions: boolean(),
+	anon_policy: _enum([
+		"auto",
+		"error",
+		"shared"
+	]),
+	log_capacity: number(),
+	log_file_enabled: boolean()
+});
 // src/api/client.ts
 var BASE = "";
 /**

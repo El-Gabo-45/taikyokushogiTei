@@ -280,3 +280,16 @@ fn version_constant_matches_package() {
         );
     }
 }
+
+#[test]
+fn build_info_is_populated() {
+    let b = taikyokushogi::build_info();
+    assert!(b.version.contains('.'), "{b:?}");
+    assert!(!b.sha.is_empty(), "{b:?}");
+    assert!(!b.date.is_empty(), "{b:?}");
+    assert!(!b.rustc.is_empty(), "{b:?}");
+    assert!(!b.target.is_empty(), "{b:?}");
+    let banner = taikyokushogi::compiler_info();
+    assert!(banner.contains(b.version));
+    assert!(banner.contains(b.sha));
+}
