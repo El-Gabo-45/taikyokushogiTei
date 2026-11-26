@@ -35,6 +35,14 @@ use std::fmt;
 use super::arch::{ArchSpec, NUM_THRESHOLDS};
 use super::{H1, H2, L1, MAX_BOARD_PIECES, NSQ, Network, OUT_BUCKETS};
 
+/// A byte slice read from a network file.
+type ByteResult<'a> = Result<&'a [u8], NnueError>;
+/// Boxed integer arrays read from a network file.
+type I16Result = Result<Box<[i16]>, NnueError>;
+type I32Result = Result<Box<[i32]>, NnueError>;
+type I8Result = Result<Box<[i8]>, NnueError>;
+
+
 pub const MAGIC: &[u8; 4] = b"TKN1";
 /// zstd frame magic (`0xFD2FB528` little-endian).
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
@@ -94,7 +102,7 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    fn take(&mut self, n: usize) -> Result<&'a [u8], NnueError> {
+    fn take(&mut self, n: usize) -> ByteResult<'a> {
         let end = self.pos.checked_add(n).ok_or(NnueError::Truncated)?;
         if end > self.buf.len() {
             return Err(NnueError::Truncated);
@@ -119,21 +127,21 @@ impl<'a> Reader<'a> {
         };
         Ok(u32::from_le_bytes(arr))
     }
-    fn i16s(&mut self, n: usize) -> Result<Box<[i16]>, NnueError> {
+    fn i16s(&mut self, n: usize) -> I16Result {
         Ok(self
             .take(n * 2)?
             .chunks_exact(2)
             .map(|c| i16::from_le_bytes([c[0], c[1]]))
             .collect())
     }
-    fn i32s(&mut self, n: usize) -> Result<Box<[i32]>, NnueError> {
+    fn i32s(&mut self, n: usize) -> I32Result {
         Ok(self
             .take(n * 4)?
             .chunks_exact(4)
             .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect())
     }
-    fn i8s(&mut self, n: usize) -> Result<Box<[i8]>, NnueError> {
+    fn i8s(&mut self, n: usize) -> I8Result {
         Ok(self.take(n)?.iter().map(|&b| b as i8).collect())
     }
 }
@@ -149,6 +157,9 @@ impl Network {
     /// zstd frame is decompressed in memory first, then validated by the same
     /// TKN1 parser. The canonical format remains raw TKN1; compression is only
     /// a distribution/transport container.
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn from_bytes_with_arch(bytes: &[u8], arch: &ArchSpec) -> Result<Network, NnueError> {
         if bytes.starts_with(&ZSTD_MAGIC) {
             let decoded = zstd::stream::decode_all(bytes).map_err(NnueError::Decompression)?;
@@ -275,6 +286,9 @@ impl Network {
     /// Parse a network image against the architecture compiled into this build.
     ///
     /// Accepts raw TKN1 v2 and zstd-compressed TKN1 (`.tkn.zst`).
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn from_bytes(bytes: &[u8]) -> Result<Network, NnueError> {
         Network::from_bytes_with_arch(bytes, ArchSpec::embedded())
     }
@@ -286,6 +300,9 @@ impl Network {
     /// extension, so renaming either file does not change how it is decoded.
     /// Never falls back to random weights: any problem is reported as an
     /// error.
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn load(path: impl AsRef<std::path::Path>) -> Result<Network, NnueError> {
         Network::from_bytes(&std::fs::read(path)?)
     }
@@ -335,6 +352,9 @@ impl Network {
     ///
     /// The output is never compressed; compress it externally (for example
     /// with `zstd`) if a smaller distribution asset is wanted.
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), NnueError> {
         std::fs::write(path, self.to_bytes())?;
         Ok(())

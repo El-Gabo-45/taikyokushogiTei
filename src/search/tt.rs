@@ -38,6 +38,10 @@ use super::params;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
+/// Shared, lazily-initialized TT storage.
+type SharedTt = OnceLock<RwLock<Arc<TtStorage>>>;
+
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TTEntry {
     pub score: i32,
@@ -92,7 +96,7 @@ impl TtStorage {
 pub(crate) struct Tt {
     /// `None` until the first lookup, so a searcher that never searches never
     /// pays for the table (256 MiB of lazily-faulted memory by default).
-    storage: OnceLock<RwLock<Arc<TtStorage>>>,
+    storage: SharedTt,
     /// Bumped once per search; entries from older generations lose the
     /// replace race, which ages the table without clearing it.
     generation: AtomicU64,

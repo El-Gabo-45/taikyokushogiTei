@@ -173,7 +173,7 @@ impl SessionMap {
         let mut games = self
             .games
             .lock()
-            .expect("games mutex should not be poisoned");
+            .unwrap_or_else(|e| panic!("games mutex should not be poisoned: {e}"));
         if let Some(entry) = games.get_mut(id) {
             entry.last_used = now;
             return entry.game.clone();
@@ -211,6 +211,9 @@ pub fn new_state() -> Arc<AppState> {
 /// The network is stored in the game state (not just on the initial board) so
 /// it survives `new game`, TSFEN loads and undo.
 #[must_use]
+    /// # Panics
+    ///
+    /// Panics on invalid internal state or arguments.
 pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
     // Invalid environment configuration must abort startup, never degrade the
     // CORS policy (same policy as the TAIKYOKU_NET/bind handling in `run`).
@@ -760,17 +763,17 @@ async fn sessions_middleware(
             let fresh = mint_session_id();
             parts.headers.insert(
                 "x-session-id",
-                HeaderValue::from_str(&fresh).expect("minted id is ASCII"),
+                HeaderValue::from_str(&fresh).unwrap_or_else(|e| panic!("minted id is ASCII: {e}")),
             );
             let mut res = next.run(Request::from_parts(parts, body)).await;
             let cookie = format!("taikyoku_session={fresh}; Path=/; SameSite=Lax");
             res.headers_mut().append(
                 header::SET_COOKIE,
-                HeaderValue::from_str(&cookie).expect("cookie with minted ASCII id"),
+                HeaderValue::from_str(&cookie).unwrap_or_else(|e| panic!("cookie with minted ASCII id: {e}")),
             );
             res.headers_mut().insert(
                 "x-session-id",
-                HeaderValue::from_str(&fresh).expect("minted id is ASCII"),
+                HeaderValue::from_str(&fresh).unwrap_or_else(|e| panic!("minted id is ASCII: {e}")),
             );
             res
         }
@@ -811,6 +814,9 @@ async fn serve_frontend() -> impl IntoResponse {
 /// restricting the CORS policy to exact origins (a malformed value aborts
 /// startup) and `TAIKYOKU_ANON` choosing
 /// what id-less `/api/*` requests get (default `auto`: a fresh session).
+    /// # Panics
+    ///
+    /// Panics on invalid internal state or arguments.
 pub async fn run() {
     let net = match std::env::var("TAIKYOKU_NET")
         .ok()
@@ -831,6 +837,9 @@ pub async fn run() {
 }
 
 /// [`run`] with an already-loaded network (useful for embedders and tests).
+    /// # Panics
+    ///
+    /// Panics on invalid internal state or arguments.
 pub async fn run_with_network(net: Option<Arc<Network>>) {
     let bind_addr = std::env::var("TAIKYOKU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".to_string());
     let listener = tokio::net::TcpListener::bind(&bind_addr)
@@ -855,7 +864,7 @@ pub async fn run_with_network(net: Option<Arc<Network>>) {
     }
     axum::serve(listener, build_router(new_state_with_network(net)))
         .await
-        .expect("server should start successfully");
+        .unwrap_or_else(|e| panic!("server should start successfully: {e}"));
 }
 
 #[cfg(test)]

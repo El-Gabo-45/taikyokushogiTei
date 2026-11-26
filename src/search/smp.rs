@@ -38,6 +38,10 @@
 use super::{Searcher, deadline_from};
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 
+/// Callback invoked after each completed iteration.
+type IterFn<'a> = Option<&'a mut dyn FnMut(&super::IterInfo)>;
+
+
 /// Best completed iteration published by any worker of a search group.
 ///
 /// The publisher writes `score`/`packed` first and `depth` last with `Release`;
@@ -133,7 +137,7 @@ impl Searcher {
         time_limit_ms: u64,
         threads: usize,
         stop: &std::sync::atomic::AtomicBool,
-        on_iter: Option<&mut dyn FnMut(&super::IterInfo)>,
+        on_iter: IterFn<'_>,
     ) -> super::SearchResult {
         let threads = threads.clamp(1, super::params::MAX_THREADS);
         if threads == 1 {

@@ -136,6 +136,9 @@ pub(crate) fn analyze(
     })
 }
 
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let (mut board, net) = load_position(args)?;
     let depth = num(args, "--depth", 2u32)?;

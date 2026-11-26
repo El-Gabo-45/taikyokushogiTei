@@ -43,6 +43,10 @@ use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+/// A (from, to) move pair tracked in quiet-move lists.
+type MovePair = (u16, u16);
+
+
 /// Per-node search state threaded through the recursive calls, replacing the
 /// previous 8-argument `pvs(...)` signature.
 ///
@@ -331,7 +335,7 @@ impl Ctx<'_> {
         // Fixed stack array: at most the beam + 1 quiets are ever tried before
         // the beam break, so 64 slots always suffice — no heap allocation per
         // node. MaybeUninit avoids zero-initialising 128 bytes on every node.
-        let mut quiet_tried: [MaybeUninit<(u16, u16)>; params::QUIETS_TRACKED_MAX] =
+        let mut quiet_tried: [MaybeUninit<MovePair>; params::QUIETS_TRACKED_MAX] =
             [MaybeUninit::uninit(); params::QUIETS_TRACKED_MAX];
         let mut quiet_tried_n = 0usize;
 

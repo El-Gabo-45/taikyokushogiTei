@@ -28,6 +28,10 @@ use crate::pieces;
 use crate::types::{BLACK, BOARD_SIZE, EMPTY_CELL, NUM_SQUARES, cell_piece};
 use std::sync::OnceLock;
 
+/// Precomputed PSQT tensor: [piece_type][square][color].
+type PsqtTable = [[[i32; 2]; NUM_SQUARES]];
+
+
 /// PSQT value for a piece of type `pt` at square `sq` for color `color`.
 /// Positive = good for that color.
 pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
@@ -42,18 +46,10 @@ pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
     let base = zone.bonus();
     let zone_bonus = match fam_enum {
         Family::Royal => 0,
-        Family::RangeCap => base * 2,
-        Family::Lion => base * 2,
-        Family::Eagle => base * 2,
-        Family::Dragon => base * 2,
-        Family::Demon => base * 2,
-        Family::Standard => base,
-        Family::Slider => base,
-        Family::Stepper => base / 2,
-        Family::Pawn => base / 2,
-        Family::Hook => base,
-        Family::Special => base * 2,
-        Family::Other => base / 2,
+        Family::RangeCap | Family::Lion | Family::Eagle | Family::Dragon | Family::Demon
+        | Family::Special => base * 2,
+        Family::Standard | Family::Slider | Family::Hook => base,
+        Family::Stepper | Family::Pawn | Family::Other => base / 2,
     };
     score += zone_bonus;
 
@@ -72,7 +68,7 @@ pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
 /// Precomputed PSQT table: [pt][sq][color], heap-allocated as a boxed slice
 /// (a fixed-size `Box<[[[..]; N]; 512]>` would materialize the whole 5 MB
 /// table on the stack during construction and overflow test-thread stacks).
-static PSQT_TABLE: OnceLock<Box<[[[i32; 2]; NUM_SQUARES]]>> = OnceLock::new();
+static PSQT_TABLE: OnceLock<Box<PsqtTable>> = OnceLock::new();
 
 /// Get the precomputed PSQT value for a piece.
 #[inline]

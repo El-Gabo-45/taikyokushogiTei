@@ -28,10 +28,19 @@
 
 use super::{flag, load_net, num, num_opt, positional, print_replay_summary, replay_games};
 
+/// (mover, victim, count) interaction triple.
+type Interaction = (usize, usize, u64);
+/// (piece type, count) tally.
+type PtCount = (usize, u64);
+
+
 /// Piece types are 1..=301 (9-bit cell field); index 0 = "none" is unused
 /// for both mover and victim.
 const MAX_PT: usize = 302;
 
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let db = positional(args)
         .map(std::string::ToString::to_string)
@@ -66,7 +75,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     // Top pairings: (mover type, victim type, count), best first, ties by
     // type ids for determinism.
-    let mut pairs: Vec<(usize, usize, u64)> = matrix
+    let mut pairs: Vec<Interaction> = matrix
         .iter()
         .enumerate()
         .flat_map(|(m, row)| {
@@ -90,14 +99,14 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
 
     // Per-type totals: who captures most, who gets captured most.
-    let mut by_mover: Vec<(usize, u64)> = matrix
+    let mut by_mover: Vec<PtCount> = matrix
         .iter()
         .enumerate()
         .map(|(m, row)| (m, row.iter().sum::<u64>()))
         .filter(|&(_, n)| n > 0)
         .collect();
     by_mover.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    let mut by_victim: Vec<(usize, u64)> = (0..MAX_PT)
+    let mut by_victim: Vec<PtCount> = (0..MAX_PT)
         .map(|c| (c, matrix.iter().map(|row| row[c]).sum::<u64>()))
         .filter(|&(_, n)| n > 0)
         .collect();

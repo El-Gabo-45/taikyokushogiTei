@@ -433,6 +433,9 @@ pub struct SelfPlayCoordinator {
 
 impl SelfPlayCoordinator {
     #[must_use]
+    /// # Panics
+    ///
+    /// Panics on invalid internal state or arguments.
     pub fn new(config: SelfPlayConfig) -> Self {
         // ── Reserve a game-id range unique across runs ──────────────
         // Sources of truth: the per-directory state file and (when enabled)
@@ -692,6 +695,9 @@ impl SelfPlayCoordinator {
     /// Joins every thread and reports any data loss. Returns `Err` when a
     /// worker, the sample writer or the database writer failed — the caller
     /// must exit non-zero so a broken dataset is never mistaken for success.
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn wait(mut self) -> Result<(), String> {
         let mut errors: Vec<String> = Vec::new();
         for handle in self.workers.drain(..) {

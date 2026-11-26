@@ -1,3 +1,4 @@
+
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -65,6 +66,11 @@ use std::io::BufRead;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+
+/// A pair of square tokens split from a move string.
+type SquarePair<'a> = Option<(&'a str, &'a str)>;
+/// Parsed from/to square indices.
+type SquareIndices = (Option<u16>, Option<u16>);
 
 const ENGINE_NAME: &str = "TaikyokuShogi";
 const AUTHOR: &str = "El-Gabo-45 (taikyokushogiTei contributors)";
@@ -266,7 +272,7 @@ fn parse_square(s: &str) -> Option<u16> {
 
 /// Split `e34A12` into `("e34", "A12")`: a from/to pair breaks where a file
 /// letter (`a`–`z`, `A`–`J`) immediately follows a digit.
-fn split_two_squares(s: &str) -> Option<(&str, &str)> {
+fn split_two_squares(s: &str) -> SquarePair<'_> {
     let is_file = |c: char| matches!(c, 'a'..='z' | 'A'..='J');
     let mut last_was_digit = false;
     for (i, c) in s.char_indices() {
@@ -297,7 +303,7 @@ fn parse_move(board: &Board, token: &str) -> Result<crate::Move, String> {
     // Squares are `file + 1..2 digits`, so a from/to pair is NOT a fixed
     // 4-character slice: `e34A12` is `e34` + `A12`. Split where a file letter
     // follows a digit (the `=` igui spelling is an explicit separator).
-    let squares: (Option<u16>, Option<u16>) = if let Some((a, b)) = core.split_once('=') {
+    let squares: SquareIndices = if let Some((a, b)) = core.split_once('=') {
         (parse_square(a.trim()), parse_square(b.trim()))
     } else {
         let cleaned: String = core.chars().filter(|c| *c != '-').collect();
@@ -739,7 +745,7 @@ impl UsiEngine {
                 }
                 searcher
             })
-            .expect("spawn the USI search thread");
+            .unwrap_or_else(|e| panic!("spawn the USI search thread: {e}"));
         self.job = Some(Job {
             handle,
             stop,

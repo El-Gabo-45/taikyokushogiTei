@@ -34,6 +34,9 @@ struct Moment {
     captured_pt: u16,
 }
 
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let db = positional(args)
         .map(std::string::ToString::to_string)

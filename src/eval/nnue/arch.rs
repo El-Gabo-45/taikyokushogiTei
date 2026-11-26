@@ -41,6 +41,9 @@ pub struct ArchSpec {
 
 impl ArchSpec {
     /// The architecture compiled into this binary.
+    /// # Panics
+    ///
+    /// Panics on invalid internal state or arguments.
     pub fn embedded() -> &'static ArchSpec {
         static SPEC: OnceLock<ArchSpec> = OnceLock::new();
         SPEC.get_or_init(|| {
@@ -49,12 +52,18 @@ impl ArchSpec {
         })
     }
 
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn from_json(json: &str) -> Result<ArchSpec, String> {
         let spec: ArchSpec = serde_json::from_str(json).map_err(|e| e.to_string())?;
         spec.validate()?;
         Ok(spec)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
     pub fn validate(&self) -> Result<(), String> {
         let check = |ok: bool, msg: &str| if ok { Ok(()) } else { Err(msg.to_string()) };
         check(self.format == "TKN1", "format must be TKN1")?;

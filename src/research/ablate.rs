@@ -30,6 +30,12 @@
 use super::{flag, load_net, num, positional};
 use crate::search::params::SearchConfig;
 
+/// Positions collected for an ablation run.
+type Positions = Vec<Position>;
+/// One technique-vs-baseline row.
+type AblationRow<'a> = (&'a str, Aggregate);
+
+
 /// Every `SearchConfig` switch, in struct order.
 const TECHNIQUES: &[&str] = &[
     "razoring",
@@ -102,7 +108,7 @@ struct Position {
 fn load_positions(
     args: &[String],
     net: &Option<std::sync::Arc<crate::eval::nnue::Network>>,
-) -> Result<Vec<Position>, String> {
+) -> Result<Positions, String> {
     let attach = |mut board: crate::Board| {
         board.set_network(net.clone());
         board
@@ -159,6 +165,9 @@ struct Aggregate {
     positions: usize,
 }
 
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let depth = num(args, "--depth", 2u32)?;
     let time_ms = num(args, "--time-ms", 0u64)?;
@@ -179,7 +188,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     );
 
-    let mut rows: Vec<(&str, Aggregate)> = TECHNIQUES
+    let mut rows: Vec<AblationRow<'_>> = TECHNIQUES
         .iter()
         .map(|&name| (name, Aggregate::default()))
         .collect();

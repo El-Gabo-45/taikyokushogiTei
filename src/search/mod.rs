@@ -59,6 +59,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+/// Callback invoked after each completed iteration.
+type IterFn<'a> = Option<&'a mut dyn FnMut(&IterInfo)>;
+
+
 /// Result of a completed search.
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -230,7 +234,7 @@ impl Searcher {
         depth: u32,
         time_limit_ms: u64,
         stop: &AtomicBool,
-        on_iter: Option<&mut dyn FnMut(&IterInfo)>,
+        on_iter: IterFn<'_>,
     ) -> SearchResult {
         let deadline = deadline_from(time_limit_ms);
         let mut no_info = |_: &IterInfo| {};

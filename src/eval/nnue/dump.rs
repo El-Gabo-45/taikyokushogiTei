@@ -19,12 +19,16 @@
 use super::Network;
 use crate::types::{EMPTY_CELL, cell_color, cell_piece};
 
+/// A (piece type, count, color) tally.
+type PieceCount = (u16, u16, u8);
+
+
 /// Everything the Python reference needs to recompute one evaluation.
 pub struct PositionDump {
     /// Side to move (0 = Black, 1 = White).
     pub stm: u8,
     /// `(square, piece_type, color)` for every piece on the board.
-    pub pieces: Vec<(u16, u16, u8)>,
+    pub pieces: Vec<PieceCount>,
     /// Output bucket the engine selected.
     pub bucket: usize,
     /// Feature indices per perspective (0 = Black, 1 = White), ascending.

@@ -42,6 +42,17 @@ use std::sync::Arc;
 
 use crate::eval::nnue::Network;
 
+/// Optional NNUE network loaded from CLI args.
+type NetResult = Result<Option<Arc<Network>>, String>;
+/// A board position paired with its optional network.
+type PositionNet = (crate::Board, Option<Arc<Network>>);
+/// A move and its static score.
+type ScoredMove = (i32, crate::Move);
+/// A game id and the reason it could not be replayed.
+type GameSkip = (u64, String);
+/// An optional parsed value or an error message.
+type OptResult<T> = Result<Option<T>, String>;
+
 // ── CLI argument helpers (same conventions as src/nnue_main.rs) ─────────
 
 /// Value of a `--flag VALUE` argument, if present.
@@ -74,10 +85,7 @@ pub(crate) fn num<T: std::str::FromStr>(
 }
 
 /// Parsed numeric `--flag VALUE`, or `None` when the flag is absent.
-pub(crate) fn num_opt<T: std::str::FromStr>(
-    args: &[String],
-    name: &str,
-) -> Result<Option<T>, String> {
+pub(crate) fn num_opt<T: std::str::FromStr>(args: &[String], name: &str) -> OptResult<T> {
     flag(args, name)
         .map(|v| {
             v.parse::<T>()
@@ -90,7 +98,7 @@ pub(crate) fn num_opt<T: std::str::FromStr>(
 
 /// `--net FILE.tkn[.zst]`: raw or zstd-compressed, `Network::load` detects
 /// the format from the file contents.
-pub(crate) fn load_net(args: &[String]) -> Result<Option<Arc<Network>>, String> {
+pub(crate) fn load_net(args: &[String]) -> NetResult {
     match flag(args, "--net") {
         Some(path) => {
             let net =
@@ -105,7 +113,7 @@ pub(crate) fn load_net(args: &[String]) -> Result<Option<Arc<Network>>, String> 
 /// optional `--net` attached, so `evaluate()` speaks with the network.
 pub(crate) fn load_position(
     args: &[String],
-) -> Result<(crate::Board, Option<Arc<Network>>), String> {
+) -> Result<PositionNet, String> {
     let net = load_net(args)?;
     let mut board = match positional(args) {
         Some(fen) => {
@@ -123,8 +131,8 @@ pub(crate) fn load_position(
 /// move — once a move is applied, `evaluate()` speaks for the opponent, so it
 /// is negated. Ties are broken by move string so the ordering (and every
 /// downstream tool) is deterministic.
-pub(crate) fn static_move_scores(board: &mut crate::Board) -> Vec<(i32, crate::Move)> {
-    let mut out: Vec<(i32, crate::Move)> = board
+pub(crate) fn static_move_scores(board: &mut crate::Board) -> Vec<ScoredMove> {
+    let mut out: Vec<ScoredMove> = board
         .legal_moves()
         .into_iter()
         .map(|mv| {
@@ -182,7 +190,7 @@ pub struct ReplaySummary {
     /// Plies delivered to the callback.
     pub plies_replayed: u64,
     /// `(game_id, reason)` for every game that could not be replayed.
-    pub games_skipped: Vec<(u64, String)>,
+    pub games_skipped: Vec<GameSkip>,
 }
 
 /// Walks a self-play `games.db` and calls `f` once per recorded ply.
@@ -195,6 +203,9 @@ pub struct ReplaySummary {
 ///
 /// The database is opened read-only: a selfplay run owns it, this tool only
 /// reads.
+    /// # Errors
+    ///
+    /// Returns an error describing the failure.
 pub fn replay_games<F>(
     db_path: &str,
     net: Option<Arc<Network>>,
