@@ -1127,7 +1127,10 @@ mod tests {
             lines.iter().any(|l| l.starts_with("info depth 1 ")),
             "per-iteration info expected: {lines:?}"
         );
-        let best = lines.iter().find(|l| l.starts_with("bestmove ")).unwrap();
+        let best = lines
+            .iter()
+            .find(|l| l.starts_with("bestmove "))
+            .expect("must have bestmove in output");
         let token = best.strip_prefix("bestmove ").unwrap_or("").trim();
         let board = Board::initial();
         assert!(parse_move(&board, token).is_ok(), "`{token}` must be legal");

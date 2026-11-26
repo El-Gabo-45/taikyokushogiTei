@@ -166,7 +166,10 @@ impl SessionMap {
     /// next request simply starts a fresh game).
     fn get_or_create(&self, id: &str, net: Option<Arc<Network>>) -> Arc<Mutex<GameState>> {
         let now = std::time::Instant::now();
-        let mut games = self.games.lock().expect("games mutex should not be poisoned");
+        let mut games = self
+            .games
+            .lock()
+            .expect("games mutex should not be poisoned");
         if let Some(entry) = games.get_mut(id) {
             entry.last_used = now;
             return entry.game.clone();
@@ -883,7 +886,8 @@ mod cors_config_tests {
     #[test]
     fn cors_env_reports_the_offending_entry() {
         // The error must point at the malformed entry, not drop it silently.
-        let err = parse_cors_origin("htp:/oops").unwrap_err();
+        let err =
+            parse_cors_origin("htp:/oops").expect("parse error must occur for malformed input");
         assert!(err.contains("htp:/oops"), "error names the entry: {err}");
     }
 }

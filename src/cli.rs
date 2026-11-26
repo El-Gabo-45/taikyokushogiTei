@@ -1788,7 +1788,7 @@ mod tests {
             "got: {}",
             err
         );
-        let err2 = parse_move(&board, "q99q99").unwrap_err();
+        let err2 = parse_move(&board, "q99q99").expect("must be a parse error");
         assert!(err2.contains("bad square"), "got: {}", err2);
     }
 
