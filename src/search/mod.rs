@@ -65,7 +65,7 @@ type IterFn<'a> = Option<&'a mut dyn FnMut(&IterInfo)>;
 type IterMutFn<'a> = &'a mut dyn FnMut(&IterInfo);
 
 /// Result of a completed search.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct SearchResult {
     pub best_move: Option<Move>,
     pub score: i32,

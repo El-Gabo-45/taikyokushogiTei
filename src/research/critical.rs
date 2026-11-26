@@ -51,7 +51,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     let mut moments: Vec<Moment> = Vec::new();
     let mut per_game: BTreeMap<u64, u32> = BTreeMap::new();
-    let summary = replay_games(&db, net, limit, |v| {
+    let summary = replay_games(&db, net.as_ref(), limit, |v| {
         if v.gain.abs() >= threshold {
             *per_game.entry(v.game_id).or_default() += 1;
             moments.push(Moment {

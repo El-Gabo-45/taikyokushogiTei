@@ -206,7 +206,7 @@ pub struct ReplaySummary {
 /// Returns an error describing the failure.
 pub fn replay_games<F>(
     db_path: &str,
-    net: Option<Arc<Network>>,
+    net: Option<&Arc<Network>>,
     limit: Option<usize>,
     mut f: F,
 ) -> Result<ReplaySummary, String>
@@ -234,7 +234,7 @@ where
 
     let mut summary = ReplaySummary::default();
     for game_id in game_ids {
-        match replay_one(&conn, game_id, net.clone(), &mut f) {
+        match replay_one(&conn, game_id, net.cloned(), &mut f) {
             Ok(plies) => {
                 summary.games_replayed += 1;
                 summary.plies_replayed += plies;

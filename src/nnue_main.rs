@@ -40,6 +40,7 @@
 //! A `<net>` argument can be a raw `.tkn` or a zstd-compressed `.tkn.zst`;
 //! `Network::load` detects the format from the file contents.
 
+use std::fmt::Write as FmtWrite;
 use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::Instant;
@@ -62,7 +63,7 @@ impl Rng {
         z ^ (z >> 31)
     }
     fn below(&mut self, n: usize) -> usize {
-        (self.next() % n as u64) as usize
+        usize::try_from(self.next() % n as u64).unwrap_or(0)
     }
 }
 
@@ -162,7 +163,11 @@ fn cmd_gen_classes(args: &[String]) {
 }
 
 fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
+    let mut s = String::with_capacity(b.len() * 2);
+    for x in b {
+        let _ = write!(s, "{x:02x}");
+    }
+    s
 }
 
 fn cmd_info(path: &str) {
@@ -253,7 +258,11 @@ fn cmd_dump(args: &[String]) {
         let thin = args.iter().any(|a| a == "--thin");
         let d = if thin {
             // Keep between 2% and 100% of the non-royal pieces.
-            let mut t = thinned(&board, 20 + rng.below(981) as u32, rng.next());
+            let mut t = thinned(
+                &board,
+                20 + u32::try_from(rng.below(981)).unwrap_or(0),
+                rng.next(),
+            );
             t.set_network(Some(net.clone()));
             if t.game_result().is_some() {
                 continue;
@@ -326,7 +335,10 @@ fn cmd_explain(args: &[String]) {
         "net",
         &format!(
             "{net_path} ({}, arch hash {})",
-            if net_path.ends_with(".zst") {
+            if std::path::Path::new(net_path)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"))
+            {
                 "zstd-compressed"
             } else {
                 "raw"

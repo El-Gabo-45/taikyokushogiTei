@@ -128,9 +128,9 @@ impl Default for Options {
 // ── Coordinate parsing ──────────────────────────────────────────
 fn file_char(col: usize) -> char {
     if col < 26 {
-        (b'a' + col as u8) as char
+        char::from(b'a' + u8::try_from(col).unwrap_or(25))
     } else {
-        (b'A' + (col - 26) as u8) as char
+        char::from(b'A' + u8::try_from(col - 26).unwrap_or(9))
     }
 }
 
@@ -494,11 +494,13 @@ fn debug_eval(board: &Board) {
     );
     let over = board.game_result().is_some();
     // Hand-crafted score of THIS position (a fresh board has no network).
-    let classic = Board::from_tsfen(&board.to_tsfen()).expect("round-trip tsfen");
+    let classic = Board::from_tsfen(&board.to_tsfen())
+        .unwrap_or_else(|e| panic!("round-trip tsfen failed: {e}"));
     let hand = classic.evaluate();
     match board.network() {
         Some(net) => {
-            let mut with_net = Board::from_tsfen(&board.to_tsfen()).expect("round-trip tsfen");
+            let mut with_net = Board::from_tsfen(&board.to_tsfen())
+                .unwrap_or_else(|e| panic!("round-trip tsfen failed: {e}"));
             with_net.set_network(Some(net.clone()));
             println!(
                 "nnue eval:         {}   (attached network; `debug nnue` for the breakdown)",
@@ -613,7 +615,8 @@ fn debug_nnue(board: &Board) {
             x.eval, x.refresh_eval
         );
     }
-    let classic = Board::from_tsfen(&board.to_tsfen()).expect("round-trip tsfen");
+    let classic = Board::from_tsfen(&board.to_tsfen())
+        .unwrap_or_else(|e| panic!("round-trip tsfen failed: {e}"));
     println!(
         "classic:      {} (hand-crafted, for reference{})",
         classic.evaluate(),
@@ -678,7 +681,11 @@ fn fnv1a(h: &mut u64, data: &str) {
 }
 
 fn hex16(hash: &[u8; 32]) -> String {
-    hash[..8].iter().map(|b| format!("{b:02x}")).collect()
+    let mut s = String::with_capacity(16);
+    for b in &hash[..8] {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 /// `bench search [depth]` — Stockfish-style deterministic bench: fixed
@@ -850,7 +857,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     let name = move_name(&m);
                     board.apply(&m);
                     hist.push(name);
-                    println!("played {}", hist.last().expect("history must not be empty"));
+                    println!("played {}", hist.last().map_or("", String::as_str));
                     check_terminal(board);
                     if board.game_result().is_none() {
                         if let Some(em) = engine_turn(board, opt) {
@@ -1156,11 +1163,11 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             );
         }
         "bench" => {
+            const ITERS: usize = 50;
             if rest.first().is_some_and(|s| *s == "search") {
                 bench_search(rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(4).min(8));
                 return true;
             }
-            const ITERS: usize = 50;
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
                 let _ = board.legal_moves();
@@ -1302,8 +1309,8 @@ La notación coincide con el orden de filas del TSFEN. El sufijo '+' promociona.
 }
 
 fn main() {
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    let args = match parse_args(&argv) {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let args = match parse_args(&raw_args) {
         Ok(a) => a,
         Err(e) => {
             eprintln!("error: {e}\n");

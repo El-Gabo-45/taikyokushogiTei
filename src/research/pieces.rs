@@ -52,7 +52,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let csv = flag(args, "--csv").map(std::string::ToString::to_string);
 
     let mut matrix = vec![vec![0u64; MAX_PT]; MAX_PT];
-    let summary = replay_games(&db, net, limit, |v| {
+    let summary = replay_games(&db, net.as_ref(), limit, |v| {
         if v.captured_pt != 0 {
             let (mover, victim) = (v.mover_pt as usize, v.captured_pt as usize);
             if mover < MAX_PT && victim < MAX_PT {
