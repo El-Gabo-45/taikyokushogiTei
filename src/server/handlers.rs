@@ -17,7 +17,7 @@
 //! helpers live in [`crate::server`].
 
 use axum::Json;
-use axum::extract::{Path, Query};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
@@ -59,6 +59,12 @@ impl ApiError {
     pub fn conflict(msg: impl Into<String>) -> Self {
         ApiError {
             status: StatusCode::CONFLICT,
+            message: msg.into(),
+        }
+    }
+    pub fn too_many_requests(msg: impl Into<String>) -> Self {
+        ApiError {
+            status: StatusCode::TOO_MANY_REQUESTS,
             message: msg.into(),
         }
     }
@@ -578,8 +584,27 @@ struct SearchOutcome {
 
 /// Run the search on the blocking pool. `depth == RANDOM_DEPTH` picks a
 /// uniformly random legal move instead of running alphabeta.
-async fn execute_search(snapshot: Board, depth: u32, time_limit: u64) -> SearchOutcome {
-    tokio::task::spawn_blocking(move || {
+///
+/// A shared semaphore caps how many searches run at once. Callers wait up to
+/// `SEARCH_PERMIT_WAIT_MS` for a slot, then get `429` rather than piling up
+/// CPU-bound work that would starve the async executor.
+async fn execute_search(
+    snapshot: Board,
+    depth: u32,
+    time_limit: u64,
+    permits: std::sync::Arc<tokio::sync::Semaphore>,
+) -> Result<SearchOutcome, ApiError> {
+    let permit = tokio::time::timeout(
+        std::time::Duration::from_millis(SEARCH_PERMIT_WAIT_MS),
+        permits.acquire_owned(),
+    )
+    .await
+    .map_err(|_| ApiError::too_many_requests("search queue full — retry shortly"))?
+    .map_err(|_| ApiError::too_many_requests("search service unavailable"))?;
+
+    Ok(tokio::task::spawn_blocking(move || {
+        // Keep the permit alive for the whole search.
+        let _permit = permit;
         let started = std::time::Instant::now();
         let mut board = snapshot;
         if depth == RANDOM_DEPTH {
@@ -612,8 +637,11 @@ async fn execute_search(snapshot: Board, depth: u32, time_limit: u64) -> SearchO
             time_ms: 0,
             no_moves: false,
         }
-    })
+    }))
 }
+
+/// How long a caller waits for a search permit before getting a 429.
+const SEARCH_PERMIT_WAIT_MS: u64 = 2_000;
 
 // ============================================================
 // POST /api/ai-move — search and apply for the side to move
@@ -626,13 +654,14 @@ async fn execute_search(snapshot: Board, depth: u32, time_limit: u64) -> SearchO
 ///
 /// Returns an error for invalid input or conflicting game state.
 pub async fn post_ai_move(
+    State(app): State<Arc<crate::server::AppState>>,
     SessionGame(game): SessionGame,
     Json(body): Json<AiMoveBody>,
 ) -> Result<Json<MoveResponse>, ApiError> {
     let (depth, time_limit) = search_plan(body.depth, body.time_limit);
 
     let (snapshot, snapshot_version) = snapshot_for_search(&game)?;
-    let outcome = execute_search(snapshot, depth, time_limit).await;
+    let outcome = execute_search(snapshot, depth, time_limit, app.search_permits.clone()).await?;
 
     if outcome.no_moves {
         // Distinguish a terminal position from a search that stopped early
@@ -719,6 +748,7 @@ pub async fn post_ai_move(
 ///
 /// Returns an error for invalid input or conflicting game state.
 pub async fn post_search(
+    State(app): State<Arc<crate::server::AppState>>,
     SessionGame(game): SessionGame,
     Json(body): Json<SearchBody>,
 ) -> Result<Json<SearchResponse>, ApiError> {
@@ -727,7 +757,7 @@ pub async fn post_search(
     let (snapshot, _) = snapshot_for_search(&game)?;
     let tsfen_of_snapshot = snapshot.to_tsfen();
 
-    let outcome = execute_search(snapshot, depth, time_limit).await;
+    let outcome = execute_search(snapshot, depth, time_limit, app.search_permits.clone()).await?;
 
     Ok(Json(SearchResponse {
         ok: outcome.best_move.is_some(),

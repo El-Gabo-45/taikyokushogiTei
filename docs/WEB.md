@@ -155,6 +155,12 @@ Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
 - **Search bounds** — `depth` and `movetime` on `/api/ai-move` and `/api/search`
   are clamped to `MAX_DEPTH`/`MAX_TIME_MS`, and searches run on
   `spawn_blocking` so a long think never blocks the async executor.
+- **Search concurrency cap** — at most `MAX_CONCURRENT_SEARCHES` (4) searches
+  run at once across all games/sessions, guarded by a shared `tokio::Semaphore`.
+  Callers wait up to 2 s for a slot; if all slots stay busy they get
+  `429 Too Many Requests` instead of piling CPU-bound work onto the runtime
+  (which would starve every other endpoint). This complements the session cap:
+  64 visitors cannot launch 64 simultaneous 30-second searches.
 
 ### Frontend safety belt
 

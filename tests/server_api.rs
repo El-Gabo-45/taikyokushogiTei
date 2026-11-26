@@ -1170,3 +1170,32 @@ async fn normal_sized_position_body_is_accepted() {
     let (status, _) = call(&app, Method::POST, "/api/position", Some(body)).await;
     assert_eq!(status, StatusCode::OK);
 }
+
+// ============================================================
+// Search concurrency cap (safety belt against CPU starvation)
+// ============================================================
+
+#[tokio::test]
+async fn search_queue_full_returns_429() {
+    let (state, app) = game();
+    // Hold every search permit so the next search cannot start.
+    let mut held = Vec::new();
+    for _ in 0..taikyokushogi::server::MAX_CONCURRENT_SEARCHES {
+        held.push(state.search_permits.clone().acquire_owned().await.unwrap());
+    }
+    let (status, body) = call(
+        &app,
+        Method::POST,
+        "/api/search",
+        Some(json!({ "depth": 1, "time_limit": 100 })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "a full search queue must return 429"
+    );
+    assert_eq!(body["ok"], false);
+    assert!(body["error"].as_str().unwrap().contains("queue full"));
+    drop(held);
+}

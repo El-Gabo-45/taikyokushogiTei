@@ -26,6 +26,7 @@ use axum::{Json, Router};
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::{Arc, Mutex};
+use tokio::sync::Semaphore;
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
@@ -115,6 +116,15 @@ pub const DEFAULT_MAX_SESSIONS: usize = 64;
 /// a `413 Payload Too Large` from `RequestBodyLimitLayer`.
 pub const MAX_BODY_BYTES: usize = 128 * 1024;
 
+/// Maximum number of searches running at once across all sessions/games.
+///
+/// Each search runs on Tokio's blocking pool and burns CPU for up to
+/// `MAX_TIME_MS`; without a cap, many concurrent `/api/ai-move` or
+/// `/api/search` requests (e.g. 64 sessions) would saturate the pool and
+/// starve every other endpoint. Excess requests wait briefly for a permit,
+/// then get `429 Too Many Requests` instead of piling up.
+pub const MAX_CONCURRENT_SEARCHES: usize = 4;
+
 /// Shared application state.
 ///
 /// Two modes:
@@ -140,6 +150,8 @@ pub struct AppState {
     network: Option<Arc<Network>>,
     /// Exact CORS origins for [`build_router`] (empty = mirror request).
     pub cors_origins: Vec<String>,
+    /// Bounds how many searches may run at once (CPU safety belt).
+    pub search_permits: Arc<Semaphore>,
 }
 
 impl AppState {
@@ -256,6 +268,7 @@ pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> 
         sessions,
         network: net,
         cors_origins: cfg.cors_origins,
+        search_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_SEARCHES)),
     })
 }
 
