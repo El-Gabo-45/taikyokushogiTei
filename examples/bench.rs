@@ -20,7 +20,7 @@ fn main() {
         let _s = b.evaluate();
     }
     let us = t.elapsed().as_micros() as f64 / 1000.0;
-    println!("eval: {:.1}us each", us);
+    println!("eval: {us:.1}us each");
 
     // 3. Medir depth-1 search
     let mut board = Board::initial();

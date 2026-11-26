@@ -405,9 +405,9 @@ fn null_move_keeps_the_accumulator() {
     let before = b.inner.nnue.as_deref().unwrap().acc;
     let e_black = b.evaluate();
     b.inner.null_move();
-    assert!(b.inner.nnue.as_deref().unwrap().acc == before);
+    assert_eq!(b.inner.nnue.as_deref().unwrap().acc, before);
     b.inner.undo_null_move();
-    assert!(b.inner.nnue.as_deref().unwrap().acc == before);
+    assert_eq!(b.inner.nnue.as_deref().unwrap().acc, before);
     assert_eq!(b.evaluate(), e_black);
 }
 
@@ -472,7 +472,7 @@ fn set_network_with_same_arc_keeps_state() {
     b.apply(&m);
     let acc = b.inner.nnue.as_deref().unwrap().acc;
     b.set_network(Some(n.clone())); // same Arc: no refresh needed, state valid
-    assert!(b.inner.nnue.as_deref().unwrap().acc == acc);
+    assert_eq!(b.inner.nnue.as_deref().unwrap().acc, acc);
     assert_acc_matches_refresh(&b, "after re-attaching the same network");
 }
 

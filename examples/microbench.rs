@@ -12,7 +12,7 @@ fn main() {
     }
     println!(
         "legal_moves: {:.1} us/call",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
     // evaluate timing
     let t = Instant::now();
@@ -22,7 +22,7 @@ fn main() {
     }
     println!(
         "evaluate: {:.1} us/call",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
     // apply+undo timing
     let m = moves[0];
@@ -35,7 +35,7 @@ fn main() {
     }
     println!(
         "apply+undo: {:.1} us/call",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
     // material_score
     let t = Instant::now();
@@ -45,7 +45,7 @@ fn main() {
     }
     println!(
         "material_score: {:.1} us/call",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
     // clone
     let t = Instant::now();
@@ -55,6 +55,6 @@ fn main() {
     }
     println!(
         "clone: {:.1} us/call",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
 }

@@ -13,7 +13,7 @@ fn bench(label: &str, iters: usize, mut f: impl FnMut()) {
         f();
     }
     let us = t.elapsed().as_micros() as f64 / iters as f64;
-    println!("{}: {:.1} us/call ({} iters)", label, us, iters);
+    println!("{label}: {us:.1} us/call ({iters} iters)");
 }
 
 fn main() {

@@ -646,7 +646,7 @@ mod tests {
     }
 
     /// `Move::mid_sq()` maps `INVALID_SQ` to `None` and a real square to
-    /// `Some(sq)`. All initial moves are quiet/pawn pushes: mid_sq=None.
+    /// `Some(sq)`. All initial moves are quiet/pawn pushes: `mid_sq=None`.
     #[test]
     fn move_mid_sq_maps_invalid_to_none() {
         let board = Board::initial();
@@ -656,8 +656,7 @@ mod tests {
             assert_eq!(
                 m.mid_sq(),
                 None,
-                "initial move {:?} must have mid_sq=None",
-                m
+                "initial move {m:?} must have mid_sq=None"
             );
         }
     }

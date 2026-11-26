@@ -101,7 +101,7 @@ pub(crate) mod test_lock {
     pub(crate) fn lock() -> MutexGuard<'static, ()> {
         LOCK.get_or_init(|| Mutex::new(()))
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 mod bitboard;
@@ -443,6 +443,14 @@ pub struct SearchResult {
     pub time_ms: u64,
 }
 
+/// Flags describing piece capabilities.
+pub struct PieceFlags {
+    pub has_hook: bool,
+    pub has_range_capture: bool,
+    pub has_igui: bool,
+    pub is_royal: bool,
+}
+
 /// Information about a piece type.
 pub struct PieceInfo {
     pub abbrev: &'static str,
@@ -451,12 +459,8 @@ pub struct PieceInfo {
     pub promotes_to: Option<&'static str>,
     pub slide_directions: usize,
     pub jump_destinations: usize,
-    pub has_hook: bool,
     pub area_steps: u8,
-    pub has_range_capture: bool,
-    pub has_igui: bool,
-    /// Whether capturing this piece ends the game (King, Crown Prince, …).
-    pub is_royal: bool,
+    pub flags: PieceFlags,
     /// Betza movement notation, when the piece database defines one.
     pub betza: Option<&'static str>,
 }
@@ -485,11 +489,13 @@ pub fn piece_info_by_id(pt: u16) -> PieceInfo {
         promotes_to: promo,
         slide_directions: mv.slides.len(),
         jump_destinations: mv.jumps.len(),
-        has_hook: mv.hook.is_some(),
         area_steps: mv.area,
-        has_range_capture: !mv.range_capture.is_empty(),
-        has_igui: mv.igui,
-        is_royal: pieces::is_royal(pt),
+        flags: PieceFlags {
+            has_hook: mv.hook.is_some(),
+            has_range_capture: !mv.range_capture.is_empty(),
+            has_igui: mv.igui,
+            is_royal: pieces::is_royal(pt),
+        },
         betza: pieces::betza(pt),
     }
 }
@@ -499,7 +505,7 @@ pub fn piece_info_by_id(pt: u16) -> PieceInfo {
 /// ```rust
 /// let all = taikyokushogi::all_pieces();
 /// assert_eq!(all.len(), taikyokushogi::num_piece_types());
-/// assert!(all.iter().any(|p| p.abbrev == "K" && p.is_royal));
+/// assert!(all.iter().any(|p| p.abbrev == "K" && p.flags.is_royal));
 /// ```
 pub fn all_pieces() -> Vec<PieceInfo> {
     (1..=pieces::num_piece_types() as u16)
@@ -583,6 +589,11 @@ impl Board {
     }
 
     /// Whose turn is it?
+    ///
+    /// # Panics
+    ///
+    /// Panics if the board's internal `side_to_move` value is corrupted
+    /// (not 0 or 1), which indicates a bug in the engine.
     #[must_use]
     pub fn side_to_move(&self) -> Color {
         Color::from_raw(self.inner.side_to_move)
@@ -604,6 +615,11 @@ impl Board {
     }
 
     /// Get the piece at `(row, col)`, or `None` if empty or out of bounds.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the board's internal cell color value is corrupted
+    /// (not 0 or 1), which indicates a bug in the engine.
     #[must_use]
     pub fn get(&self, row: usize, col: usize) -> Option<Piece> {
         if row >= types::BOARD_SIZE || col >= types::BOARD_SIZE {
@@ -705,6 +721,10 @@ impl Board {
     /// if no matching legal move exists. This is safer than [`Board::apply`]
     /// because it validates the move against the current position before
     /// applying it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MoveError::Illegal`] if no matching legal move exists.
     pub fn apply_legal(&mut self, mv: &Move) -> Result<(), MoveError> {
         let moves = movegen::generate_legal_moves(&self.inner);
         for legal in &moves {
@@ -726,6 +746,14 @@ impl Board {
     /// or a [`MoveError`] if the coordinates are out of bounds, no legal
     /// move matches, or the match is ambiguous (e.g. an igui and a normal
     /// move to the same square).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MoveError::OutOfBounds`] if any coordinate is outside
+    /// the 36×36 board, [`MoveError::Illegal`] if no matching legal move
+    /// exists, or [`MoveError::Ambiguous`] if multiple legal moves match
+    /// the given coordinates (e.g. an igui and a normal move to the same
+    /// square).
     ///
     /// ```rust,no_run
     /// let mut board = taikyokushogi::Board::initial();

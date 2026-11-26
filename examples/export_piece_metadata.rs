@@ -18,17 +18,17 @@ fn main() {
     }
 
     println!("{{");
-    println!("  \"num_piece_types\": {},", n);
+    println!("  \"num_piece_types\": {n},");
     println!(
         "  \"royal_piece_types\": [{}]",
         royal_types
             .iter()
-            .map(|x| x.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ")
     );
     println!("}}");
 
-    eprintln!("num_piece_types = {}", n);
-    eprintln!("royal_piece_types = {:?}", royal_types);
+    eprintln!("num_piece_types = {n}");
+    eprintln!("royal_piece_types = {royal_types:?}");
 }

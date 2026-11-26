@@ -176,7 +176,7 @@ mod tests {
             Ok(())
         })
         .expect("replay");
-        assert!(summary.games_skipped.is_empty());
+        assert_eq!(summary.games_skipped, [] as [(u64, std::string::String); 0]);
         let total: u64 = matrix.iter().map(|row| row.iter().sum::<u64>()).sum();
         assert_eq!(total as i64, expected, "matrix total == recorded captures");
     }

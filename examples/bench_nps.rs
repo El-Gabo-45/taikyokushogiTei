@@ -41,7 +41,7 @@ fn bench_component<F: FnMut()>(label: &str, iters: usize, mut f: F) -> f64 {
         f();
     }
     let us = t.elapsed().as_micros() as f64 / iters as f64;
-    println!("  {:<30} {:>8.1} us/call  ({} iters)", label, us, iters);
+    println!("  {label:<30} {us:>8.1} us/call  ({iters} iters)");
     us
 }
 
@@ -111,8 +111,7 @@ fn main() {
         let secs = t.elapsed().as_secs_f64();
         let nps = nodes as f64 / secs;
         println!(
-            "  perft({}): {:>12} nodes  {:>8.3}s  {:>12.0} nps",
-            depth, nodes, secs, nps
+            "  perft({depth}): {nodes:>12} nodes  {secs:>8.3}s  {nps:>12.0} nps"
         );
     }
 
@@ -123,7 +122,7 @@ fn main() {
         "depth", "limit", "nodes", "time_ms", "nps"
     );
 
-    for depth in [1u32, 2, 3, 4, 5, 6].iter() {
+    for depth in &[1u32, 2, 3, 4, 5, 6] {
         let mut board = Board::initial();
         let limit_ms = if *depth <= 2 {
             500
@@ -150,7 +149,7 @@ fn main() {
 
     // ── 4. Selfplay NPS (realistic game scenario) ────────────────
     println!("\n── Selfplay NPS (10 moves per depth) ────────────────────────");
-    for depth in [1u32, 2, 3].iter() {
+    for depth in &[1u32, 2, 3] {
         let mut board = Board::initial();
         let t = Instant::now();
         let mut total_nodes = 0u64;
@@ -168,8 +167,7 @@ fn main() {
         let secs = t.elapsed().as_secs_f64();
         let nps = total_nodes as f64 / secs;
         println!(
-            "  depth={}  moves={}  nodes={:>10}  time={:.2}s  nps={:.0}",
-            depth, moves_played, total_nodes, secs, nps
+            "  depth={depth}  moves={moves_played}  nodes={total_nodes:>10}  time={secs:.2}s  nps={nps:.0}"
         );
     }
 
@@ -211,7 +209,7 @@ fn main() {
         );
 
         // Search NPS in midgame
-        for depth in [2u32, 3, 4].iter() {
+        for depth in &[2u32, 3, 4] {
             let mut b = board.clone();
             let t = Instant::now();
             let result = b.search(*depth, 1000);

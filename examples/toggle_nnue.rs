@@ -1,7 +1,7 @@
 //! Shows the evaluator selection: the hand-crafted evaluator by default, an
 //! NNUE network once one is attached to the board — per board, no globals.
 //!
-//! Usage: cargo run --release --example toggle_nnue -- [path/to/net.tkn]
+//! Usage: cargo run --release --example `toggle_nnue` -- [path/to/net.tkn]
 //! Without a path a deterministic random network is used (NOT a playing
 //! network; it only demonstrates the switch).
 

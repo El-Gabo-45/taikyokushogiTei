@@ -16,7 +16,7 @@ fn main() {
     let mut v: Vec<(String, usize)> = by_piece.into_iter().collect();
     v.sort();
     for (name, n) in v {
-        println!("{:>24}  {}", name, n);
+        println!("{name:>24}  {n}");
     }
 
     // duplicate detection: same effect signature

@@ -12,7 +12,7 @@ fn main() {
     }
     println!(
         "game_result: {:.2} us",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
     let t = Instant::now();
     let n = 2000;
@@ -21,7 +21,7 @@ fn main() {
     }
     println!(
         "evaluate: {:.2} us",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
     let t = Instant::now();
     let n = 200;
@@ -30,6 +30,6 @@ fn main() {
     }
     println!(
         "legal_moves: {:.1} us",
-        t.elapsed().as_micros() as f64 / n as f64
+        t.elapsed().as_micros() as f64 / f64::from(n)
     );
 }

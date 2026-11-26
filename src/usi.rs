@@ -1111,7 +1111,7 @@ mod tests {
                 .iter()
                 .any(|l| l.starts_with("option name NetworkFile "))
         );
-        assert_eq!(lines.last().map(|s| s.as_str()), Some("usiok"));
+        assert_eq!(lines.last().map(std::string::String::as_str), Some("usiok"));
         e.handle("isready");
         assert_eq!(sink.last(), "readyok");
     }

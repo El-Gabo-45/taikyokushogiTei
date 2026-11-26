@@ -770,8 +770,7 @@ mod tests {
     fn scratch(name: &str) -> String {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
+            .map_or(0, |d| d.as_nanos());
         std::env::temp_dir()
             .join(format!(
                 "tk_selfplay_{}_{}_{}",
@@ -842,7 +841,7 @@ mod tests {
         // And the sample writer must not have overwritten run 1's files.
         let samples: usize = std::fs::read_dir(&dir)
             .unwrap()
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.file_name().to_string_lossy().starts_with("samples_"))
             .count();
         assert!(samples >= 2, "each run must write its own sample files");
@@ -850,7 +849,7 @@ mod tests {
     }
 
     /// Audit fix B: a writer that cannot even create its output dir must
-    /// surface as a failed run (non-zero exit via run_selfplay), not as a
+    /// surface as a failed run (non-zero exit via `run_selfplay`), not as a
     /// "completed!" message with a lost dataset.
     #[test]
     fn writer_failure_is_reported_not_silenced() {

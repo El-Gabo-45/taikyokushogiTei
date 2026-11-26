@@ -872,11 +872,11 @@ mod tests {
         assert_eq!(crate::types::BLACK, 0);
         assert_eq!(crate::types::WHITE, 1);
         assert!(
-            std::ptr::eq(cfg_for_side(1, &w, &b), &w),
+            std::ptr::eq(cfg_for_side(1, &w, &b), &raw const w),
             "white config plays White (stm 1)"
         );
         assert!(
-            std::ptr::eq(cfg_for_side(0, &w, &b), &b),
+            std::ptr::eq(cfg_for_side(0, &w, &b), &raw const b),
             "black config plays Black (stm 0)"
         );
         // Attribution: BlackWins with A on White is a LOSS for A.

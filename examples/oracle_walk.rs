@@ -1,5 +1,5 @@
 //! Random-walk invariant oracle: after every apply/undo pair, verifies that
-//! the board layout (TSFen), incremental material score and piece counts all
+//! the board layout (`TSFen`), incremental material score and piece counts all
 //! return exactly to the pre-move state. Exercises hooks, range captures,
 //! lions and promotions across a long walk from the initial position.
 use taikyokushogi::{Board, Color};
@@ -72,7 +72,7 @@ fn main() {
                 || back.white != base_snap.white
             {
                 mismatches += 1;
-                println!("BULK UNWIND MISMATCH at ply {}", ply);
+                println!("BULK UNWIND MISMATCH at ply {ply}");
                 if mismatches > 5 {
                     break;
                 }
@@ -80,7 +80,7 @@ fn main() {
             base_snap = snap(&board);
         }
     }
-    println!("checks={} mismatches={}", checks, mismatches);
+    println!("checks={checks} mismatches={mismatches}");
     if mismatches == 0 {
         println!("ORACLE OK");
     }

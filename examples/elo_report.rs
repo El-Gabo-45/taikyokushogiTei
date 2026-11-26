@@ -72,9 +72,9 @@ fn parse_args() -> Args {
             "--maxplies" => a.maxplies = get().parse().unwrap_or_else(|_| die("bad --maxplies")),
             "--open" => a.opening = get().parse().unwrap_or_else(|_| die("bad --open")),
             "--threads" => a.threads = get().parse().unwrap_or_else(|_| die("bad --threads")),
-            "--net" => a.net = Some(get().to_string()),
-            "--json" => a.json = Some(get().to_string()),
-            "--md" => a.md = Some(get().to_string()),
+            "--net" => a.net = Some(get().clone()),
+            "--json" => a.json = Some(get().clone()),
+            "--md" => a.md = Some(get().clone()),
             "--help" | "-h" => {
                 println!("{}", std::fs::read_to_string(file!()).unwrap_or_default());
                 std::process::exit(0);
@@ -176,7 +176,7 @@ fn markdown(args: &Args, rungs: &[Rung], cumulative: &[(f64, f64)], net_label: &
             r.depth, r.wdl.wins, r.wdl.draws, r.wdl.losses, r.elo, cum, cum_margin
         ));
     }
-    let last = cumulative.last().map(|c| c.0).unwrap_or(0.0);
+    let last = cumulative.last().map_or(0.0, |c| c.0);
     out.push_str(&format!(
         "\n**Current default depth ({}) ≈ {:+.0} Elo relative to the depth-1 baseline** \
          under these conditions. Small samples: treat the CI as part of the number.\n",
@@ -189,8 +189,7 @@ fn chrono_date() -> String {
     // No chrono dependency: UTC date from the Unix epoch.
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     let days = secs / 86_400;
     // Civil-from-days (Howard Hinnant's algorithm).
     let z = days as i64 + 719_468;
@@ -238,8 +237,8 @@ fn json_report(args: &Args, rungs: &[Rung], cumulative: &[(f64, f64)], net_label
         args.opening,
         args.threads,
         rungs_json.join(","),
-        cumulative.last().map(|c| c.0).unwrap_or(0.0),
-        cumulative.last().map(|c| c.1).unwrap_or(0.0),
+        cumulative.last().map_or(0.0, |c| c.0),
+        cumulative.last().map_or(0.0, |c| c.1),
     )
 }
 
@@ -251,13 +250,9 @@ fn update_md(path: &str, payload: &str) {
     const BEGIN: &str = "<!-- elo-report:begin -->";
     const END: &str = "<!-- elo-report:end -->";
     let start = text
-        .find(BEGIN)
-        .map(|i| i + BEGIN.len())
-        .unwrap_or_else(|| die(&format!("{path} has no `{BEGIN}` marker")));
+        .find(BEGIN).map_or_else(|| die(&format!("{path} has no `{BEGIN}` marker")), |i| i + BEGIN.len());
     let end = text[start..]
-        .find(END)
-        .map(|i| start + i)
-        .unwrap_or_else(|| die(&format!("{path} has no `{END}` marker")));
+        .find(END).map_or_else(|| die(&format!("{path} has no `{END}` marker")), |i| start + i);
     let updated = format!(
         "{}\n{}\n{}",
         &text[..start],

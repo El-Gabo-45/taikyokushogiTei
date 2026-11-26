@@ -2,7 +2,7 @@
 //! USI front-end binary for the Taikyoku Shogi engine.
 //!
 //! Speaks the Universal Shogi Interface over stdin/stdout so the engine can
-//! be loaded by USI GUIs (ShogiGUI, ShogiHome, Tama, ...) and USI test
+//! be loaded by USI GUIs (`ShogiGUI`, `ShogiHome`, Tama, ...) and USI test
 //! harnesses. The protocol implementation lives in
 //! [`taikyokushogi::usi`](taikyokushogi::usi) — see its docs for the
 //! Taikyoku Shogi profile (TSFEN positions, 36x36 coordinate notation,

@@ -2,7 +2,7 @@
 //! incremental `evaluate()`, full accumulator refresh, and the cost NNUE adds
 //! to `apply` + `undo`.
 //!
-//! Run with: cargo run --release --example nnue_speed -- [path/to/net.tkn]
+//! Run with: cargo run --release --example `nnue_speed` -- [path/to/net.tkn]
 //! (the `nnue bench` tool prints the same numbers).
 
 use std::sync::Arc;
@@ -32,7 +32,7 @@ fn main() {
     let t = Instant::now();
     let mut sink = 0i64;
     for _ in 0..iters {
-        sink += board.evaluate() as i64;
+        sink += i64::from(board.evaluate());
     }
     let inc = t.elapsed() / iters;
 
@@ -44,8 +44,8 @@ fn main() {
     }
     let full = t.elapsed() / refreshes;
 
-    println!("evaluate()  incremental : {:>10.3?}", inc);
-    println!("full refresh            : {:>10.3?}", full);
+    println!("evaluate()  incremental : {inc:>10.3?}");
+    println!("full refresh            : {full:>10.3?}");
     if sink == i64::MIN {
         println!();
     }

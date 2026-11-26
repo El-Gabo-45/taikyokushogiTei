@@ -1,8 +1,8 @@
 //! Production smoke tests for the Taikyoku Shogi engine library.
 //!
 //! These tests exercise the public API directly, verifying the audit-fix items:
-//!   1. igui mid_sq identity — `apply_by_coord` distinguishes moves from the
-//!      same coordinates via mid_sq
+//!   1. igui `mid_sq` identity — `apply_by_coord` distinguishes moves from the
+//!      same coordinates via `mid_sq`
 //!   2. out-of-bounds coordinate rejection — returns `false`, no panic
 //!   3. piece info — `piece_info("P")` returns valid data
 //!   4. board state — `Board::initial()` is well-formed
@@ -21,7 +21,7 @@ use taikyokushogi::{Board, Color};
 fn piece_info_p_returns_valid_data() {
     let info = piece_info("P").expect("piece P must exist");
     assert_eq!(info.abbrev, "P");
-    assert!(!info.name.is_empty());
+    assert_ne!(info.name, "");
     assert!(info.value > 0);
 }
 
@@ -93,7 +93,7 @@ fn apply_by_coord_out_of_bounds_returns_false_no_panic() {
 fn apply_by_coord_legal_move_returns_true() {
     let mut board = Board::initial();
     let moves = board.legal_moves();
-    assert!(!moves.is_empty());
+    assert_ne!(moves, [] as [taikyokushogi::Move; 0]);
     let m = &moves[0];
     let raw = m.raw();
     let fr = raw.from_sq as usize / 36;
@@ -111,7 +111,7 @@ fn apply_by_coord_legal_move_returns_true() {
 fn apply_by_coord_mid_sq_rejects_mismatch() {
     let mut board = Board::initial();
     let moves = board.legal_moves();
-    assert!(!moves.is_empty());
+    assert_ne!(moves, [] as [taikyokushogi::Move; 0]);
     let m = &moves[0];
     let raw = m.raw();
     let fr = raw.from_sq as usize / 36;
@@ -172,8 +172,7 @@ fn search_config_all_toggles_work() {
         let r = board.search_with(&mut s, 1, 0);
         assert!(
             r.best_move.is_some(),
-            "search with {} disabled must return a move",
-            name
+            "search with {name} disabled must return a move"
         );
     }
 }

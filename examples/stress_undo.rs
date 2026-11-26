@@ -17,7 +17,7 @@ fn main() {
         }
     }
     let baseline = counts(&board);
-    println!("midgame counts = {:?}", baseline);
+    println!("midgame counts = {baseline:?}");
 
     // 2) LIFO walk: push random (first legal) moves, then unwind all, check
     //    counts return exactly to baseline after each full unwind.
@@ -40,8 +40,7 @@ fn main() {
             let back = counts(&board);
             if back != baseline {
                 println!(
-                    "MISMATCH after unwinding trial={} midgame-baseline={:?} got={:?}",
-                    trial, baseline, back
+                    "MISMATCH after unwinding trial={trial} midgame-baseline={baseline:?} got={back:?}"
                 );
                 mismatches += 1;
                 if mismatches > 5 {

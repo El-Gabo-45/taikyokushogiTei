@@ -7,9 +7,9 @@
 //! only compare two search configurations of the *same* binary.
 //!
 //! Usage:
-//!   cargo run --release --example version_race -- [args]
+//!   cargo run --release --example `version_race` -- [args]
 //!
-//! Positional args:  games [depth] [time_ms] [opening_plies] [maxplies]
+//! Positional args:  games [depth] [`time_ms`] [`opening_plies`] [maxplies]
 //! Optional flags:   engineA=PATH    executable of side A (required)
 //!                   engineB=PATH    executable of side B (required)
 //!                   netA=PATH       side A NNUE network (`--net`)
@@ -25,7 +25,7 @@
 //!
 //! Examples:
 //!   # current build vs the previous commit (as built by `make version-race`)
-//!   cargo run --release --example version_race -- 40 2 2000 6 \
+//!   cargo run --release --example `version_race` -- 40 2 2000 6 \
 //!     engineA=target/release/taikyokushogi-cli \
 //!     engineB=target/version-race/target/release/taikyokushogi-cli
 //!   # SPRT: is the new version at least +10 Elo?
@@ -638,7 +638,7 @@ fn run() -> i32 {
         wdl.wins += w;
         wdl.draws += d;
         wdl.losses += l;
-        plies_total += plies as u64;
+        plies_total += u64::from(plies);
         println!(
             "game {:>3}: {}{} ({} plies)",
             game + 1,

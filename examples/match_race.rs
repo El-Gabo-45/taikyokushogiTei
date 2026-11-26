@@ -6,22 +6,22 @@
 //!   - (optional) GSPRT likelihood ratio for early accept/stop
 //!
 //! Usage:
-//!   cargo run --release --example match_race -- [args]
+//!   cargo run --release --example `match_race` -- [args]
 //!
-//! Positional args:  games [depthA] [depthB] [time_ms] [opening_plies]
+//! Positional args:  games [depthA] [depthB] [`time_ms`] [`opening_plies`]
 //! Optional flags:   netA=PATH    side A uses this NNUE network (TKN1 file)
 //!                   netB=PATH    side B uses this NNUE network
 //!                   sprt=elo0:elo1   run a GSPRT (alpha=0.05, beta=0.10)
 //!
 //! Examples:
 //!   # depth 3 vs depth 2, 100 games, Elo + CI every 10 games
-//!   cargo run --release --example match_race -- 100 3 2 2000 6
+//!   cargo run --release --example `match_race` -- 100 3 2 2000 6
 //!   # SPRT test: is depth 3 >= +10 Elo over depth 2?
-//!   cargo run --release --example match_race -- 400 3 2 2000 6 sprt=0:10
+//!   cargo run --release --example `match_race` -- 400 3 2 2000 6 sprt=0:10
 //!   # handcrafted (A) vs NNUE (B)
-//!   cargo run --release --example match_race -- 100 3 3 2000 6 netB=nets/net.tkn
+//!   cargo run --release --example `match_race` -- 100 3 3 2000 6 netB=nets/net.tkn
 //!   # two different networks head to head
-//!   cargo run --release --example match_race -- 100 3 3 2000 6 netA=a.tkn netB=b.tkn
+//!   cargo run --release --example `match_race` -- 100 3 3 2000 6 netA=a.tkn netB=b.tkn
 //!
 //! The game results are deterministic (seeded LCG), so a given invocation
 //! is reproducible. For publishable claims use the SPRT mode with standard
@@ -204,7 +204,7 @@ fn main() {
         } else if let Ok(v) = a.parse::<u64>() {
             pos.push(v);
         } else {
-            eprintln!("warning: ignored arg `{}`", a);
+            eprintln!("warning: ignored arg `{a}`");
         }
     }
     let games = pos.first().copied().unwrap_or(100) as usize;
@@ -233,7 +233,7 @@ fn main() {
         if cfg_b.net.is_some() { "+nnue" } else { "" },
         cfg_b.time_ms,
         opening_plies,
-        sprt.map(|(e0, e1)| format!(" | SPRT [{},{}] a=0.05 b=0.10", e0, e1))
+        sprt.map(|(e0, e1)| format!(" | SPRT [{e0},{e1}] a=0.05 b=0.10"))
             .unwrap_or_default(),
     );
 
@@ -272,14 +272,14 @@ fn main() {
             match sprt {
                 Some(_) => {
                     let llr = gsprt_llr(&stats, elo0, elo1);
-                    println!("{}  LLR={:+.2}", line, llr);
+                    println!("{line}  LLR={llr:+.2}");
                     if llr >= upper {
                         println!(
                             "
 === SPRT: H1 ACCEPTED — {} is stronger (>= +{} Elo) ===",
                             cfg_a.name, elo1
                         );
-                        println!("final: {}", line);
+                        println!("final: {line}");
                         return;
                     }
                     if llr <= lower {
@@ -288,11 +288,11 @@ fn main() {
 === SPRT: H0 ACCEPTED — no evidence that {} is >= +{} Elo ===",
                             cfg_a.name, elo1
                         );
-                        println!("final: {}", line);
+                        println!("final: {line}");
                         return;
                     }
                 }
-                None => println!("{}", line),
+                None => println!("{line}"),
             }
         }
     }

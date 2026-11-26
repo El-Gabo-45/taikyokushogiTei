@@ -313,8 +313,7 @@ mod tests {
         let actual = tt.resize_mb(8);
         assert!(
             (4..=8).contains(&actual),
-            "8 MiB request rounded to {} MiB",
-            actual
+            "8 MiB request rounded to {actual} MiB"
         );
         assert_eq!(tt.size_mb(), actual);
         // A store/probe round-trip must survive the resize.

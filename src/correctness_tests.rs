@@ -208,14 +208,12 @@ fn apply_undo_restores_state() {
         assert_eq!(
             board.to_tsfen(),
             before_tsfen,
-            "cells diverged at ply {}",
-            ply
+            "cells diverged at ply {ply}"
         );
         assert_eq!(
             board.material_score(),
             before_mat,
-            "material diverged at ply {}",
-            ply
+            "material diverged at ply {ply}"
         );
         assert_eq!(
             (
@@ -223,8 +221,7 @@ fn apply_undo_restores_state() {
                 board.piece_count(Color::White)
             ),
             before_counts,
-            "piece counts diverged at ply {}",
-            ply
+            "piece counts diverged at ply {ply}"
         );
         board.apply(&moves[(ply * 7919 + 13) % moves.len()]);
     }
@@ -261,7 +258,7 @@ fn put(b: &mut IntBoard, row: usize, col: usize, pt: u16, color: u8) {
 fn find_piece(name: &str) -> u16 {
     (1..=301u16)
         .find(|&pt| pieces::name(pt) == name)
-        .unwrap_or_else(|| panic!("piece `{}` not found in PIECE_DEFS", name))
+        .unwrap_or_else(|| panic!("piece `{name}` not found in PIECE_DEFS"))
 }
 
 fn moves_from(b: &IntBoard, row: usize, col: usize) -> Vec<Move> {
@@ -321,9 +318,9 @@ fn undo_restores_hash_and_scores_every_ply() {
         }
         b.apply_move(&moves[rng.pick(moves.len())]);
         b.undo_move();
-        assert_eq!(b.hash, h, "hash diverged at ply {}", ply);
-        assert_eq!(b.material_score, mat, "material diverged at ply {}", ply);
-        assert_eq!(b.psqt_score, psqt, "psqt diverged at ply {}", ply);
+        assert_eq!(b.hash, h, "hash diverged at ply {ply}");
+        assert_eq!(b.material_score, mat, "material diverged at ply {ply}");
+        assert_eq!(b.psqt_score, psqt, "psqt diverged at ply {ply}");
         b.apply_move(&moves[(ply * 104_729) % moves.len()]);
     }
 }
@@ -340,7 +337,7 @@ fn zobrist_transposition_independent_moves() {
     };
     let mut b = initial_int();
     let mvs = movegen::generate_legal_moves(&b);
-    let quiet_black: Vec<Move> = mvs.iter().filter(|m| quiet(m)).cloned().collect();
+    let quiet_black: Vec<Move> = mvs.iter().filter(|m| quiet(m)).copied().collect();
 
     // find two black quiets with fully disjoint squares
     let mut found = None;
@@ -421,7 +418,7 @@ fn draw_by_no_progress_rule() {
 #[test]
 fn losing_last_royal_loses() {
     let mut b = initial_int();
-    for slot in b.cells.iter_mut() {
+    for slot in &mut b.cells {
         let cell = *slot;
         if cell != EMPTY_CELL && cell_color(cell) == WHITE && pieces::is_royal(cell_piece(cell)) {
             *slot = EMPTY_CELL;
@@ -535,10 +532,7 @@ fn pawn_promotion_variants_follow_zone_rules() {
         assert_eq!(
             matching.len(),
             variants,
-            "black pawn {}->{}: expected {} variants",
-            start,
-            dest,
-            variants
+            "black pawn {start}->{dest}: expected {variants} variants"
         );
         if promo_only {
             assert!(
@@ -571,10 +565,7 @@ fn white_pawn_promotion_mirrors_black() {
         assert_eq!(
             matching.len(),
             variants,
-            "white pawn {}->{}: expected {} variants",
-            start,
-            dest,
-            variants
+            "white pawn {start}->{dest}: expected {variants} variants"
         );
         if promo_only {
             assert!(matching.iter().all(|m| m.promotion));
@@ -654,7 +645,7 @@ fn material_score_matches_piece_sum() {
     let mut rng = Lcg(0xFACE);
     for check in 0..26 {
         let mut sum = 0i32;
-        for &cell in b.cells.iter() {
+        for &cell in &b.cells {
             if cell != EMPTY_CELL {
                 let v = pieces::value(cell_piece(cell));
                 if cell_color(cell) == BLACK {
@@ -990,15 +981,13 @@ fn piece_type_table_is_complete() {
     for i in 1..crate::num_piece_types() as u16 {
         assert!(
             !crate::pieces::abbrev(i).is_empty(),
-            "type {} abbreviation empty",
-            i
+            "type {i} abbreviation empty"
         );
         assert!(
             crate::pieces::value(i) > 0,
-            "type {} value must be positive",
-            i
+            "type {i} value must be positive"
         );
-        assert!(!crate::pieces::name(i).is_empty(), "type {} name empty", i);
+        assert!(!crate::pieces::name(i).is_empty(), "type {i} name empty");
     }
 }
 
@@ -1106,7 +1095,7 @@ fn undo_to_start_restores_initial_tsfen() {
 #[test]
 fn elo_expected_and_elo_roundtrip() {
     let e = crate::elo::expected_score(200.0);
-    assert!(e > 0.7 && e < 0.8, "+200 Elo ≈ 0.76, got {}", e);
+    assert!(e > 0.7 && e < 0.8, "+200 Elo ≈ 0.76, got {e}");
     let back = crate::elo::elo_from_score(e);
     assert!((back - 200.0).abs() < 1e-6);
     // WDL of all draws → exactly 0 Elo

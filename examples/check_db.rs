@@ -18,8 +18,7 @@ fn main() {
     for r in rows {
         let (id, result, moves, depth, dur) = r.unwrap();
         println!(
-            "Game {}: result={} moves={} depth={} ms={}",
-            id, result, moves, depth, dur
+            "Game {id}: result={result} moves={moves} depth={depth} ms={dur}"
         );
     }
     let mut stmt2 = conn.prepare("SELECT game_id, move_number, from_sq, to_sq, promo, captured, side FROM moves LIMIT 10").unwrap();
@@ -39,8 +38,7 @@ fn main() {
     for r in rows2 {
         let (gid, mn, from, to, promo, cap, side) = r.unwrap();
         println!(
-            "  Move: game={} #{} from={} to={} promo={} cap={} side={}",
-            gid, mn, from, to, promo, cap, side
+            "  Move: game={gid} #{mn} from={from} to={to} promo={promo} cap={cap} side={side}"
         );
     }
 }

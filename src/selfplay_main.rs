@@ -17,8 +17,8 @@ fn main() {
         .cloned()
         .unwrap_or_else(|| "training_data".to_string());
     println!("=== Taikyoku Shogi Self-Play ===");
-    println!("Games:         {}", num_games);
-    println!("Depth:         {}", depth);
+    println!("Games:         {num_games}");
+    println!("Depth:         {depth}");
     println!(
         "Max moves:     {}",
         if max_moves == 0 {
@@ -27,10 +27,10 @@ fn main() {
             max_moves.to_string()
         }
     );
-    println!("Workers:       {}", num_workers);
-    println!("Time limit/ms: {}", time_limit_ms);
-    println!("Data:          {}/", out_dir_for_print);
-    println!("SQLite:        {}/games.db", out_dir_for_print);
+    println!("Workers:       {num_workers}");
+    println!("Time limit/ms: {time_limit_ms}");
+    println!("Data:          {out_dir_for_print}/");
+    println!("SQLite:        {out_dir_for_print}/games.db");
     println!();
 
     // Optional flags: --net PATH  --opening-plies N  --seed N  --out DIR
@@ -60,7 +60,7 @@ fn main() {
         max_moves,
         output_dir: out_dir.clone(),
         save_interval: 100,
-        sqlite_path: Some(format!("{}/games.db", out_dir)),
+        sqlite_path: Some(format!("{out_dir}/games.db")),
     };
 
     run_selfplay(Some(config));

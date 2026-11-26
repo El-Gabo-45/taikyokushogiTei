@@ -28,7 +28,7 @@ fn main() {
 
     for move_no in 0..max_moves {
         if let Some(result) = board.game_result() {
-            println!("\nGame over at move {}: {:?}", move_no, result);
+            println!("\nGame over at move {move_no}: {result:?}");
             break;
         }
 
@@ -60,9 +60,9 @@ fn main() {
     let ms = elapsed.as_millis() as u64;
     println!();
     println!("=== Results ===");
-    println!("Moves played: {}", total_moves);
-    println!("Total nodes: {}", total_nodes);
-    println!("Total time: {}ms", ms);
+    println!("Moves played: {total_moves}");
+    println!("Total nodes: {total_nodes}");
+    println!("Total time: {ms}ms");
     if ms > 0 {
         println!(
             "Search speed: {:.0} nps",

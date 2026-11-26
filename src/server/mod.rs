@@ -62,6 +62,7 @@ pub enum AnonPolicy {
 impl AnonPolicy {
     /// Parse a policy name (`auto`, `error` or `shared`,
     /// case-insensitive). `None` for anything else.
+    #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "auto" => Some(Self::Auto),
@@ -72,6 +73,7 @@ impl AnonPolicy {
     }
 
     /// Canonical name of this policy (`TAIKYOKU_ANON` value).
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Auto => "auto",
@@ -198,6 +200,7 @@ impl SessionMap {
 
 /// Create the initial [`AppState`] used by [`build_router`] and [`run`]
 /// (configuration comes from the `TAIKYOKU_*` environment variables).
+#[must_use]
 pub fn new_state() -> Arc<AppState> {
     new_state_with_network(None)
 }
@@ -206,6 +209,7 @@ pub fn new_state() -> Arc<AppState> {
 ///
 /// The network is stored in the game state (not just on the initial board) so
 /// it survives `new game`, TSFEN loads and undo.
+#[must_use]
 pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
     // Invalid environment configuration must abort startup, never degrade the
     // CORS policy (same policy as the TAIKYOKU_NET/bind handling in `run`).
@@ -226,6 +230,7 @@ pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
 
 /// [`new_state`] with fully explicit configuration (tests and embedders that
 /// must not depend on the process environment).
+#[must_use]
 pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> Arc<AppState> {
     let sessions = cfg.sessions.then(|| SessionMap {
         games: Mutex::new(HashMap::new()),
@@ -242,6 +247,7 @@ pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> 
 
 /// Whether per-session games are requested: `TAIKYOKU_SESSIONS` set to a
 /// truthy value (`1`, `true`, `on`, `yes` — case-insensitive).
+#[must_use]
 pub fn sessions_enabled() -> bool {
     match std::env::var("TAIKYOKU_SESSIONS") {
         Ok(v) => matches!(
@@ -262,6 +268,7 @@ fn max_sessions() -> Option<usize> {
 /// Anonymous-request policy for session mode from `TAIKYOKU_ANON`
 /// (`auto` | `error` | `shared`). Unset or unrecognized values fall back to
 /// the safe default [`AnonPolicy::Auto`].
+#[must_use]
 pub fn anon_policy_env() -> AnonPolicy {
     std::env::var("TAIKYOKU_ANON")
         .ok()
@@ -423,10 +430,12 @@ pub struct GameState {
 }
 
 impl GameState {
+    #[must_use]
     pub fn new() -> Self {
         Self::new_with_network(None)
     }
 
+    #[must_use]
     pub fn new_with_network(net: Option<Arc<Network>>) -> Self {
         let mut board = Board::initial();
         board.set_network(net.clone());
@@ -474,6 +483,7 @@ impl Default for GameState {
 // ============================================================
 
 /// Serialize the board for the client.
+#[must_use]
 pub fn board_to_response(state: &GameState) -> BoardResponse {
     let mut board_data = Vec::with_capacity(crate::BOARD_SIZE);
     for r in 0..crate::BOARD_SIZE {
@@ -520,6 +530,7 @@ pub fn board_to_response(state: &GameState) -> BoardResponse {
 
 /// Legal destinations for the piece on `(r, c)`. Empty when the square is
 /// empty or holds a piece of the side *not* to move.
+#[must_use]
 pub fn get_moves_for_square(state: &GameState, r: usize, c: usize) -> Vec<MoveData> {
     let cell = state.board.get(r, c);
     match cell {
@@ -541,7 +552,7 @@ pub fn get_moves_for_square(state: &GameState, r: usize, c: usize) -> Vec<MoveDa
                     to: [to.row, to.col],
                     promotion: m.is_promotion(),
                     is_igui: m.is_igui(),
-                    captured: m.captured().map(|s| s.to_string()),
+                    captured: m.captured().map(std::string::ToString::to_string),
                     mid_sq: m.mid_sq(),
                 });
             }
@@ -767,9 +778,7 @@ async fn sessions_middleware(
 
 /// Directory holding the built frontend (`TAIKYOKU_DIST` overrides).
 pub fn dist_dir() -> std::path::PathBuf {
-    std::env::var("TAIKYOKU_DIST")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("web/dist"))
+    std::env::var("TAIKYOKU_DIST").map_or_else(|_| std::path::PathBuf::from("web/dist"), std::path::PathBuf::from)
 }
 
 /// SPA fallback: serve `index.html` for unknown non-API paths.
@@ -887,8 +896,7 @@ mod cors_config_tests {
     #[test]
     fn cors_env_reports_the_offending_entry() {
         // The error must point at the malformed entry, not drop it silently.
-        let err =
-            parse_cors_origin("htp:/oops").expect("parse error must occur for malformed input");
+        let err = parse_cors_origin("htp:/oops").unwrap_err();
         assert!(err.contains("htp:/oops"), "error names the entry: {err}");
     }
 }

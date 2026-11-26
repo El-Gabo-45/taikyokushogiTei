@@ -75,7 +75,7 @@ fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
         .position(|a| a == name)
         .and_then(|i| args.get(i + 1))
-        .map(|s| s.as_str())
+        .map(std::string::String::as_str)
 }
 
 fn load(path: &str) -> Network {
@@ -129,14 +129,14 @@ fn cmd_gen_classes(args: &[String]) {
             .collect(),
         None => old["thresholds_pieces"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_u64()).collect())
+            .map(|a| a.iter().filter_map(serde_json::Value::as_u64).collect())
             .filter(|v: &Vec<u64>| v.len() == 7)
             .unwrap_or_else(|| vec![102, 203, 304, 405, 506, 607, 708]),
     };
     let eval_limit = old["eval_limit"].as_i64().unwrap_or(250_000);
     let map = classes::generate_class_map();
-    let cm: Vec<String> = map.iter().map(|c| c.to_string()).collect();
-    let th: Vec<String> = thresholds.iter().map(|t| t.to_string()).collect();
+    let cm: Vec<String> = map.iter().map(std::string::ToString::to_string).collect();
+    let th: Vec<String> = thresholds.iter().map(std::string::ToString::to_string).collect();
     let json = format!(
         "{{\n  \"format\": \"TKN1\",\n  \"version\": 2,\n  \"num_squares\": 1296,\n  \"l1\": 256,\n  \"out_buckets\": 8,\n  \"ft_shift\": 6,\n  \"fv_scale\": 16,\n  \"eval_limit\": {},\n  \"num_classes\": {},\n  \"class_map\": [{}],\n  \"class_values\": [{}],\n  \"thresholds_pieces\": [{}]\n}}\n",
         eval_limit,
@@ -144,7 +144,7 @@ fn cmd_gen_classes(args: &[String]) {
         cm.join(", "),
         classes::class_values(&map)
             .iter()
-            .map(|v| v.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>()
             .join(", "),
         th.join(", ")
@@ -163,7 +163,7 @@ fn hex(b: &[u8]) -> String {
 }
 
 fn cmd_info(path: &str) {
-    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    let size = std::fs::metadata(path).map_or(0, |m| m.len());
     let compressed = std::fs::File::open(path)
         .and_then(|mut f| {
             let mut magic = [0u8; 4];
@@ -277,7 +277,7 @@ fn cmd_dump(args: &[String]) {
 
 /// One line of the `nnue explain` report.
 fn explain_line(label: &str, value: &str) {
-    println!("{:<10}{}", label, value);
+    println!("{label:<10}{value}");
 }
 
 /// `nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]` — Stockfish-style
@@ -286,9 +286,7 @@ fn explain_line(label: &str, value: &str) {
 fn cmd_explain(args: &[String]) {
     let net_path = args
         .first()
-        .filter(|a| !a.starts_with("--"))
-        .map(|s| s.as_str())
-        .unwrap_or_else(|| die("usage: nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]"));
+        .filter(|a| !a.starts_with("--")).map_or_else(|| die("usage: nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]"), std::string::String::as_str);
     let net = Arc::new(load(net_path));
     let mut board = Board::initial();
     if let Some(fen) = flag(args, "--tsfen") {
@@ -428,9 +426,9 @@ fn cmd_bench(path: Option<&str>) {
     let t = Instant::now();
     let mut acc = 0i64;
     for _ in 0..iters {
-        acc += board.evaluate() as i64;
+        acc += i64::from(board.evaluate());
     }
-    let ev = t.elapsed().as_secs_f64() / iters as f64;
+    let ev = t.elapsed().as_secs_f64() / f64::from(iters);
 
     let t = Instant::now();
     let refreshes = 200u32;
@@ -438,7 +436,7 @@ fn cmd_bench(path: Option<&str>) {
         board.set_network(None);
         board.set_network(Some(net.clone()));
     }
-    let rf = t.elapsed().as_secs_f64() / refreshes as f64;
+    let rf = t.elapsed().as_secs_f64() / f64::from(refreshes);
 
     let moves = board.legal_moves();
     let t = Instant::now();
@@ -447,14 +445,14 @@ fn cmd_bench(path: Option<&str>) {
         board.apply(&moves[i as usize % moves.len()]);
         board.undo();
     }
-    let au_nnue = t.elapsed().as_secs_f64() / au_iters as f64;
+    let au_nnue = t.elapsed().as_secs_f64() / f64::from(au_iters);
     board.set_network(None);
     let t = Instant::now();
     for i in 0..au_iters {
         board.apply(&moves[i as usize % moves.len()]);
         board.undo();
     }
-    let au_classic = t.elapsed().as_secs_f64() / au_iters as f64;
+    let au_classic = t.elapsed().as_secs_f64() / f64::from(au_iters);
 
     println!(
         "evaluate()  incremental {:8.2} us  ({:.0} evals/s)",
@@ -472,7 +470,7 @@ fn cmd_bench(path: Option<&str>) {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
-    match args.first().map(|s| s.as_str()) {
+    match args.first().map(std::string::String::as_str) {
         Some("classes") => cmd_classes(),
         Some("gen-classes") => cmd_gen_classes(rest),
         Some("info") => cmd_info(
@@ -494,11 +492,11 @@ fn main() {
         }
         Some("dump-positions") => cmd_dump(rest),
         Some("explain") => cmd_explain(rest),
-        Some("bench") => cmd_bench(rest.first().map(|s| s.as_str())),
+        Some("bench") => cmd_bench(rest.first().map(std::string::String::as_str)),
         Some("multipv") => taikyokushogi::research::multipv::run(rest).unwrap_or_else(|e| die(e)),
         Some("tree") => taikyokushogi::research::tree::run(rest).unwrap_or_else(|e| die(e)),
         Some("stability") => {
-            taikyokushogi::research::stability::run(rest).unwrap_or_else(|e| die(e))
+            taikyokushogi::research::stability::run(rest).unwrap_or_else(|e| die(e));
         }
         Some("critical") => taikyokushogi::research::critical::run(rest).unwrap_or_else(|e| die(e)),
         Some("pieces") => taikyokushogi::research::pieces::run(rest).unwrap_or_else(|e| die(e)),

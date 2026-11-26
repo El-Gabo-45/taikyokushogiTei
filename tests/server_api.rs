@@ -233,7 +233,7 @@ async fn state_contains_king_with_royal_flag() {
             if !cell.is_null() && cell["is_royal"] == true {
                 kings += 1;
                 assert!(cell["value"].as_i64().unwrap() > 0);
-                assert!(!cell["name"].as_str().unwrap().is_empty());
+                assert_ne!(cell["name"].as_str().unwrap(), "");
             }
         }
     }

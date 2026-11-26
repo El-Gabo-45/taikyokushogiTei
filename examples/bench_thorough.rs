@@ -48,9 +48,7 @@ fn run_search(board: &mut Board, depth: u32, time_limit_ms: u64) -> RunStats {
         score: result.score,
         overshoot_ms: overshoot,
         best_move: result
-            .best_move
-            .map(|m| format!("{}", m))
-            .unwrap_or_else(|| "none".to_string()),
+            .best_move.map_or_else(|| "none".to_string(), |m| format!("{m}")),
     }
 }
 
@@ -61,7 +59,7 @@ fn median(vals: &mut [f64]) -> f64 {
     vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = vals.len() / 2;
     if vals.len() % 2 == 0 {
-        (vals[mid - 1] + vals[mid]) / 2.0
+        f64::midpoint(vals[mid - 1], vals[mid])
     } else {
         vals[mid]
     }
@@ -90,10 +88,10 @@ fn benchmark_depth(label: &str, board_factory: &dyn Fn() -> Board, depth: u32, t
     let med_time = median(&mut times);
     let med_nps = median(&mut nps_all);
     let med_overshoot = median(&mut overshoots);
-    let min_time = times.iter().cloned().fold(f64::MAX, |a: f64, b| a.min(b));
-    let max_time = times.iter().cloned().fold(0.0f64, |a, b| a.max(b));
-    let min_nps = nps_all.iter().cloned().fold(f64::MAX, |a: f64, b| a.min(b));
-    let max_nps = nps_all.iter().cloned().fold(0.0f64, |a, b| a.max(b));
+    let min_time = times.iter().copied().fold(f64::MAX, |a: f64, b| a.min(b));
+    let max_time = times.iter().copied().fold(0.0f64, f64::max);
+    let min_nps = nps_all.iter().copied().fold(f64::MAX, |a: f64, b| a.min(b));
+    let max_nps = nps_all.iter().copied().fold(0.0f64, f64::max);
 
     let moves_set: std::collections::BTreeSet<String> = moves.into_iter().collect();
     let move_str = if moves_set.len() <= 3 {
@@ -149,7 +147,7 @@ fn reach_position(plies: usize) -> Board {
 fn main() {
     println!("============================================================");
     println!("  Taikyoku Shogi — Thorough Performance Benchmark");
-    println!("  {} runs per depth, median reported", RUNS_PER_DEPTH);
+    println!("  {RUNS_PER_DEPTH} runs per depth, median reported");
     println!("============================================================\n");
 
     let now = Instant::now();
@@ -232,6 +230,6 @@ fn main() {
 
     let total_s = now.elapsed().as_secs_f64();
     println!("\n============================================================");
-    println!("  Total benchmark time: {:.1}s", total_s);
+    println!("  Total benchmark time: {total_s:.1}s");
     println!("============================================================");
 }

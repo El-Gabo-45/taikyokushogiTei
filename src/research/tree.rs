@@ -147,7 +147,7 @@ mod tests {
             .filter(|g| g["pruned"].is_string())
             .collect();
         assert!(!pruned.is_empty(), "exhausted budget leaves pruned stubs");
-        assert!(budget == 0);
+        assert_eq!(budget, 0);
     }
 
     /// A tiny budget on a fresh root still yields valid JSON.

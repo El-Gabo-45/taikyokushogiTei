@@ -302,8 +302,7 @@ mod tests {
             assert_eq!(
                 classify(piece_type),
                 classify_fast(piece_type),
-                "Mismatch for piece_type {}",
-                piece_type
+                "Mismatch for piece_type {piece_type}"
             );
         }
     }
@@ -315,14 +314,13 @@ mod tests {
             assert_eq!(
                 family_value(piece_type),
                 family_value_fast(piece_type),
-                "Mismatch for piece_type {}",
-                piece_type
+                "Mismatch for piece_type {piece_type}"
             );
         }
     }
 
     /// Out-of-range piece types must not panic or return stale data.
-    /// PIECE_TYPE_COUNT (301) is a valid piece type; 302 and above are not.
+    /// `PIECE_TYPE_COUNT` (301) is a valid piece type; 302 and above are not.
     #[test]
     fn test_fast_functions_reject_out_of_range() {
         assert_eq!(classify_fast((PIECE_TYPE_COUNT + 1) as u16), Family::Other);

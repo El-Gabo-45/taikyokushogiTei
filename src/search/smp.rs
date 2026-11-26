@@ -313,8 +313,8 @@ mod tests {
             r2.nodes
         );
         assert_eq!(
-            r1.best_move.as_ref().map(|m| m.to_string()),
-            r2.best_move.as_ref().map(|m| m.to_string())
+            r1.best_move.as_ref().map(std::string::ToString::to_string),
+            r2.best_move.as_ref().map(std::string::ToString::to_string)
         );
     }
 

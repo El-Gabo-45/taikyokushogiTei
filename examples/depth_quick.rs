@@ -16,7 +16,7 @@ fn bench(name: &str, iters: u32, mut f: impl FnMut()) {
     println!(
         "  {:22} {:>8.1} us/iter  ({} iters)",
         name,
-        us / iters as f64,
+        us / f64::from(iters),
         iters
     );
 }
@@ -24,7 +24,7 @@ fn bench(name: &str, iters: u32, mut f: impl FnMut()) {
 fn main() {
     let board = Board::initial();
     let n_moves = board.legal_moves().len();
-    println!("initial: {} legal moves", n_moves);
+    println!("initial: {n_moves} legal moves");
 
     // NOTE: board setup is OUTSIDE the closure — we measure only the op.
     bench("legal_moves()", 200, || {
@@ -54,7 +54,7 @@ fn main() {
         println!(
             "  {:22} {:>8.1} us/iter  ({} iters)",
             "apply()+undo()",
-            us / iters as f64,
+            us / f64::from(iters),
             iters
         );
     }

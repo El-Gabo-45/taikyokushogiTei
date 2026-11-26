@@ -12,5 +12,5 @@ fn main() {
             s.contains('x') || s.contains('+') // crude capture/promo marker
         })
         .count();
-    println!("approx captures/promos (by notation) = {}", cap);
+    println!("approx captures/promos (by notation) = {cap}");
 }

@@ -16,7 +16,7 @@ const RUNS: usize = 2000;
 fn main() {
     println!("============================================================");
     println!("  Taikyoku Shogi — Depth-1 NPS Variance Benchmark");
-    println!("  {} runs per position", RUNS);
+    println!("  {RUNS} runs per position");
     println!("============================================================\n");
 
     // ── Initial position ────────────────────────────────────────
@@ -100,9 +100,9 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
     };
     let min_nps = per_run_nps
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::MAX, |a: f64, b| a.min(b));
-    let max_nps = per_run_nps.iter().cloned().fold(0.0f64, |a, b| a.max(b));
+    let max_nps = per_run_nps.iter().copied().fold(0.0f64, f64::max);
     let mut sorted_nps = per_run_nps.clone();
     sorted_nps.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median_nps = sorted_nps[sorted_nps.len() / 2];
@@ -123,9 +123,9 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
     let mean_us = per_run_us.iter().sum::<f64>() / per_run_us.len() as f64;
     let min_us = per_run_us
         .iter()
-        .cloned()
+        .copied()
         .fold(f64::MAX, |a: f64, b| a.min(b));
-    let max_us = per_run_us.iter().cloned().fold(0.0f64, |a, b| a.max(b));
+    let max_us = per_run_us.iter().copied().fold(0.0f64, f64::max);
     let mut sorted_us = per_run_us.clone();
     sorted_us.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median_us = sorted_us[sorted_us.len() / 2];
@@ -149,7 +149,7 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
         total_nodes,
         total_us as f64 / 1000.0
     );
-    println!("    aggregate NPS: {:.0}", agg_nps);
+    println!("    aggregate NPS: {agg_nps:.0}");
     println!(
         "    per-run NPS:   min={:.0}  median={:.0}  mean={:.0}  max={:.0}  stddev={:.0}  ({} samples)",
         min_nps,
@@ -160,9 +160,8 @@ fn bench_depth1(label: &str, board_factory: &dyn Fn() -> Board) {
         per_run_nps.len()
     );
     println!(
-        "    per-run time:  min={:.1}us  median={:.1}us  mean={:.1}us  max={:.1}us",
-        min_us, median_us, mean_us, max_us
+        "    per-run time:  min={min_us:.1}us  median={median_us:.1}us  mean={mean_us:.1}us  max={max_us:.1}us"
     );
-    println!("    nodes/run:     {}", nodes_str);
+    println!("    nodes/run:     {nodes_str}");
     println!();
 }

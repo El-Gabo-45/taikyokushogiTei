@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{Board, Color, GameResult, Move as EngineMove};
 
-use crate::server::types::*;
+use crate::server::types::{MoveData, MoveResponse, HealthResponse, BoardResponse, HistoryResponse, StatusResponse, MoveQuery, MoveListResponse, EvalResponse, EngineInfoResponse, PieceInfoResponse, PieceListResponse, PositionResponse, LoadBody, SaveBody, NewGameResponse, MoveBody, LastMoveData, AiMoveBody, SearchStats, SearchBody, SearchResponse, UndoBody, UndoResponse};
 use crate::server::{GameState as ServerGameState, SessionGame, apply_move_to_board, record_move};
 
 // ============================================================
@@ -72,7 +72,7 @@ impl IntoResponse for ApiError {
 const BOARD: usize = crate::BOARD_SIZE;
 
 /// Clamp client-controlled search limits: unbounded depth/time on a 36×36
-/// board with 500+ legal moves is a trivial local DoS.
+/// board with 500+ legal moves is a trivial local `DoS`.
 const MAX_DEPTH: u32 = 8;
 const MAX_TIME_MS: u64 = 120_000;
 const DEFAULT_TIME_MS: u64 = 30_000;
@@ -107,7 +107,7 @@ fn move_to_data(mv: &EngineMove, include_from: bool) -> MoveData {
         },
         promotion: mv.is_promotion(),
         is_igui: mv.is_igui(),
-        captured: mv.captured().map(|s| s.to_string()),
+        captured: mv.captured().map(std::string::ToString::to_string),
         mid_sq: mv.mid_sq(),
     }
 }
@@ -277,7 +277,7 @@ pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoR
         "quiescence",
     ];
     let all = crate::all_pieces();
-    let royal = all.iter().filter(|p| p.is_royal).count();
+    let royal = all.iter().filter(|p| p.flags.is_royal).count();
     let state = game.lock().expect("game mutex should not be poisoned");
     let using_nnue = state.board.network().is_some();
     Json(EngineInfoResponse {
@@ -309,15 +309,15 @@ fn piece_response(p: &crate::PieceInfo) -> PieceInfoResponse {
         abbrev: p.abbrev.to_string(),
         name: p.name.to_string(),
         value: p.value,
-        promotes_to: p.promotes_to.map(|s| s.to_string()),
+        promotes_to: p.promotes_to.map(std::string::ToString::to_string),
         slide_directions: p.slide_directions,
         jump_destinations: p.jump_destinations,
-        has_hook: p.has_hook,
+        has_hook: p.flags.has_hook,
         area_steps: p.area_steps,
-        has_range_capture: p.has_range_capture,
-        has_igui: p.has_igui,
-        is_royal: p.is_royal,
-        betza: p.betza.map(|s| s.to_string()),
+        has_range_capture: p.flags.has_range_capture,
+        has_igui: p.flags.has_igui,
+        is_royal: p.flags.is_royal,
+        betza: p.betza.map(std::string::ToString::to_string),
     }
 }
 

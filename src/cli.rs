@@ -1675,7 +1675,7 @@ mod tests {
     fn file_char_roundtrip() {
         for col in 0..36 {
             let c = file_char(col);
-            assert_eq!(parse_file(c), Some(col), "col {}", col);
+            assert_eq!(parse_file(c), Some(col), "col {col}");
         }
         // files are a-z then A-J; anything else is invalid
         assert_eq!(parse_file('k'), Some(10));
@@ -1754,12 +1754,12 @@ mod tests {
                 d1.push(c);
             }
             (
-                format!("{}{}", f1, d1),
+                format!("{f1}{d1}"),
                 format!("{}{}", f2, chars.by_ref().collect::<String>()),
             )
         };
-        let m1 = parse_move(&board, &format!("{}{}", sq1, sq2)).expect("algebraic");
-        let m2 = parse_move(&board, &format!("{}-{}", sq1, sq2)).expect("dashed");
+        let m1 = parse_move(&board, &format!("{sq1}{sq2}")).expect("algebraic");
+        let m2 = parse_move(&board, &format!("{sq1}-{sq2}")).expect("dashed");
         assert_eq!(m1.raw().from_sq, m2.raw().from_sq);
         assert_eq!(m1.raw().to_sq, m2.raw().to_sq);
         // numeric form row,col-row,col
@@ -1771,7 +1771,7 @@ mod tests {
             m1.raw().to_sq as usize / 36 + 1,
             m1.raw().to_sq as usize % 36 + 1,
         );
-        let m3 = parse_move(&board, &format!("{},{}-{},{}", r1, c1, r2, c2)).expect("numeric");
+        let m3 = parse_move(&board, &format!("{r1},{c1}-{r2},{c2}")).expect("numeric");
         assert_eq!(m1.raw().from_sq, m3.raw().from_sq);
         assert_eq!(m1.raw().to_sq, m3.raw().to_sq);
         // illegal / malformed
@@ -1783,14 +1783,13 @@ mod tests {
     #[test]
     fn parse_move_error_is_helpful() {
         let board = Board::initial();
-        let err = parse_move(&board, "a1a2").expect("must be a parse error");
+        let err = parse_move(&board, "a1a2").unwrap_err();
         assert!(
             err.contains("no legal moves from a1") || err.contains("not legal"),
-            "got: {}",
-            err
+            "got: {err}"
         );
-        let err2 = parse_move(&board, "q99q99").expect("must be a parse error");
-        assert!(err2.contains("bad square"), "got: {}", err2);
+        let err2 = parse_move(&board, "q99q99").unwrap_err();
+        assert!(err2.contains("bad square"), "got: {err2}");
     }
 
     // ── command execution ──────────────────────────────────────
@@ -1856,12 +1855,11 @@ mod tests {
         drop(probe);
 
         let (board, _, hist) =
-            run_cmds(&[&format!("move {}", m1), &format!("move {}", m2), "undo"]);
+            run_cmds(&[&format!("move {m1}"), &format!("move {m2}"), "undo"]);
         assert_eq!(
             hist.len(),
             1,
-            "one move remains after undo, hist = {:?}",
-            hist
+            "one move remains after undo, hist = {hist:?}"
         );
         assert_eq!(hist[0], m1);
         // black + white played, white's move undone → white to move again
@@ -1871,8 +1869,8 @@ mod tests {
     #[test]
     fn execute_new_clears_history() {
         let m1 = first_move_name();
-        let (board, _, hist) = run_cmds(&[&format!("move {}", m1), "new"]);
-        assert!(hist.is_empty());
+        let (board, _, hist) = run_cmds(&[&format!("move {m1}"), "new"]);
+        assert_eq!(hist, [] as [std::string::String; 0]);
         assert_eq!(board.move_number(), 1);
         assert_eq!(board.piece_count(Color::Black), 402);
     }
@@ -1918,18 +1916,18 @@ mod tests {
         drop(probe);
 
         let (mut board, mut opt, mut hist) =
-            run_cmds(&[&format!("move {}", m1), &format!("move {}", m2)]);
+            run_cmds(&[&format!("move {m1}"), &format!("move {m2}")]);
         assert!(execute(
-            &format!("save {}", path),
+            &format!("save {path}"),
             &mut board,
             &mut opt,
             &mut hist
         ));
         // reset and load
         assert!(execute("new", &mut board, &mut opt, &mut hist));
-        assert!(hist.is_empty());
+        assert_eq!(hist, [] as [std::string::String; 0]);
         assert!(execute(
-            &format!("load {}", path),
+            &format!("load {path}"),
             &mut board,
             &mut opt,
             &mut hist
@@ -1947,7 +1945,7 @@ mod tests {
     #[test]
     fn execute_position_command() {
         let tsfen = Board::initial().to_tsfen();
-        let (board, _, _) = run_cmds(&[&format!("position {}", tsfen)]);
+        let (board, _, _) = run_cmds(&[&format!("position {tsfen}")]);
         assert_eq!(board.piece_count(Color::Black), 402);
     }
 
@@ -1961,7 +1959,7 @@ mod tests {
 
     // ── command-line flags ─────────────────────────────────────
     fn argv(tokens: &[&str]) -> Vec<String> {
-        tokens.iter().map(|s| s.to_string()).collect()
+        tokens.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]
@@ -1987,7 +1985,7 @@ mod tests {
         assert_eq!(a.position.as_deref(), Some("startpos"));
         assert!(a.go);
         assert!(!a.help);
-        assert!(a.commands.is_empty());
+        assert_eq!(a.commands, [] as [std::string::String; 0]);
     }
 
     #[test]
@@ -2059,7 +2057,7 @@ mod tests {
         // above the cap → clamped to MAX_THREADS
         let over = taikyokushogi::search::MAX_THREADS * 2;
         assert!(execute(
-            &format!("setoption threads {}", over),
+            &format!("setoption threads {over}"),
             &mut board,
             &mut opt,
             &mut hist

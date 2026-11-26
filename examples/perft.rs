@@ -20,15 +20,13 @@ fn perft(board: &mut Board, depth: u32) -> u64 {
 fn main() {
     let depth = std::env::args()
         .nth(1)
-        .map(|a| a.parse::<u32>().unwrap())
-        .unwrap_or(2);
+        .map_or(2, |a| a.parse::<u32>().unwrap());
     let mut board = Board::initial();
     let t = std::time::Instant::now();
     let n = perft(&mut board, depth);
     let ms = t.elapsed().as_millis() as u64;
     println!(
-        "perft({}) = {}   (reference perft(1)=512 perft(2)=260917)",
-        depth, n
+        "perft({depth}) = {n}   (reference perft(1)=512 perft(2)=260917)"
     );
-    println!("elapsed: {}ms", ms);
+    println!("elapsed: {ms}ms");
 }
