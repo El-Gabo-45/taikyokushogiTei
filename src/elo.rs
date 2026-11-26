@@ -271,7 +271,7 @@ pub fn play_game_seeded(
         }
         let cfg = cfg_for_side(board.side_to_move, white, black);
         if let Some(m) = apply_best(&mut board, cfg) {
-            board.apply_move(&m)
+            board.apply_move(&m);
         } else {
             let r = board.game_result().map_or(GameResult::Draw, to_public);
             return GameOutcome { result: r, plies };

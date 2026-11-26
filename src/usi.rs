@@ -776,7 +776,7 @@ impl UsiEngine {
     /// Join a taken job's thread and put its searcher back into service.
     fn recover(&mut self, job: Job) {
         if let Ok(searcher) = job.handle.join() {
-            self.searcher = Some(searcher)
+            self.searcher = Some(searcher);
         } else {
             // The search thread panicked (debug builds only — the
             // release profile aborts): rebuild a fresh searcher.
