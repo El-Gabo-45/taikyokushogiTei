@@ -3,7 +3,7 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 // The integer/float casts above are intentionally allowed: every cast in this
 // module operates on provably-bounded values (square indices < 1296, direction
@@ -1119,8 +1119,8 @@ mod tests {
             lines.iter().any(|l| l.starts_with("info depth 1 ")),
             "per-iteration info expected: {lines:?}"
         );
-        let best = lines.iter().find(|l| l.starts_with("bestmove ")).unwrap();
-        let token = best.strip_prefix("bestmove ").unwrap().trim();
+        let best = lines.iter().find(|l| l.starts_with("bestmove ")).unwrap_or("bestmove none");
+        let token = best.strip_prefix("bestmove ").unwrap_or("").trim();
         let board = Board::initial();
         assert!(parse_move(&board, token).is_ok(), "`{token}` must be legal");
     }
@@ -1269,6 +1269,6 @@ mod tests {
     fn unknown_commands_are_ignored() {
         let (mut e, sink) = engine();
         e.handle("nonsense command here");
-        assert!(sink.lines().is_empty());
+        assert_eq!(sink.lines(), [] as [std::string::String; 0]);
     }
 }

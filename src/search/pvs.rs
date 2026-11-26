@@ -3,7 +3,7 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 // The integer/float casts above are intentionally allowed: every cast in this
 // module operates on provably-bounded values (square indices < 1296, direction
@@ -111,9 +111,9 @@ impl Ctx<'_> {
     /// Shallow-eval pruning that needs no move generation, in the original
     /// evaluation order: razoring → RFP (both directions) → futility.
     /// Returns Some(score) if the node can be pruned outright.
-#[allow(clippy::too_many_arguments)]
-// Hot movegen / search path: a parameters struct would add indirection without
-// improving readability, so the flat signature is kept on purpose.
+    #[allow(clippy::too_many_arguments)]
+    // Hot movegen / search path: a parameters struct would add indirection without
+    // improving readability, so the flat signature is kept on purpose.
     fn shallow_eval_prune(
         &mut self,
         d: u32,
@@ -197,9 +197,9 @@ impl Ctx<'_> {
 
     /// Internal Iterative Deepening: with no TT move at a non-trivial depth,
     /// run a shallow scout to obtain one from the TT.
-#[allow(clippy::too_many_arguments)]
-// Hot movegen / search path: a parameters struct would add indirection without
-// improving readability, so the flat signature is kept on purpose.
+    #[allow(clippy::too_many_arguments)]
+    // Hot movegen / search path: a parameters struct would add indirection without
+    // improving readability, so the flat signature is kept on purpose.
     fn iid_move(&mut self, d: u32, hash: u64, tt_move: u32, alpha: i32, beta: i32) -> u32 {
         if !self.cfg.internal_iterative_deepening || tt_move != 0 || d < params::IID_MIN_DEPTH {
             return tt_move;

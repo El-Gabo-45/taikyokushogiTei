@@ -13,7 +13,7 @@ A session is plain text on stdin/stdout:
 
 ```text
 > usi
-id name TaikyokuShogi 0.1.0
+id name TaikyokuShogi 1.4.6
 id author ...
 option name Threads type spin default 1 min 1 max 64
 ...

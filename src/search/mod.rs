@@ -3,7 +3,7 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 // The integer/float casts above are intentionally allowed: every cast in this
 // module operates on provably-bounded values (square indices < 1296, direction
@@ -221,9 +221,9 @@ impl Searcher {
     ///
     /// `on_iter` receives an [`IterInfo`] after every completed iteration
     /// (skip it with `None`); the callback runs on the calling thread.
-#[allow(clippy::too_many_arguments)]
-// Hot movegen / search path: a parameters struct would add indirection without
-// improving readability, so the flat signature is kept on purpose.
+    #[allow(clippy::too_many_arguments)]
+    // Hot movegen / search path: a parameters struct would add indirection without
+    // improving readability, so the flat signature is kept on purpose.
     pub fn search_with_stop(
         &mut self,
         board: &mut Board,

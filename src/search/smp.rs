@@ -3,7 +3,7 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 // The integer/float casts above are intentionally allowed: every cast in this
 // module operates on provably-bounded values (square indices < 1296, direction
@@ -123,9 +123,9 @@ impl Searcher {
     /// and an optional per-iteration callback (see
     /// [`Searcher::search_with_stop`]). USI front-ends drive pondering and
     /// `stop` through the flag while still getting full Lazy SMP.
-#[allow(clippy::too_many_arguments)]
-// Hot movegen / search path: a parameters struct would add indirection without
-// improving readability, so the flat signature is kept on purpose.
+    #[allow(clippy::too_many_arguments)]
+    // Hot movegen / search path: a parameters struct would add indirection without
+    // improving readability, so the flat signature is kept on purpose.
     pub fn search_threads_with_stop(
         &mut self,
         board: &mut super::Board,

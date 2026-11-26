@@ -83,7 +83,9 @@ All external access goes through the public facade in `lib.rs`.
   - `mod.rs` — iterative deepening + aspiration windows; the `search`,
     `search_threads` (Lazy SMP) and `search_with_stop` (stop flag +
     per-iteration info callback, consumed by the USI front-end) entry
-    points; hash-size configuration.
+    points; hash-size configuration. Exposes `Searcher`, `SearchResult`,
+    `IterInfo`, `SearchConfig` (`production()` / `minimal()` / `classic()`),
+    `DEFAULT_THREADS = 1`, `MAX_THREADS = 64`.
   - `pvs.rs` — PVS core: null-window re-search, LMR, null-move pruning,
     razoring / reverse-futility / futility / static-eval prune, IID, staged movegen.
   - `root.rs` — root iteration (the historical depth 1–3 material-delta
@@ -113,9 +115,10 @@ All external access goes through the public facade in `lib.rs`.
   session by default, never the shared board).
 - `src/elo.rs`: engine-vs-engine matches, Elo + 95% CI, SPRT
   (`EngineConfig { depth, time_ms, net, threads }` per side; `net` is an
-  optional `Arc<Network>`).
+  optional `Arc<Network>`). Public module (`taikyokushogi::elo`).
 - `src/selfplay.rs` + `src/selfplay_main.rs` → bin `selfplay`: self-play
-  game generation for the NNUE training pipeline.
+  game generation for the NNUE training pipeline. Public module
+  (`taikyokushogi::selfplay`).
 - `src/debug_cli.rs` → bin `debug-cli`: minimal one-shot search harness
   (`debug-cli <depth> <time_ms> [--debug]`).
 - `src/usi.rs` + `src/usi_main.rs` → bin `taikyokushogi-usi`: USI
@@ -124,7 +127,15 @@ All external access goes through the public facade in `lib.rs`.
   in the library (`taikyokushogi::usi`, unit-tested) and the bin is a thin
   launcher: TSFEN positions, 36×36 coordinate move tokens, clock handling
   (`wtime`/`btime`/`winc`/`byoyomi`/`movetime`), `stop`/`ponder` support
-  and the `Threads`/`Hash`/`DepthLimit`/`NetworkFile` options.
+  and the `Threads`/`Hash`/`DepthLimit`/`NetworkFile` options. Public module
+  (`taikyokushogi::usi`).
+- `src/debugging/` — `eval_debug/` and `search_debug/` sub-modules:
+  Stockfish-style introspection utilities for engine development
+  (eval breakdown, per-iteration deepening trace). Public module
+  (`taikyokushogi::debugging`).
+- `src/research/` — research toolkit (audit-2 kit, strictly additive: does
+  not touch search hot paths): `ablate`, `critical`, `multipv`, `pieces`,
+  `stability`, `tree`. Public module (`taikyokushogi::research`).
 - `training/`: PyTorch pipeline to train and export `.tkn` networks.
 - `web/`: TypeScript + Vite frontend and REST client
   (`web/src/api/client.ts`).
@@ -208,7 +219,8 @@ taikyokushogiTei/
       psqt.rs           # Piece-square tables
       zones.rs          # Threat zones and king-safety heuristics
       nnue/             # NNUE "S" evaluator, TKN1 loader, tools (see docs/NNUE.md)
-    debugging/          # Search/eval introspection utilities
+    debugging/          # Search/eval introspection utilities (eval_debug/, search_debug/)
+    research/           # Research toolkit: ablate, critical, multipv, pieces, stability, tree
     correctness_tests.rs #  Correctness suite (cargo test)
   tests/                # Integration suites: smoke.rs (engine), server_api.rs (HTTP router)
   examples/             # Benchmarks, smoke tests and tooling (see examples/README.md)

@@ -3,13 +3,12 @@
     clippy::cast_sign_loss,
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 // The integer/float casts above are intentionally allowed: every cast in this
 // module operates on provably-bounded values (square indices < 1296, direction
 // indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
 // warnings would only produce noise.
-
 #![allow(dead_code)] // utility/debug API kept intentionally
 use crate::eval::families::family_value;
 use crate::eval::zones::zone_score;
