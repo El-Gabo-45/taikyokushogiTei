@@ -119,7 +119,7 @@ pub struct LastMoveData {
 // Responses — informational endpoints
 // ============================================================
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct PieceInfoResponse {
     pub abbrev: String,
     pub name: String,
@@ -287,7 +287,7 @@ pub struct UndoResponse {
     pub undone_plies: u32,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct PieceListResponse {
     pub count: usize,
     pub pieces: Vec<PieceInfoResponse>,

@@ -161,6 +161,15 @@ Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
   `429 Too Many Requests` instead of piling CPU-bound work onto the runtime
   (which would starve every other endpoint). This complements the session cap:
   64 visitors cannot launch 64 simultaneous 30-second searches.
+- **Security headers** — every response (API, static assets, CORS preflights,
+  413s, 429s, session-policy rejections) carries `X-Content-Type-Options:
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and a
+  restrictive `Permissions-Policy` (camera/mic/geolocation/payment/USB off).
+  The middleware is the outermost layer so no response can skip it.
+- **Immutable-data caching** — the 301-type piece database (`/api/pieces`) is
+  built once and cached in a `OnceLock`; `/api/engine-info` reuses the same
+  cached list for its royal count. This avoids ~1000 string clones on every
+  UI load/refresh for data that cannot change at runtime.
 
 ### Frontend safety belt
 

@@ -724,7 +724,41 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // CORS is added last (outermost) so even a 413 carries CORS headers.
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(cors)
+        // Outermost: security headers reach every response — API, static
+        // assets, CORS preflights, 413s and session-policy rejections.
+        .layer(middleware::from_fn(security_headers))
         .with_state(state)
+}
+
+/// Add baseline security headers to every response.
+///
+/// - `X-Content-Type-Options: nosniff` prevents MIME sniffing of the static
+///   assets and JSON (a JS file served as `text/plain` cannot be executed).
+/// - `X-Frame-Options: DENY` stops the UI being framed for clickjacking.
+/// - `Referrer-Policy: no-referrer` keeps session ids out of the `Referer`
+///   header when the UI links elsewhere (ids travel in `X-Session-Id`, but
+///   belt-and-braces).
+/// - `Permissions-Policy` disables powerful browser features the app does not
+///   use (camera, microphone, geolocation, payment, USB).
+async fn security_headers(req: Request, next: Next) -> Response {
+    let mut res = next.run(req).await;
+    let h = res.headers_mut();
+    h.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    h.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    h.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static(
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=(), autoplay=()",
+        ),
+    );
+    res
 }
 
 /// CORS policy: mirrors the request origin by default (permissive, meant

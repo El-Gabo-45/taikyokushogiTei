@@ -21,7 +21,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::{Board, Color, GameResult, Move as EngineMove};
 
@@ -323,8 +323,8 @@ pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoR
         "hash_move_extension",
         "quiescence",
     ];
-    let all = crate::all_pieces();
-    let royal = all.iter().filter(|p| p.flags.is_royal()).count();
+    let list = piece_list();
+    let royal = list.pieces.iter().filter(|p| p.is_royal).count();
     let state = game
         .lock()
         .unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
@@ -334,7 +334,7 @@ pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoR
         version: crate::VERSION,
         board_size: BOARD,
         num_squares: crate::NUM_SQUARES,
-        piece_types: all.len(),
+        piece_types: list.count,
         royal_piece_types: royal,
         black_pieces: state.board.piece_count(Color::Black),
         white_pieces: state.board.piece_count(Color::White),
@@ -370,12 +370,23 @@ fn piece_response(p: &crate::PieceInfo) -> PieceInfoResponse {
     }
 }
 
-pub async fn get_pieces() -> Json<PieceListResponse> {
-    let all = crate::all_pieces();
-    Json(PieceListResponse {
-        count: all.len(),
-        pieces: all.iter().map(piece_response).collect(),
+/// The piece database is immutable for the life of the process. Building the
+/// response clones ~1000 strings, so cache it once instead of doing that work
+/// on every UI load/refresh.
+static PIECES_CACHE: OnceLock<PieceListResponse> = OnceLock::new();
+
+fn piece_list() -> &'static PieceListResponse {
+    PIECES_CACHE.get_or_init(|| {
+        let all = crate::all_pieces();
+        PieceListResponse {
+            count: all.len(),
+            pieces: all.iter().map(piece_response).collect(),
+        }
     })
+}
+
+pub async fn get_pieces() -> Json<PieceListResponse> {
+    Json(piece_list().clone())
 }
 
 /// # Errors

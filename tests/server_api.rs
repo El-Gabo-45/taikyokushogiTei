@@ -1199,3 +1199,51 @@ async fn search_queue_full_returns_429() {
     assert!(body["error"].as_str().unwrap().contains("queue full"));
     drop(held);
 }
+
+// ============================================================
+// Baseline security headers
+// ============================================================
+
+#[tokio::test]
+async fn security_headers_on_success_and_error_responses() {
+    let (_state, app) = game();
+
+    // Normal API response.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+    assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
+    assert_eq!(
+        response.headers().get("referrer-policy").unwrap(),
+        "no-referrer"
+    );
+    assert!(response.headers().contains_key("permissions-policy"));
+
+    // Unknown API path (JSON 404) must carry them too.
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/does-not-exist")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        response.headers().get("x-content-type-options").unwrap(),
+        "nosniff"
+    );
+}

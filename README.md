@@ -121,8 +121,8 @@ Game modes (human/human/AI), piece inspector, analysis mode, TSFEN panel,
 material chart, JSON/PGN game export. Feature list, the
 full REST API reference, the session mode details and the safety limits
 (128 KiB request-body cap, max 4 concurrent searches with 429 backpressure,
-session-id validation, CORS validation, clamped search bounds):
-**[docs/WEB.md](docs/WEB.md)**.
+security headers, session-id/CORS validation, cached piece database, clamped
+search bounds): **[docs/WEB.md](docs/WEB.md)**.
 
 ### CLI (`taikyokushogi-cli`)
 
