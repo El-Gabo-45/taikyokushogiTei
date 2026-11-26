@@ -28,8 +28,10 @@ use crate::pieces;
 use crate::types::{BLACK, BOARD_SIZE, EMPTY_CELL, NUM_SQUARES, cell_piece};
 use std::sync::OnceLock;
 
-/// Precomputed PSQT tensor: [piece_type][square][color].
+/// Precomputed PSQT tensor: [`piece_type`][square][color].
 type PsqtTable = [[[i32; 2]; NUM_SQUARES]];
+/// One piece type's PSQT: [square][color].
+type PsqtEntry = [[i32; 2]; NUM_SQUARES];
 
 
 /// PSQT value for a piece of type `pt` at square `sq` for color `color`.
@@ -76,7 +78,7 @@ pub fn psqt(pt: u16, sq: usize, color: u8) -> i32 {
     PSQT_TABLE.get_or_init(|| {
         // vec! allocates on the heap immediately; into_boxed_slice gives a
         // Box<[[[..]; NUM_SQUARES]]> without any large stack temporaries.
-        let mut table: Vec<[[i32; 2]; NUM_SQUARES]> = vec![[[0i32; 2]; NUM_SQUARES]; 512];
+        let mut table: Vec<PsqtEntry> = vec![[[0i32; 2]; NUM_SQUARES]; 512];
         for pt in 1..=301u16 {
             for (sq, colors) in table[pt as usize].iter_mut().enumerate() {
                 for (color, entry) in colors.iter_mut().enumerate() {

@@ -7,6 +7,7 @@
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::fmt::Write;
 use std::sync::OnceLock;
 
 use super::{FT_SHIFT, FV_SCALE, L1, NSQ, OUT_BUCKETS};
@@ -126,7 +127,10 @@ impl ArchSpec {
     #[must_use]
     pub fn descriptor(&self) -> String {
         let cmap = Sha256::digest(&self.class_map);
-        let cmap_hex: String = cmap[..8].iter().map(|b| format!("{b:02x}")).collect();
+        let mut cmap_hex = String::with_capacity(16);
+        for b in &cmap[..8] {
+            let _ = write!(cmap_hex, "{b:02x}");
+        }
         let th: Vec<String> = self
             .thresholds_pieces
             .iter()

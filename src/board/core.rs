@@ -649,9 +649,8 @@ impl Board {
         }
 
         while self.cap_stack.len() > undo.cap_base {
-            let (sq, cell) = match self.cap_stack.pop() {
-                Some(v) => v,
-                None => panic!("cap_stack should not be empty at this point"),
+            let Some((sq, cell)) = self.cap_stack.pop() else {
+                panic!("cap_stack should not be empty at this point");
             };
             let squ = sq as usize;
             let cap_pt = cell_piece(cell);

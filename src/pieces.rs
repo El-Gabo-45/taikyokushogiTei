@@ -3017,7 +3017,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
-        "LD" => Some(Movement {
+        "LD" | "+KTE" | "+MCR" => Some(Movement {
             slides: all_dirs_slide.clone(),
             jumps: vec![
                 (-3, 0),
@@ -3237,23 +3237,6 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
                 (2, 2),
                 (2, -2),
                 (-2, -2),
-            ],
-            hook: None,
-            area: 0,
-            range_capture: vec![],
-            igui: false,
-        }),
-        "+KTE" | "+MCR" => Some(Movement {
-            slides: all_dirs_slide.clone(),
-            jumps: vec![
-                (-3, 0),
-                (0, 3),
-                (3, 0),
-                (0, -3),
-                (-3, 3),
-                (3, 3),
-                (3, -3),
-                (-3, -3),
             ],
             hook: None,
             area: 0,

@@ -107,8 +107,9 @@ struct Position {
 
 fn load_positions(
     args: &[String],
-    net: &Option<std::sync::Arc<crate::eval::nnue::Network>>,
+    net: Option<&std::sync::Arc<crate::eval::nnue::Network>>,
 ) -> Result<Positions, String> {
+    let net = net.cloned();
     let attach = |mut board: crate::Board| {
         board.set_network(net.clone());
         board
@@ -175,7 +176,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Err("--depth must be at least 1".into());
     }
     let net = load_net(args)?;
-    let mut positions = load_positions(args, &net)?;
+    let mut positions = load_positions(args, net.as_ref())?;
 
     println!("=== Technique ablation ===");
     println!(

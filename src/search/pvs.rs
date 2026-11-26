@@ -459,8 +459,8 @@ impl Ctx<'_> {
                 // History gravity: penalize the quiets that failed to cause a
                 // cutoff, so next time the cutting move (and similar ones) are
                 // tried first. (Standard technique: Stockfish's history malus.)
-                for i in 0..quiet_tried_n {
-                    let (hf, ht) = unsafe { quiet_tried[i].assume_init() };
+                for tried in quiet_tried.iter().take(quiet_tried_n) {
+                    let (hf, ht) = unsafe { tried.assume_init() };
                     self.heur.history_malus(hf as usize, ht as usize, d, stm);
                 }
                 break;

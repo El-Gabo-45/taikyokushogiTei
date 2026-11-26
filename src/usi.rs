@@ -312,9 +312,8 @@ fn parse_move(board: &Board, token: &str) -> Result<crate::Move, String> {
             None => return Err(format!("cannot parse `{token}` (expected e.g. `a26a25`)")),
         }
     };
-    let (from, to) = match squares {
-        (Some(f), Some(t)) => (f, t),
-        _ => return Err(format!("bad square in `{token}`")),
+    let (Some(from), Some(to)) = squares else {
+        return Err(format!("bad square in `{token}`"));
     };
     let mut matching: Vec<crate::Move> = board
         .legal_moves()

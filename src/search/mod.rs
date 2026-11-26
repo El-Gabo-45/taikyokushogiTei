@@ -61,6 +61,8 @@ use std::time::Instant;
 
 /// Callback invoked after each completed iteration.
 type IterFn<'a> = Option<&'a mut dyn FnMut(&IterInfo)>;
+/// A mandatory per-iteration callback.
+type IterMutFn<'a> = &'a mut dyn FnMut(&IterInfo);
 
 
 /// Result of a completed search.
@@ -263,7 +265,7 @@ impl Searcher {
         deadline: Option<Instant>,
         stop: &AtomicBool,
         publish: Option<&SharedBest>,
-        on_iter: &mut dyn FnMut(&IterInfo),
+        on_iter: IterMutFn<'_>,
     ) -> (SearchResult, u32) {
         let start = Instant::now();
         // env::var takes a global lock — cache it once per search, not per iteration.

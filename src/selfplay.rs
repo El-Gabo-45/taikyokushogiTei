@@ -264,8 +264,7 @@ impl SelfPlayWorker {
                 result_val = match terminal {
                     Some(GameResult::BlackWins) => 1i8,
                     Some(GameResult::WhiteWins) => -1i8,
-                    Some(GameResult::Draw) => 0i8,
-                    None => 0i8,
+                    Some(GameResult::Draw) | None => 0i8,
                 };
                 break;
             }

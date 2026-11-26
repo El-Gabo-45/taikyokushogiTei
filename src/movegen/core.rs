@@ -81,15 +81,19 @@ pub fn push_move_raw(moves: &mut Vec<Move>, m: Move) {
 /// Precomputed jump destinations: `[pt][sq][color]` → up to 8 target
 /// squares per color (`INVALID_SQ` when unused).
 type JumpTable = Box<[[[[u16; 8]; 2]; NUM_SQUARES]]>;
+/// One piece type's jump table: [square][color] -> [target; 8].
+type JumpEntry = [[[u16; 8]; 2]; NUM_SQUARES];
 
 static JUMP_TABLE: OnceLock<JumpTable> = OnceLock::new();
 
 fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
     JUMP_TABLE.get_or_init(|| {
         // Heap-allocated directly (a fixed-size Box<[[[..];..];512]> would
-        // materialize ~21 MB on the stack during construction).
-        let mut table: Vec<[[[u16; 8]; 2]; NUM_SQUARES]> =
-            vec![[[[INVALID_SQ; 8]; 2]; NUM_SQUARES]; 512];
+        // materialize ~21 MB on the stack during construction). Building via
+        // map/collect creates each entry on the stack one at a time.
+        let mut table: Vec<JumpEntry> = (0..512)
+            .map(|_| [[[INVALID_SQ; 8]; 2]; NUM_SQUARES])
+            .collect();
         for pt in 1..=301u16 {
             let mv = pieces::movement(pt);
             if mv.jumps.is_empty() {
@@ -435,9 +439,9 @@ fn gen_hooks_captures(
                     let t = board.cells[tsq as usize];
                     if t == EMPTY_CELL {
                         continue;
-                    } else if cell_color(t) != color {
+                    }
+                    if cell_color(t) != color {
                         add_move(moves, sq as u16, tsq, pt, color, t);
-                        break;
                     }
                     break;
                 }

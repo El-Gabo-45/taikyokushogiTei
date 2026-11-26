@@ -23,6 +23,7 @@
 //! `num_piece_types() + 1` entries and entry 0 is unused (always 0).
 
 use crate::pieces;
+use std::fmt::Write;
 
 /// A (class, value-tier, rank) class-key tuple.
 type ClassKey = (u8, u8, u8);
@@ -113,10 +114,10 @@ pub fn generate_class_map() -> Vec<u8> {
     assert!(distinct.len() <= 255, "too many NNUE classes");
     let mut map = vec![0u8; n + 1];
     for (i, k) in keys.iter().enumerate() {
-        map[i + 1] = match distinct.binary_search(k) {
-            Ok(pos) => pos as u8,
-            Err(_) => panic!("class key must be found"),
+        let Ok(pos) = distinct.binary_search(k) else {
+            panic!("class key must be found");
         };
+        map[i + 1] = pos as u8;
     }
     map
 }
@@ -158,17 +159,19 @@ pub fn describe(map: &[u8]) -> String {
             .map(|pt| pieces::abbrev(pt as u16))
             .collect();
         let shown: Vec<&str> = members.iter().take(8).copied().collect();
-        out.push_str(&format!(
-            "class {:2}  n={:3}  {}{}\n",
+        let more = if members.len() > shown.len() {
+            ",..."
+        } else {
+            ""
+        };
+        let _ = writeln!(
+            out,
+            "class {:2}  n={:3}  {}{}",
             cls,
             members.len(),
             shown.join(","),
-            if members.len() > shown.len() {
-                ",..."
-            } else {
-                ""
-            }
-        ));
+            more
+        );
     }
     out
 }

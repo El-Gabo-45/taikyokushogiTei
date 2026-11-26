@@ -52,7 +52,7 @@ pub(crate) struct Analysis {
 }
 
 /// Score of a move that ends the game, from the mover's point of view.
-fn terminal_score(mover: crate::Color, result: &crate::GameResult) -> i32 {
+fn terminal_score(mover: crate::Color, result: crate::GameResult) -> i32 {
     let won = matches!(
         (mover, result),
         (crate::Color::Black, crate::GameResult::BlackWins)
@@ -73,7 +73,7 @@ pub(crate) fn analyze(
     depth: u32,
     max_root: usize,
     time_ms: u64,
-) -> Result<Analysis, String> {
+) -> Analysis {
     let scored = super::static_move_scores(board);
     let root_moves = scored.len();
     let search_depth = depth.saturating_sub(1);
@@ -83,7 +83,7 @@ pub(crate) fn analyze(
     for (static_score, mv) in scored.into_iter().take(max_root) {
         board.apply(&mv);
         let (score, reply, nodes, time_ms_line, terminal) = match board.game_result() {
-            Some(result) => (terminal_score(mover, &result), None, 0, 0, true),
+            Some(result) => (terminal_score(mover, result), None, 0, 0, true),
             None if search_depth == 0 => (-board.evaluate(), None, 0, 0, false),
             None => {
                 // A fresh searcher per line: the default searcher caches its
@@ -129,11 +129,11 @@ pub(crate) fn analyze(
             r.score,
         ))
     };
-    Ok(Analysis {
+    Analysis {
         root_moves,
         lines,
         reference,
-    })
+    }
 }
 
     /// # Errors
@@ -152,7 +152,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Err("position is already over — no moves to analyze".into());
     }
 
-    let analysis = analyze(&mut board, depth, max_root, time_ms)?;
+    let analysis = analyze(&mut board, depth, max_root, time_ms);
 
     println!("=== MultiPV ===");
     println!("position: {}", board.to_tsfen());
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn depth1_analysis_is_static_only_and_sorted() {
         let mut board = crate::Board::initial();
-        let a = analyze(&mut board, 1, 5, 0).expect("initial position analyzes");
+        let a = analyze(&mut board, 1, 5, 0);
         assert!(a.root_moves > 400, "the initial position branches widely");
         assert_eq!(a.lines.len(), 5);
         assert!(a.lines.windows(2).all(|w| w[0].score >= w[1].score));
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn depth2_analysis_searches_each_line() {
         let mut board = crate::Board::initial();
-        let a = analyze(&mut board, 2, 2, 0).expect("initial position analyzes");
+        let a = analyze(&mut board, 2, 2, 0);
         assert_eq!(a.lines.len(), 2);
         assert!(a.lines.iter().all(|l| l.nodes > 0));
         assert!(a.lines.iter().all(|l| l.reply.is_some()));

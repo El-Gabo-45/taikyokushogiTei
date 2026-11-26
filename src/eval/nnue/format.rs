@@ -113,17 +113,15 @@ impl<'a> Reader<'a> {
     }
     fn u16(&mut self) -> Result<u16, NnueError> {
         let bytes = self.take(2)?;
-        let arr: [u8; 2] = match bytes.try_into() {
-            Ok(a) => a,
-            Err(_) => panic!("2 bytes -> u16 is infallible"),
+        let Ok(arr) = bytes.try_into() else {
+            panic!("2 bytes -> u16 is infallible");
         };
         Ok(u16::from_le_bytes(arr))
     }
     fn u32(&mut self) -> Result<u32, NnueError> {
         let bytes = self.take(4)?;
-        let arr: [u8; 4] = match bytes.try_into() {
-            Ok(a) => a,
-            Err(_) => panic!("4 bytes -> u32 is infallible"),
+        let Ok(arr) = bytes.try_into() else {
+            panic!("4 bytes -> u32 is infallible");
         };
         Ok(u32::from_le_bytes(arr))
     }
@@ -178,9 +176,8 @@ impl Network {
         if ver != VERSION {
             return Err(NnueError::UnsupportedVersion(ver));
         }
-        let hash: [u8; 32] = match r.take(32)?.try_into() {
-            Ok(h) => h,
-            Err(_) => panic!("32 bytes -> [u8; 32] is infallible"),
+        let Ok(hash) = r.take(32)?.try_into() else {
+            panic!("32 bytes -> [u8; 32] is infallible");
         };
         if hash != arch.arch_hash() {
             return mismatch(

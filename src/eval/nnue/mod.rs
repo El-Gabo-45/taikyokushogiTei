@@ -114,7 +114,7 @@ impl std::fmt::Debug for Network {
             .field("classes", &(self.planes / 2))
             .field("dims", &self.dims())
             .field("thresholds", &self.thresholds)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
