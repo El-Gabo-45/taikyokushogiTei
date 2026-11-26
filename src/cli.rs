@@ -199,17 +199,16 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
         let nums: Vec<usize> = cleaned
             .split(|c: char| c == ',' || c.is_whitespace())
             .filter(|p| !p.is_empty())
-            .map(|p| p.trim().parse().map_err(|_| format!("bad number `{}`", p)))
+            .map(|p| p.trim().parse().map_err(|_| format!("bad number `{p}`")))
             .collect::<Result<_, _>>()?;
         if nums.len() != 4 {
             return Err(format!(
-                "numeric moves need 4 numbers: `row,col-row,col`, got `{}`",
-                body
+                "numeric moves need 4 numbers: `row,col-row,col`, got `{body}`"
             ));
         }
         for n in &nums {
             if *n < 1 || *n > 36 {
-                return Err(format!("square `{}` is off the 36x36 board", n));
+                return Err(format!("square `{n}` is off the 36x36 board"));
             }
         }
         ((nums[0] - 1, nums[1] - 1), (nums[2] - 1, nums[3] - 1))
@@ -232,8 +231,7 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
         segments.push(cur);
         if segments.len() != 2 {
             return Err(format!(
-                "cannot parse move `{}` (expected e.g. `f19f20`)",
-                s
+                "cannot parse move `{s}` (expected e.g. `f19f20`)"
             ));
         }
         (
@@ -282,8 +280,8 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
         return matching
             .into_iter()
             .find(|m| m.raw().promotion == want)
-            .cloned()
-            .ok_or_else(|| format!("`{}`: add `+` to promote, remove it to keep the piece", s));
+            .copied()
+            .ok_or_else(|| format!("`{s}`: add `+` to promote, remove it to keep the piece"));
     }
     // single variant (or promo-only): accept as-is
     Ok(*matching[0])
@@ -348,34 +346,31 @@ fn engine_turn(board: &mut Board, opt: &Options) -> Option<String> {
     board.set_network(opt.net.clone());
     let mut searcher = opt.searcher();
     let r = board.search_with(&mut searcher, opt.depth, opt.movetime);
-    match r.best_move {
-        Some(m) => {
-            let name = move_name(&m);
-            board.apply(&m);
-            println!(
-                "[engine {}] {}  (score {}, nodes {}, {}ms)",
-                if side == Color::Black {
-                    "black"
-                } else {
-                    "white"
-                },
-                name,
-                r.score,
-                r.nodes,
-                r.time_ms
-            );
-            Some(name)
-        }
-        None => {
-            println!("[engine] no legal moves — side to move loses");
-            None
-        }
+    if let Some(m) = r.best_move {
+        let name = move_name(&m);
+        board.apply(&m);
+        println!(
+            "[engine {}] {}  (score {}, nodes {}, {}ms)",
+            if side == Color::Black {
+                "black"
+            } else {
+                "white"
+            },
+            name,
+            r.score,
+            r.nodes,
+            r.time_ms
+        );
+        Some(name)
+    } else {
+        println!("[engine] no legal moves — side to move loses");
+        None
     }
 }
 
 fn check_terminal(board: &Board) {
     if let Some(result) = board.game_result() {
-        println!(">>> GAME OVER: {}", result);
+        println!(">>> GAME OVER: {result}");
     }
 }
 
@@ -481,7 +476,7 @@ fn parse_match_keywords(tokens: &[&str]) -> MatchKeywords {
                 Some(_) => println!("error: threads must be >= 1 (keeping {})", kw.threads_b),
                 None => println!("error: usage `threadsB <N>`"),
             },
-            other => println!("warning: ignored `{}`", other),
+            other => println!("warning: ignored `{other}`"),
         }
     }
     kw
@@ -539,13 +534,11 @@ fn debug_eval(board: &Board) {
     };
     if hand == expected {
         println!(
-            "cross-check: hand-crafted eval == material/family/zones/king-safety decomposition ({}) ✓",
-            hand
+            "cross-check: hand-crafted eval == material/family/zones/king-safety decomposition ({hand}) ✓"
         );
     } else {
         println!(
-            "cross-check: MISMATCH hand-crafted {} != decomposition {} — investigate psqt/zone updates",
-            hand, expected
+            "cross-check: MISMATCH hand-crafted {hand} != decomposition {expected} — investigate psqt/zone updates"
         );
     }
 }
@@ -653,9 +646,7 @@ fn debug_search(board: &mut Board, depth: u32, opt: &Options) {
                 it.nodes,
                 it.time_ms,
                 it.best_move
-                    .as_ref()
-                    .map(|m| m.to_string())
-                    .unwrap_or_else(|| "-".into())
+                    .as_ref().map_or_else(|| "-".into(), std::string::ToString::to_string)
             );
         }),
     );
@@ -663,9 +654,7 @@ fn debug_search(board: &mut Board, depth: u32, opt: &Options) {
         "best: {}  score {:+}  nodes {}  {}ms",
         result
             .best_move
-            .as_ref()
-            .map(|m| m.to_string())
-            .unwrap_or_else(|| "-".into()),
+            .as_ref().map_or_else(|| "-".into(), std::string::ToString::to_string),
         result.score,
         result.nodes,
         result.time_ms
@@ -713,7 +702,7 @@ fn bench_search(max_depth: u32) {
             let bm = r
                 .best_move
                 .as_ref()
-                .map(|m| m.to_string())
+                .map(std::string::ToString::to_string)
                 .unwrap_or_default();
             println!(
                 "pos {} d{}  nodes {:>10}  score {:+7}  best {}",
@@ -740,14 +729,13 @@ fn bench_search(max_depth: u32) {
         t0.elapsed().as_secs_f64()
     );
     println!(
-        "bench hash {:016x}   (diff this line across commits: changes == functional change)",
-        hash
+        "bench hash {hash:016x}   (diff this line across commits: changes == functional change)"
     );
 }
 
 fn status(board: &Board, opt: &Options) {
     let stm = board.side_to_move();
-    println!("side to move: {}", stm);
+    println!("side to move: {stm}");
     println!("move number:  {}", board.move_number());
     println!("material:     {} (black-white)", board.material_score());
     println!("legal moves:  {}", board.legal_moves().len());
@@ -801,7 +789,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     *board = b;
                     println!("position loaded");
                 }
-                Err(e) => println!("error: {}", e),
+                Err(e) => println!("error: {e}"),
             }
         }
         "board" => {
@@ -813,18 +801,15 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         "legal" => {
             let moves = board.legal_moves();
             let filtered: Vec<_> = match rest.first() {
-                Some(sq) => match parse_square(sq) {
-                    Some((row, col)) => moves
-                        .iter()
-                        .filter(|m| {
-                            let r = m.raw();
-                            (r.from_sq as usize / 36, r.from_sq as usize % 36) == (row, col)
-                        })
-                        .collect(),
-                    None => {
-                        println!("error: bad square `{}`", sq);
-                        return true;
-                    }
+                Some(sq) => if let Some((row, col)) = parse_square(sq) { moves
+                .iter()
+                .filter(|m| {
+                    let r = m.raw();
+                    (r.from_sq as usize / 36, r.from_sq as usize % 36) == (row, col)
+                })
+                .collect() } else {
+                    println!("error: bad square `{sq}`");
+                    return true;
                 },
                 None => moves.iter().collect(),
             };
@@ -868,7 +853,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                         check_terminal(board);
                     }
                 }
-                Err(e) => println!("error: {}", e),
+                Err(e) => println!("error: {e}"),
             }
         }
         "undo" => {
@@ -894,22 +879,22 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 if i % 2 == 0 {
                     print!("{}. {}", i / 2 + 1, mv);
                 } else {
-                    println!(" {}", mv);
+                    println!(" {mv}");
                 }
             }
             println!();
         }
         "save" => match rest.first() {
             Some(p) => match save_game(p, board, hist) {
-                Ok(()) => println!("saved to {}", p),
-                Err(e) => println!("error: {}", e),
+                Ok(()) => println!("saved to {p}"),
+                Err(e) => println!("error: {e}"),
             },
             None => println!("error: usage `save <file.json>`"),
         },
         "load" => match rest.first() {
             Some(p) => match load_game(p, board, hist) {
                 Ok(()) => println!("loaded {} ({} moves)", p, hist.len()),
-                Err(e) => println!("error: {}", e),
+                Err(e) => println!("error: {e}"),
             },
             None => println!("error: usage `load <file.json>`"),
         },
@@ -1090,7 +1075,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     "depth" => d = args.next().and_then(|v| v.parse().ok()).unwrap_or(d),
                     "movetime" => t = args.next().and_then(|v| v.parse().ok()).unwrap_or(t),
                     "threads" => th = args.next().and_then(|v| v.parse().ok()).unwrap_or(th),
-                    other => println!("warning: ignored `{}`", other),
+                    other => println!("warning: ignored `{other}`"),
                 }
             }
             board.set_network(opt.net.clone());
@@ -1106,8 +1091,8 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         }
         "play" => {
             opt.engine_side = match rest.first().map(|s| s.to_ascii_lowercase()).as_deref() {
-                Some("black") | Some("b") => EngineSide::Black,
-                Some("white") | Some("w") => EngineSide::White,
+                Some("black" | "b") => EngineSide::Black,
+                Some("white" | "w") => EngineSide::White,
                 Some("both") => EngineSide::Both,
                 _ => {
                     println!("error: `play black|white|both`");
@@ -1165,7 +1150,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             );
         }
         "bench" => {
-            if rest.first().map(|s| *s == "search").unwrap_or(false) {
+            if rest.first().is_some_and(|s| *s == "search") {
                 bench_search(rest.get(1).and_then(|s| s.parse().ok()).unwrap_or(4).min(8));
                 return true;
             }
@@ -1190,8 +1175,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             }
             let au = t.elapsed().as_micros() as f64 / ITERS as f64;
             println!(
-                "movegen {:.1}us  eval {:.1}us  apply+undo {:.1}us  ({} iters each)",
-                mg, ev, au, ITERS
+                "movegen {mg:.1}us  eval {ev:.1}us  apply+undo {au:.1}us  ({ITERS} iters each)"
             );
         }
         "setoption" => {
@@ -1207,14 +1191,14 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 "depth" => match val.parse() {
                     Ok(d) => {
                         opt.depth = d;
-                        println!("depth = {}", d);
+                        println!("depth = {d}");
                     }
                     Err(_) => println!("error: bad depth"),
                 },
                 "movetime" => match val.parse() {
                     Ok(t) => {
                         opt.movetime = t;
-                        println!("movetime = {}ms", t);
+                        println!("movetime = {t}ms");
                     }
                     Err(_) => println!("error: bad movetime"),
                 },
@@ -1222,7 +1206,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     Ok(n) if n >= 1 => {
                         let capped = n.min(taikyokushogi::search::MAX_THREADS);
                         if capped != n {
-                            println!("warning: threads capped at {}", capped);
+                            println!("warning: threads capped at {capped}");
                         }
                         opt.threads = capped;
                         println!("threads = {}", opt.threads);
@@ -1233,7 +1217,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 "hash" => match val.parse::<usize>() {
                     Ok(mb) => {
                         let actual = taikyokushogi::set_hash_mb(mb);
-                        println!("hash = {}MiB", actual);
+                        println!("hash = {actual}MiB");
                     }
                     Err(_) => println!("error: bad hash size"),
                 },
@@ -1249,16 +1233,16 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                             Ok(n) => {
                                 opt.net = Some(std::sync::Arc::new(n));
                                 board.set_network(opt.net.clone());
-                                println!("net = {}", path);
+                                println!("net = {path}");
                             }
-                            Err(e) => println!("error: cannot load `{}`: {}", path, e),
+                            Err(e) => println!("error: cannot load `{path}`: {e}"),
                         }
                     }
                 }
-                other => println!("error: unknown option `{}`", other),
+                other => println!("error: unknown option `{other}`"),
             }
         }
-        _ => println!("unknown command `{}` — try `help`", cmd),
+        _ => println!("unknown command `{cmd}` — try `help`"),
     }
     true
 }
@@ -1316,7 +1300,7 @@ fn main() {
     let args = match parse_args(&argv) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("error: {}\n", e);
+            eprintln!("error: {e}\n");
             eprintln!("{}", usage());
             std::process::exit(2);
         }
@@ -1387,7 +1371,7 @@ fn main() {
         match taikyokushogi::Network::load(path) {
             Ok(n) => opt.net = Some(std::sync::Arc::new(n)),
             Err(e) => {
-                eprintln!("error: cannot load network `{}`: {}", path, e);
+                eprintln!("error: cannot load network `{path}`: {e}");
                 std::process::exit(2);
             }
         }
@@ -1401,7 +1385,7 @@ fn main() {
     if let Some(n) = args.threads {
         let capped = n.min(taikyokushogi::search::MAX_THREADS);
         if capped != n {
-            eprintln!("warning: threads capped at {}", capped);
+            eprintln!("warning: threads capped at {capped}");
         }
         opt.threads = capped;
     }
@@ -1412,7 +1396,7 @@ fn main() {
             match Board::from_tsfen(pos) {
                 Ok(b) => board = b,
                 Err(e) => {
-                    eprintln!("error: bad position: {}", e);
+                    eprintln!("error: bad position: {e}");
                     std::process::exit(2);
                 }
             }
@@ -1568,20 +1552,20 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             *i += 1;
             args.get(*i)
                 .cloned()
-                .ok_or_else(|| format!("`{}` needs a value", flag))
+                .ok_or_else(|| format!("`{flag}` needs a value"))
         };
         match tok.as_str() {
             "--depth" | "-d" => {
                 let v = take_value(&mut i, &tok)?;
-                out.depth = Some(v.parse().map_err(|_| format!("bad depth `{}`", v))?);
+                out.depth = Some(v.parse().map_err(|_| format!("bad depth `{v}`"))?);
             }
             "--movetime" | "--time" | "-t" => {
                 let v = take_value(&mut i, &tok)?;
-                out.movetime = Some(v.parse().map_err(|_| format!("bad movetime `{}`", v))?);
+                out.movetime = Some(v.parse().map_err(|_| format!("bad movetime `{v}`"))?);
             }
             "--threads" | "-j" => {
                 let v = take_value(&mut i, &tok)?;
-                let n: usize = v.parse().map_err(|_| format!("bad thread count `{}`", v))?;
+                let n: usize = v.parse().map_err(|_| format!("bad thread count `{v}`"))?;
                 if n == 0 {
                     return Err("`--threads` must be at least 1".to_string());
                 }
@@ -1592,7 +1576,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             }
             "--hash" => {
                 let v = take_value(&mut i, &tok)?;
-                let mb: usize = v.parse().map_err(|_| format!("bad hash size `{}`", v))?;
+                let mb: usize = v.parse().map_err(|_| format!("bad hash size `{v}`"))?;
                 if mb == 0 {
                     return Err("`--hash` must be at least 1 MiB".to_string());
                 }
@@ -1638,7 +1622,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
             "--go" => out.go = true,
             "--perft" => {
                 let v = take_value(&mut i, &tok)?;
-                out.perft = Some(v.parse().map_err(|_| format!("bad perft depth `{}`", v))?);
+                out.perft = Some(v.parse().map_err(|_| format!("bad perft depth `{v}`"))?);
             }
             "--help" | "-h" => out.help = true,
             "--" => {
@@ -1646,7 +1630,7 @@ fn parse_args(args: &[String]) -> Result<CliArgs, String> {
                 break;
             }
             other if other.starts_with('-') => {
-                return Err(format!("unknown flag `{}` — see `--help`", other));
+                return Err(format!("unknown flag `{other}` — see `--help`"));
             }
             other => out.commands.push(other.to_string()),
         }
