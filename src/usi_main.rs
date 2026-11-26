@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! USI front-end binary for the Taikyoku Shogi engine.
 //!
 //! Speaks the Universal Shogi Interface over stdin/stdout so the engine can

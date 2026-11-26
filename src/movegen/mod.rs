@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Legal move generation for Taikyoku Shogi.
 //!
 //! There is **no check filtering**: the variant has no check rule, so

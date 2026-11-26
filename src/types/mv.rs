@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! The internal `Move` struct and `UndoInfo`.
 //!
 //! All fields are `Copy` primitives, so `Move` is `Copy` as well. This

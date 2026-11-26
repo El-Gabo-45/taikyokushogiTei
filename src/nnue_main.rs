@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! `nnue` — maintenance tool for the NNUE architecture and network files.
 //!
 //! ```text

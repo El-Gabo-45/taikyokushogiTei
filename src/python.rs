@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Python bindings via PyO3 (enabled with the `python` feature).
 
 use pyo3::prelude::*;

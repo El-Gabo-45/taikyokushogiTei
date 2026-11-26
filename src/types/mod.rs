@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Core types for the Taikyoku Shogi engine.
 //!
 //! This module is split into submodules, each with a single responsibility:

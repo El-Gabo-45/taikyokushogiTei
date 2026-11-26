@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Fixed regression positions for the CLI's `bench search` command.
 //!
 //! Position 1 is the start position; positions 2–4 are midgame positions

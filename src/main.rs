@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Taikyoku Shogi HTTP Server + Web GUI.
 //!
 //! Serves the REST API (implemented in `taikyokushogi::server`) and the

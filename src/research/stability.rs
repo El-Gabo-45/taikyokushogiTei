@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! `nnue stability` — Tactical Stability Analyzer.
 //!
 //! Runs ONE search (single-threaded, deterministic) and records every

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Board dimensions, colors, direction constants, piece ranks.
 
 /// Board size (36x36).

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Board representation for Taikyoku Shogi.
 //!
 //! The `Board` struct and its core methods live in [`core`].  Additional

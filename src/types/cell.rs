@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Cell encoding: 0 = empty, otherwise `(piece_type << 1) | color`.
 
 use super::constants::BOARD_SIZE;

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! JSON request/response types for the HTTP API.
 //!
 //! Every mutating endpoint answers with a body that contains `ok`, and

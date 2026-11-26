@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Piece movement rules: `Movement` struct and `HookType` enum.
 
 /// Movement rules for a piece type.

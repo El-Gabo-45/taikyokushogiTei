@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Single source of truth of the NNUE architecture.
 //!
 //! `rules/nnue_arch.json` is embedded at compile time and read at runtime by

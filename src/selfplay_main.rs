@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 use taikyokushogi::selfplay::{SelfPlayConfig, run_selfplay};
 
 fn main() {

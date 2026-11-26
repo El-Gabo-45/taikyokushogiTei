@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! `nnue tree` — bounded static-eval tree below a position, as JSON.
 //!
 //! Every node is a legal move; `eval` is the static evaluation after the

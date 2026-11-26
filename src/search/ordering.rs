@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Move scoring and packing for move ordering.
 //!
 //! Priority ladder: 1) TT/hash move, 2) root hint, 3) tactical MVV-LVA,

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! HTTP server + REST API for the Taikyoku Shogi engine.
 //!
 //! Enabled with the `server` feature. The module is part of the library (not

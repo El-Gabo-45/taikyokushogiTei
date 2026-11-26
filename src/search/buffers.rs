@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Reusable per-ply scratch buffers for the search.
 //!
 //! ## Why this module exists

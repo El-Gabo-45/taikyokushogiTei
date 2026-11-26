@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! `nnue multipv` — `MultiPV`: the best N candidate moves, compared.
 //!
 //! Method (documented because it shapes the output):

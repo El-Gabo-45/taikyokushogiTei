@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! TSFEN notation for Taikyoku Shogi positions.
 //!
 //! Format: `rank/rank/.../rank side move_number`

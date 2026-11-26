@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! `nnue critical` — Critical Position Detector over self-play `games.db`.
 //!
 //! Replays every recorded game from the initial position (see

@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! Interactive command-line interface for the Taikyoku Shogi engine.
 //!
 //! A real user-facing CLI (not just a debug harness): play against the
