@@ -76,6 +76,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
+    print_moments(&mut moments, &per_game, top);
+    Ok(())
+}
+
+/// Sort and print the worst-swing table and per-game counts.
+fn print_moments(moments: &mut [Moment], per_game: &BTreeMap<u64, u32>, top: usize) {
     // Worst swings first; ties break by game/ply so the output is stable.
     moments.sort_by(|a, b| {
         b.gain
@@ -112,7 +118,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
             println!("  game {gid}: {count}");
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

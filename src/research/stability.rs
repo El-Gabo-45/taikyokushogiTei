@@ -46,11 +46,22 @@ pub fn run(args: &[String]) -> Result<(), String> {
         Some(&mut |it| ladder.push(it.clone())),
     );
 
+    print_ladder(&ladder, &result, &board, net.is_some());
+    Ok(())
+}
+
+/// Print the deepening ladder, its deltas and the stability verdict.
+fn print_ladder(
+    ladder: &[crate::search::IterInfo],
+    result: &crate::SearchResult,
+    board: &crate::Board,
+    nnue: bool,
+) {
     println!("=== Search stability ===");
     println!("position: {}", board.to_tsfen());
     println!(
         "eval:     {}",
-        if net.is_some() {
+        if nnue {
             "NNUE network"
         } else {
             "hand-crafted evaluator"
@@ -66,7 +77,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let mut max_delta: i64 = 0;
     let mut changes = 0usize;
     let mut pawn_swings = 0usize;
-    for it in &ladder {
+    for it in ladder {
         let best = it
             .best_move
             .as_ref()
@@ -114,7 +125,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
         "WOBBLING — pawn-sized score swings: the position is tactically unstable, or the evaluator disagrees with deeper search"
     };
     println!("verdict:  {verdict}");
-    Ok(())
 }
 
 #[cfg(test)]

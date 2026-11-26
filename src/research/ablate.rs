@@ -241,6 +241,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
         }
     }
 
+    print_results(&mut rows);
+    Ok(())
+}
+
+/// Sort by decision impact and print the ablation table.
+fn print_results(rows: &mut [AblationRow<'_>]) {
     println!();
     println!(
         "{:<30} {:>9}  {:>13}  {:>8}",
@@ -252,7 +258,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         let fb = b.1.changed as f64 / b.1.positions.max(1) as f64;
         fb.partial_cmp(&fa).unwrap_or(std::cmp::Ordering::Equal)
     });
-    for (name, agg) in &rows {
+    for (name, agg) in rows.iter() {
         if agg.positions == 0 {
             continue;
         }
@@ -271,7 +277,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
     println!(
         "reading: `changed` counts positions where the best move differs from production; avg |Δscore| is in engine units (a pawn is 500, mate ±1,000,000); nodes× is the search-cost ratio."
     );
-    Ok(())
 }
 
 #[cfg(test)]

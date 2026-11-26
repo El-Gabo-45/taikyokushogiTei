@@ -62,8 +62,19 @@ pub fn run(args: &[String]) -> Result<(), String> {
         Ok(())
     })?;
 
+    print_matrix_report(&matrix, &db, &summary, top, csv.as_deref())
+}
+
+/// Print the interaction matrix report; optionally write the full CSV.
+fn print_matrix_report(
+    matrix: &[Vec<u64>],
+    db: &str,
+    summary: &crate::research::ReplaySummary,
+    top: usize,
+    csv: Option<&str>,
+) -> Result<(), String> {
     println!("=== Piece interaction matrix ===");
-    print_replay_summary(&db, &summary);
+    print_replay_summary(db, summary);
 
     let total: u64 = matrix.iter().map(|row| row.iter().sum::<u64>()).sum();
     println!("captures: {total} recorded");
@@ -122,7 +133,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     }
 
     if let Some(path) = csv {
-        write_csv(&path, &matrix)?;
+        write_csv(path, matrix)?;
         println!();
         println!(
             "wrote {path} (full {}×{} matrix, rows = mover, columns = victim)",

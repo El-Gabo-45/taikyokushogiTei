@@ -23,6 +23,8 @@ use std::thread::JoinHandle;
 type GameOutcome = (Vec<TrainingSample>, GameRecord);
 /// Handle of a worker/writer/db thread that reports a `Result`.
 type WorkerHandle = JoinHandle<Result<(), String>>;
+/// A chosen move and its search telemetry (move, score, nodes, time).
+type MovePick = (crate::types::Move, i32, u64, u64);
 
 use crossbeam::channel::{Receiver, Sender, bounded};
 
@@ -246,6 +248,62 @@ struct SelfPlayWorker {
 }
 
 impl SelfPlayWorker {
+    /// Label every sample with the game result from its side's perspective.
+    fn label_samples(samples: &mut [TrainingSample], result_val: i8) {
+        for s in samples {
+            s.result = if s.side_to_move == BLACK {
+                result_val
+            } else {
+                -result_val
+            };
+        }
+    }
+
+    /// Encode the current board as a training sample (piece+color per square).
+    fn make_sample(
+        board: &mut Board,
+        game_id: u64,
+        side: u8,
+        score: i32,
+        move_count: u32,
+    ) -> TrainingSample {
+        let mut sample = TrainingSample {
+            game_id: game_id as u32,
+            board: [0; 1296],
+            side_to_move: side,
+            result: 0,
+            score,
+            classic_eval: classic_eval(board),
+            ply: move_count as u16,
+        };
+        for sq in 0..1296 {
+            let cell = board.cells[sq];
+            if cell != EMPTY_CELL {
+                // Color goes in bit 9: piece types go up to 301 (9 bits).
+                sample.board[sq] = (cell_piece(cell) & 0x1FF) | (u16::from(cell_color(cell)) << 9);
+            }
+        }
+        sample
+    }
+
+    /// Pick one move: a random opening ply or a searched move.
+    /// `None` means no legal move exists (the side to move loses).
+    fn pick_move(
+        board: &mut Board,
+        config: &SelfPlayConfig,
+        rng: &mut SplitMix,
+        move_count: u32,
+    ) -> Option<MovePick> {
+        if move_count < config.opening_plies {
+            let legal = crate::movegen::generate_legal_moves(board);
+            let m = legal.get((rng.next() % legal.len() as u64) as usize)?;
+            Some((*m, 0, 0, 0))
+        } else {
+            let r = search(board, config.depth, config.time_limit_ms);
+            r.best_move.map(|m| (m, r.score, r.nodes, r.time_ms))
+        }
+    }
+
     fn play_one_game(&mut self, game_id: u64) -> GameOutcome {
         let mut board = Board::new();
         board.setup_initial();
@@ -271,29 +329,15 @@ impl SelfPlayWorker {
 
             // Random opening: not searched, not recorded as training data.
             let in_opening = move_count < self.config.opening_plies;
-            let (best_move, score, nodes, time_ms) = if in_opening {
-                let legal = crate::movegen::generate_legal_moves(&board);
-                if legal.is_empty() {
-                    result_val = if board.side_to_move == BLACK {
-                        -1i8
-                    } else {
-                        1i8
-                    };
-                    break;
-                }
-                (legal[(rng.next() % legal.len() as u64) as usize], 0, 0, 0)
-            } else {
-                let r = search(&mut board, self.config.depth, self.config.time_limit_ms);
-                if let Some(m) = r.best_move {
-                    (m, r.score, r.nodes, r.time_ms)
+            let Some((best_move, score, nodes, time_ms)) =
+                Self::pick_move(&mut board, &self.config, &mut rng, move_count)
+            else {
+                result_val = if board.side_to_move == BLACK {
+                    -1i8
                 } else {
-                    result_val = if board.side_to_move == BLACK {
-                        -1i8
-                    } else {
-                        1i8
-                    };
-                    break;
-                }
+                    1i8
+                };
+                break;
             };
 
             let side = board.side_to_move;
@@ -312,24 +356,9 @@ impl SelfPlayWorker {
             });
 
             if !in_opening {
-                let mut sample = TrainingSample {
-                    game_id: game_id as u32,
-                    board: [0; 1296],
-                    side_to_move: side,
-                    result: 0,
-                    score,
-                    classic_eval: classic_eval(&mut board),
-                    ply: move_count as u16,
-                };
-                for sq in 0..1296 {
-                    let cell = board.cells[sq];
-                    if cell != EMPTY_CELL {
-                        // Color goes in bit 9: piece types go up to 301 (9 bits).
-                        sample.board[sq] =
-                            (cell_piece(cell) & 0x1FF) | (u16::from(cell_color(cell)) << 9);
-                    }
-                }
-                game_samples.push(sample);
+                game_samples.push(Self::make_sample(
+                    &mut board, game_id, side, score, move_count,
+                ));
             }
 
             board.apply_move(&best_move);
@@ -341,14 +370,7 @@ impl SelfPlayWorker {
                 .fetch_add(time_ms, Ordering::Relaxed);
         }
 
-        for s in &mut game_samples {
-            let from_perspective = if s.side_to_move == BLACK {
-                f32::from(result_val)
-            } else {
-                -f32::from(result_val)
-            };
-            s.result = from_perspective as i8;
-        }
+        Self::label_samples(&mut game_samples, result_val);
 
         let record = GameRecord {
             game_id,
@@ -569,6 +591,43 @@ impl SelfPlayCoordinator {
         n
     }
 
+    /// Persist one game record (game row + all moves in one transaction).
+    fn insert_record(conn: &rusqlite::Connection, record: &GameRecord) -> Result<(), String> {
+        conn.execute(
+            "INSERT INTO games (id, result, total_moves, depth, duration_ms) VALUES (?, ?, ?, ?, ?)",
+            rusqlite::params![
+                record.game_id as i64,
+                i64::from(record.result),
+                i64::from(record.total_moves),
+                i64::from(record.depth),
+                record.duration_ms as i64
+            ],
+        )
+        .map_err(|e| format!("insert game {}: {e}", record.game_id))?;
+        let t = conn
+            .unchecked_transaction()
+            .map_err(|e| format!("transaction for game {}: {e}", record.game_id))?;
+        for m in &record.moves {
+            t.execute(
+                "INSERT INTO moves (game_id, move_number, from_sq, to_sq, promo, captured, side, black_pieces, white_pieces) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rusqlite::params![
+                    record.game_id as i64,
+                    i64::from(m.move_number),
+                    i64::from(m.from),
+                    i64::from(m.to),
+                    i64::from(m.promo),
+                    i64::from(m.captured_piece),
+                    i64::from(m.side),
+                    m.black_pieces as i64,
+                    m.white_pieces as i64,
+                ],
+            )
+            .map_err(|e| format!("insert move {} of game {}: {e}", m.move_number, record.game_id))?;
+        }
+        t.commit()
+            .map_err(|e| format!("commit game {}: {e}", record.game_id))
+    }
+
     fn db_loop(
         rx: Receiver<GameRecord>,
         db_path: String,
@@ -607,50 +666,9 @@ impl SelfPlayCoordinator {
         let mut last_print = std::time::Instant::now();
         while let Ok(record) = rx.recv() {
             total += 1;
-            if let Err(e) = conn.execute(
-                "INSERT INTO games (id, result, total_moves, depth, duration_ms) VALUES (?, ?, ?, ?, ?)",
-                rusqlite::params![record.game_id as i64, i64::from(record.result), i64::from(record.total_moves), i64::from(record.depth), record.duration_ms as i64]
-            ) {
+            if let Err(e) = Self::insert_record(&conn, &record) {
                 failures += 1;
-                last_err = format!("insert game {}: {e}", record.game_id);
-                continue;
-            }
-            match conn.unchecked_transaction() {
-                Ok(t) => {
-                    let mut failed = None;
-                    for m in &record.moves {
-                        if let Err(e) = t.execute(
-                            "INSERT INTO moves (game_id, move_number, from_sq, to_sq, promo, captured, side, black_pieces, white_pieces) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            rusqlite::params![
-                                record.game_id as i64, i64::from(m.move_number), i64::from(m.from), i64::from(m.to),
-                                i64::from(m.promo), i64::from(m.captured_piece), i64::from(m.side),
-                                m.black_pieces as i64, m.white_pieces as i64,
-                            ]
-                        ) {
-                            failed = Some(format!(
-                                "insert move {} of game {}: {e}",
-                                m.move_number, record.game_id
-                            ));
-                            break;
-                        }
-                    }
-                    match failed {
-                        Some(msg) => {
-                            failures += 1;
-                            last_err = msg;
-                        }
-                        None => {
-                            if let Err(e) = t.commit() {
-                                failures += 1;
-                                last_err = format!("commit game {}: {e}", record.game_id);
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    failures += 1;
-                    last_err = format!("transaction for game {}: {e}", record.game_id);
-                }
+                last_err = e;
             }
             if last_print.elapsed().as_secs() >= 2 {
                 last_print = std::time::Instant::now();

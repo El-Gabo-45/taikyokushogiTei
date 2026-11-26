@@ -154,11 +154,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     let analysis = analyze(&mut board, depth, max_root, time_ms);
 
+    print_analysis(&analysis, &board, net.is_some(), depth, n);
+    Ok(())
+}
+
+/// Print the `MultiPV` report table and the engine's own choice.
+fn print_analysis(analysis: &Analysis, board: &crate::Board, nnue: bool, depth: u32, n: usize) {
     println!("=== MultiPV ===");
     println!("position: {}", board.to_tsfen());
     println!(
         "eval:     {}",
-        if net.is_some() {
+        if nnue {
             "NNUE network"
         } else {
             "hand-crafted evaluator"
@@ -216,7 +222,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
         "root search uses aspiration windows, so its reported score can differ from the line score"
     );
     println!("of the same move — compare the CHOICE, not the raw numbers.");
-    Ok(())
 }
 
 #[cfg(test)]
