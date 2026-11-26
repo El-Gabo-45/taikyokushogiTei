@@ -33,8 +33,16 @@ export function openChoiceModal<T>(
     descEl.textContent = description;
     list.replaceChildren();
 
+    // One controller owns every listener added for this modal opening, so a
+    // second open() cannot accumulate stale handlers on the shared <dialog>.
+    const listeners = new AbortController();
+    const signal = listeners.signal;
+    let settled = false;
+
     const close = (value: T | null) => {
-      dialog.removeEventListener('close', onClose);
+      if (settled) return;
+      settled = true;
+      listeners.abort(); // drop button/cancel/close listeners atomically
       dialog.close();
       resolve(value);
       dialog.returnValue = '';
@@ -48,18 +56,22 @@ export function openChoiceModal<T>(
       if (option.detail) {
         button.title = option.detail;
       }
-      button.addEventListener('click', () => close(option.value));
+      button.addEventListener('click', () => close(option.value), { signal });
       list.appendChild(button);
     });
 
     const cancel = dialog.querySelector<HTMLButtonElement>('.cancel-row')!;
-    cancel.addEventListener('click', () => close(null));
+    cancel.addEventListener('click', () => close(null), { signal });
 
     const onClose = () => {
       // Esc or other close request with no chosen value → cancelled.
-      resolve(null);
+      if (!settled) {
+        settled = true;
+        listeners.abort();
+        resolve(null);
+      }
     };
-    dialog.addEventListener('close', onClose, { once: true });
+    dialog.addEventListener('close', onClose, { signal });
 
     dialog.showModal();
     const first = list.querySelector<HTMLButtonElement>('button');

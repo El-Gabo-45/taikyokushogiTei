@@ -332,3 +332,43 @@ describe('api client — response validation', () => {
     expect((error as api.ApiError).message).toContain('board.0.0.color');
   });
 });
+
+describe('request timeout safety belt', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends an AbortSignal with every request', async () => {
+    const calls = mockJson(HEALTH);
+    await api.health();
+    expect(calls[0]?.init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('turns an aborted fetch into a 408 ApiError naming the endpoint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        // Simulate the browser rejecting a fetch whose signal was aborted.
+        const signal = init?.signal;
+        if (signal) {
+          await new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => resolve(), { once: true });
+          });
+          throw new DOMException('The operation was aborted', 'AbortError');
+        }
+        return jsonOf(HEALTH);
+      }),
+    );
+
+    // Trigger the timeout immediately by overriding the exported cap is not
+    // possible (const), so use fake timers to advance past it.
+    vi.useFakeTimers();
+    const promise = api.health().catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(api.REQUEST_TIMEOUT_MS + 1);
+    const error = await promise;
+    vi.useRealTimers();
+
+    expect(error).toBeInstanceOf(api.ApiError);
+    expect((error as api.ApiError).status).toBe(408);
+    expect((error as api.ApiError).message).toContain('/api/health');
+    expect((error as api.ApiError).message).toContain('timed out');
+  });
+});

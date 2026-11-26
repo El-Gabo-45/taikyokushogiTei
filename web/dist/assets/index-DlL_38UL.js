@@ -5636,6 +5636,13 @@ object({
 });
 // src/api/client.ts
 var BASE = "";
+/**
+* Hard timeout for every API request. The server clamps search time to
+* `MAX_TIME_MS`, but a hung process or a proxy that drops the response would
+* otherwise leave `fetch` pending forever. `AbortController` gives the UI a
+* deterministic failure instead. Exported so tests can assert the behaviour.
+*/
+var REQUEST_TIMEOUT_MS = 6e4;
 var ApiError = class extends Error {
 	status;
 	constructor(message, status) {
@@ -5664,30 +5671,40 @@ function sessionId() {
 	return id;
 }
 async function request(path, schema, init) {
-	const res = await fetch(`${BASE}${path}`, {
-		headers: {
-			Accept: "application/json",
-			"X-Session-Id": sessionId(),
-			...init?.body ? { "Content-Type": "application/json" } : {}
-		},
-		...init
-	});
-	let payload = null;
-	const text = await res.text();
-	if (text) try {
-		payload = JSON.parse(text);
-	} catch {
-		payload = null;
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+	try {
+		const res = await fetch(`${BASE}${path}`, {
+			headers: {
+				Accept: "application/json",
+				"X-Session-Id": sessionId(),
+				...init?.body ? { "Content-Type": "application/json" } : {}
+			},
+			...init,
+			signal: controller.signal
+		});
+		let payload = null;
+		const text = await res.text();
+		if (text) try {
+			payload = JSON.parse(text);
+		} catch {
+			payload = null;
+		}
+		if (!res.ok) throw new ApiError(payload?.error ?? `HTTP ${res.status} ${res.statusText} (${path})`, res.status);
+		const parsed = schema.safeParse(payload);
+		if (!parsed.success) {
+			const issue = parsed.error.issues[0];
+			const where = issue && issue.path.length > 0 ? ` at "${issue.path.join(".")}"` : "";
+			const more = parsed.error.issues.length > 1 ? ` (+${parsed.error.issues.length - 1} more)` : "";
+			throw new ApiError(`Invalid response from ${path}: ${issue?.message ?? "validation failed"}${where}${more}`, res.status);
+		}
+		return parsed.data;
+	} catch (err) {
+		if (controller.signal.aborted && err instanceof DOMException && err.name === "AbortError") throw new ApiError(`Request to ${path} timed out after ${REQUEST_TIMEOUT_MS} ms`, 408);
+		throw err;
+	} finally {
+		clearTimeout(timer);
 	}
-	if (!res.ok) throw new ApiError(payload?.error ?? `HTTP ${res.status} ${res.statusText} (${path})`, res.status);
-	const parsed = schema.safeParse(payload);
-	if (!parsed.success) {
-		const issue = parsed.error.issues[0];
-		const where = issue && issue.path.length > 0 ? ` at "${issue.path.join(".")}"` : "";
-		const more = parsed.error.issues.length > 1 ? ` (+${parsed.error.issues.length - 1} more)` : "";
-		throw new ApiError(`Invalid response from ${path}: ${issue?.message ?? "validation failed"}${where}${more}`, res.status);
-	}
-	return parsed.data;
 }
 var get = (path, schema) => request(path, schema);
 var post = (path, schema, body) => request(path, schema, body === void 0 ? { method: "POST" } : {
@@ -6677,8 +6694,13 @@ function openChoiceModal(title, description, options) {
 		titleEl.textContent = title;
 		descEl.textContent = description;
 		list.replaceChildren();
+		const listeners = new AbortController();
+		const signal = listeners.signal;
+		let settled = false;
 		const close = (value) => {
-			dialog.removeEventListener("close", onClose);
+			if (settled) return;
+			settled = true;
+			listeners.abort();
 			dialog.close();
 			resolve(value);
 			dialog.returnValue = "";
@@ -6689,14 +6711,18 @@ function openChoiceModal(title, description, options) {
 			button.value = String(index);
 			button.textContent = option.label;
 			if (option.detail) button.title = option.detail;
-			button.addEventListener("click", () => close(option.value));
+			button.addEventListener("click", () => close(option.value), { signal });
 			list.appendChild(button);
 		});
-		dialog.querySelector(".cancel-row").addEventListener("click", () => close(null));
+		dialog.querySelector(".cancel-row").addEventListener("click", () => close(null), { signal });
 		const onClose = () => {
-			resolve(null);
+			if (!settled) {
+				settled = true;
+				listeners.abort();
+				resolve(null);
+			}
 		};
-		dialog.addEventListener("close", onClose, { once: true });
+		dialog.addEventListener("close", onClose, { signal });
 		dialog.showModal();
 		list.querySelector("button")?.focus();
 	});
@@ -6892,7 +6918,7 @@ function updatePanels(state) {
 	setText("search-nodes", search ? formatNodes(search.nodes) : "—");
 	setText("search-time", search ? `${search.time_ms} ms` : "—");
 	const engine = state.engineInfo;
-	setText("engine-version", engine ? `v${engine.version}` : "—");
+	setText("engine-version", engine ? engine.version : "—");
 	setText("engine-backend", engine ? engine.eval_backend : "—");
 	setText("engine-hash", engine ? `${engine.hash_mb} MB` : "—");
 	setText("engine-pieces", engine ? `${engine.piece_types} types` : "—");

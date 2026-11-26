@@ -155,3 +155,12 @@ Errors are JSON (`{"ok": false, "error": "..."}`) with real HTTP status codes:
 - **Search bounds** — `depth` and `movetime` on `/api/ai-move` and `/api/search`
   are clamped to `MAX_DEPTH`/`MAX_TIME_MS`, and searches run on
   `spawn_blocking` so a long think never blocks the async executor.
+
+### Frontend safety belt
+
+- **Request timeout** — every `fetch` in `web/src/api/client.ts` gets an
+  `AbortController` that aborts after `REQUEST_TIMEOUT_MS` (60 s, comfortably
+  above the server's search cap). An aborted request becomes an `ApiError`
+  with HTTP `408` naming the endpoint, so a hung server or dropped proxy
+  response can never leave the UI waiting forever. The timer is cleared in a
+  `finally` block on every path.

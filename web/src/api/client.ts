@@ -48,6 +48,14 @@ import type { ZodType } from 'zod';
 
 const BASE = '';
 
+/**
+ * Hard timeout for every API request. The server clamps search time to
+ * `MAX_TIME_MS`, but a hung process or a proxy that drops the response would
+ * otherwise leave `fetch` pending forever. `AbortController` gives the UI a
+ * deterministic failure instead. Exported so tests can assert the behaviour.
+ */
+export const REQUEST_TIMEOUT_MS = 60_000;
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -85,45 +93,61 @@ async function request<T>(
   schema: ZodType<T>,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      'X-Session-Id': sessionId(),
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    ...init,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  let payload: unknown = null;
-  const text = await res.text();
-  if (text) {
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      // Non-JSON response (e.g. proxy error page).
-      payload = null;
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      headers: {
+        Accept: 'application/json',
+        'X-Session-Id': sessionId(),
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...init,
+      signal: controller.signal,
+    });
+
+    let payload: unknown = null;
+    const text = await res.text();
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        // Non-JSON response (e.g. proxy error page).
+        payload = null;
+      }
     }
-  }
 
-  if (!res.ok) {
-    const message =
-      (payload as { error?: string } | null)?.error ??
-      `HTTP ${res.status} ${res.statusText} (${path})`;
-    throw new ApiError(message, res.status);
-  }
+    if (!res.ok) {
+      const message =
+        (payload as { error?: string } | null)?.error ??
+        `HTTP ${res.status} ${res.statusText} (${path})`;
+      throw new ApiError(message, res.status);
+    }
 
-  const parsed = schema.safeParse(payload);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue && issue.path.length > 0 ? ` at "${issue.path.join('.')}"` : '';
-    const more =
-      parsed.error.issues.length > 1 ? ` (+${parsed.error.issues.length - 1} more)` : '';
-    throw new ApiError(
-      `Invalid response from ${path}: ${issue?.message ?? 'validation failed'}${where}${more}`,
-      res.status,
-    );
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const where = issue && issue.path.length > 0 ? ` at "${issue.path.join('.')}"` : '';
+      const more =
+        parsed.error.issues.length > 1 ? ` (+${parsed.error.issues.length - 1} more)` : '';
+      throw new ApiError(
+        `Invalid response from ${path}: ${issue?.message ?? 'validation failed'}${where}${more}`,
+        res.status,
+      );
+    }
+    return parsed.data;
+  } catch (err) {
+    if (controller.signal.aborted && err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(
+        `Request to ${path} timed out after ${REQUEST_TIMEOUT_MS} ms`,
+        408, // 408 Request Timeout
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return parsed.data;
 }
 
 const get = <T>(path: string, schema: ZodType<T>) => request(path, schema);
