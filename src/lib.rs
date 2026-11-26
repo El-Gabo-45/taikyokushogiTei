@@ -790,7 +790,10 @@ impl Board {
         }
         let idx = rand::thread_rng().gen_range(0..moves.len());
         Some(Move {
-            inner: moves.into_iter().nth(idx).unwrap(),
+            inner: moves
+                .into_iter()
+                .nth(idx)
+                .expect("random move index must be valid"),
         })
     }
 

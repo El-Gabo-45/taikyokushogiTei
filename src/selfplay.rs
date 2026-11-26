@@ -807,7 +807,7 @@ mod tests {
             0,
             "missing state file means ids start at 0"
         );
-        write_next_game_id(&dir, 42).unwrap();
+        write_next_game_id(&dir, 42).expect("game id file must be writable");
         assert_eq!(read_next_game_id(&dir), 42);
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -230,9 +230,7 @@ fn parse_move(board: &Board, s: &str) -> Result<Move, String> {
         }
         segments.push(cur);
         if segments.len() != 2 {
-            return Err(format!(
-                "cannot parse move `{s}` (expected e.g. `f19f20`)"
-            ));
+            return Err(format!("cannot parse move `{s}` (expected e.g. `f19f20`)"));
         }
         (
             parse_square(&segments[0]).ok_or_else(|| format!("bad square `{}`", segments[0]))?,
@@ -646,7 +644,8 @@ fn debug_search(board: &mut Board, depth: u32, opt: &Options) {
                 it.nodes,
                 it.time_ms,
                 it.best_move
-                    .as_ref().map_or_else(|| "-".into(), std::string::ToString::to_string)
+                    .as_ref()
+                    .map_or_else(|| "-".into(), std::string::ToString::to_string)
             );
         }),
     );
@@ -654,7 +653,8 @@ fn debug_search(board: &mut Board, depth: u32, opt: &Options) {
         "best: {}  score {:+}  nodes {}  {}ms",
         result
             .best_move
-            .as_ref().map_or_else(|| "-".into(), std::string::ToString::to_string),
+            .as_ref()
+            .map_or_else(|| "-".into(), std::string::ToString::to_string),
         result.score,
         result.nodes,
         result.time_ms
@@ -801,16 +801,20 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
         "legal" => {
             let moves = board.legal_moves();
             let filtered: Vec<_> = match rest.first() {
-                Some(sq) => if let Some((row, col)) = parse_square(sq) { moves
-                .iter()
-                .filter(|m| {
-                    let r = m.raw();
-                    (r.from_sq as usize / 36, r.from_sq as usize % 36) == (row, col)
-                })
-                .collect() } else {
-                    println!("error: bad square `{sq}`");
-                    return true;
-                },
+                Some(sq) => {
+                    if let Some((row, col)) = parse_square(sq) {
+                        moves
+                            .iter()
+                            .filter(|m| {
+                                let r = m.raw();
+                                (r.from_sq as usize / 36, r.from_sq as usize % 36) == (row, col)
+                            })
+                            .collect()
+                    } else {
+                        println!("error: bad square `{sq}`");
+                        return true;
+                    }
+                }
                 None => moves.iter().collect(),
             };
             if filtered.is_empty() {
@@ -844,7 +848,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     let name = move_name(&m);
                     board.apply(&m);
                     hist.push(name);
-                    println!("played {}", hist.last().unwrap());
+                    println!("played {}", hist.last().expect("history must not be empty"));
                     check_terminal(board);
                     if board.game_result().is_none() {
                         if let Some(em) = engine_turn(board, opt) {
@@ -1685,7 +1689,13 @@ mod tests {
     /// Name of the first legal move in the current position (always valid).
     fn first_move_name() -> String {
         let board = Board::initial();
-        move_name(&board.legal_moves().into_iter().next().unwrap())
+        move_name(
+            &board
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("initial position must have legal moves"),
+        )
     }
 
     #[test]
@@ -1700,7 +1710,7 @@ mod tests {
         // name = file + rank (1-36) + file + rank, optional '+'
         let body = name.trim_end_matches('+');
         let mut chars = body.chars();
-        let f1 = parse_file(chars.next().unwrap());
+        let f1 = parse_file(chars.next().expect("char must exist"));
         let mut digits = String::new();
         let mut f2 = ' ';
         for c in chars.by_ref() {
@@ -1714,7 +1724,10 @@ mod tests {
         let f2p = parse_file(f2);
         assert!(f1.is_some() && f2p.is_some());
         assert!(!digits.is_empty() && !digits2.is_empty());
-        assert!(digits.parse::<usize>().unwrap() >= 1 && digits.parse::<usize>().unwrap() <= 36);
+        assert!(
+            digits.parse::<usize>().expect("digits must parse to usize") >= 1
+                && digits.parse::<usize>().expect("digits must parse to usize") <= 36
+        );
         // roundtrip: the name must parse back to the same move
         let parsed = parse_move(&board, &name).expect("move_name must be parseable");
         assert_eq!(parsed.raw().from_sq, m.raw().from_sq);
@@ -1729,7 +1742,7 @@ mod tests {
         // split into two squares (file letter + 1-2 digit rank, twice)
         let (sq1, sq2) = {
             let mut chars = base.chars();
-            let f1 = chars.next().unwrap();
+            let f1 = chars.next().expect("char must exist");
             let mut d1 = String::new();
             let mut f2 = ' ';
             for c in chars.by_ref() {
@@ -1769,7 +1782,7 @@ mod tests {
     #[test]
     fn parse_move_error_is_helpful() {
         let board = Board::initial();
-        let err = parse_move(&board, "a1a2").unwrap_err();
+        let err = parse_move(&board, "a1a2").expect("must be a parse error");
         assert!(
             err.contains("no legal moves from a1") || err.contains("not legal"),
             "got: {}",
@@ -1818,9 +1831,27 @@ mod tests {
     fn execute_move_undo_and_history() {
         // derive two actually-legal moves from the position sequence
         let mut probe = Board::initial();
-        let m1 = move_name(&probe.legal_moves().into_iter().next().unwrap());
-        probe.apply(&probe.legal_moves().into_iter().next().unwrap());
-        let m2 = move_name(&probe.legal_moves().into_iter().next().unwrap());
+        let m1 = move_name(
+            &probe
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("probe must have legal moves"),
+        );
+        probe.apply(
+            &probe
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("probe must have legal moves"),
+        );
+        let m2 = move_name(
+            &probe
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("probe must have legal moves"),
+        );
         drop(probe);
 
         let (board, _, hist) =
@@ -1862,9 +1893,27 @@ mod tests {
         let path = "/tmp/taikyoku_cli_test_save.json";
         let _ = std::fs::remove_file(path);
         let mut probe = Board::initial();
-        let m1 = move_name(&probe.legal_moves().into_iter().next().unwrap());
-        probe.apply(&probe.legal_moves().into_iter().next().unwrap());
-        let m2 = move_name(&probe.legal_moves().into_iter().next().unwrap());
+        let m1 = move_name(
+            &probe
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("probe must have legal moves"),
+        );
+        probe.apply(
+            &probe
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("probe must have legal moves"),
+        );
+        let m2 = move_name(
+            &probe
+                .legal_moves()
+                .into_iter()
+                .next()
+                .expect("probe must have legal moves"),
+        );
         drop(probe);
 
         let (mut board, mut opt, mut hist) =
@@ -1887,7 +1936,9 @@ mod tests {
         assert_eq!(hist.len(), 2);
         assert_eq!(hist[0], m1);
         // board matches the saved TSFEN
-        let gf: GameFile = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let gf: GameFile =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("file must exist"))
+                .expect("valid json");
         assert_eq!(board.to_tsfen(), gf.tsfen);
         let _ = std::fs::remove_file(path);
     }

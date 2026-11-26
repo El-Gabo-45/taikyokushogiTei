@@ -42,7 +42,11 @@ fn explain_reports_the_forward_pass_and_refresh_parity() {
     // A move keeps the report consistent. (The first legal move of the
     // initial position may be an igui / range capture that removes several
     // pieces, so only assert that the move changed the board.)
-    let mv = b.legal_moves().into_iter().next().unwrap();
+    let mv = b
+        .legal_moves()
+        .into_iter()
+        .next()
+        .expect("must have at least one legal move from the position");
     b.apply(&mv);
     let x2 = explain(&b).expect("net is attached");
     assert!(

@@ -297,7 +297,10 @@ impl Board {
         // ── NNUE: remember the accumulator for undo (ring, no allocation) ──
         let nnue_on = self.nnue.is_some();
         if nnue_on {
-            self.nnue.as_deref_mut().unwrap().push_snapshot();
+            self.nnue
+                .as_deref_mut()
+                .expect("nnue must be Some when push_snapshot is called")
+                .push_snapshot();
         }
 
         let mut undo = UndoInfo {
@@ -634,7 +637,10 @@ impl Board {
         }
 
         while self.cap_stack.len() > undo.cap_base {
-            let (sq, cell) = self.cap_stack.pop().unwrap();
+            let (sq, cell) = self
+                .cap_stack
+                .pop()
+                .expect("cap_stack should not be empty at this point");
             let squ = sq as usize;
             let cap_pt = cell_piece(cell);
             let cap_c = cell_color(cell) as usize;

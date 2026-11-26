@@ -436,7 +436,7 @@ impl UsiEngine {
         let mut board = Board::initial();
         board.set_network(net.clone());
         let searcher = Searcher::new();
-        searcher.set_hash_mb(DEFAULT_HASH_MB);
+        let _ = searcher.set_hash_mb(DEFAULT_HASH_MB);
         UsiEngine {
             sink,
             board,
@@ -844,16 +844,24 @@ mod tests {
 
     impl UsiSink for VecSink {
         fn send(&self, line: &str) {
-            self.0.lock().unwrap().push(line.to_string());
+            self.0
+                .lock()
+                .expect("mutex must not be poisoned")
+                .push(line.to_string());
         }
     }
 
     impl VecSink {
         fn lines(&self) -> Vec<String> {
-            self.0.lock().unwrap().clone()
+            self.0.lock().expect("mutex must not be poisoned").clone()
         }
         fn last(&self) -> String {
-            self.0.lock().unwrap().last().cloned().unwrap_or_default()
+            self.0
+                .lock()
+                .expect("mutex must not be poisoned")
+                .last()
+                .cloned()
+                .unwrap_or_default()
         }
     }
 
@@ -1119,7 +1127,7 @@ mod tests {
             lines.iter().any(|l| l.starts_with("info depth 1 ")),
             "per-iteration info expected: {lines:?}"
         );
-        let best = lines.iter().find(|l| l.starts_with("bestmove ")).unwrap_or("bestmove none");
+        let best = lines.iter().find(|l| l.starts_with("bestmove ")).unwrap();
         let token = best.strip_prefix("bestmove ").unwrap_or("").trim();
         let board = Board::initial();
         assert!(parse_move(&board, token).is_ok(), "`{token}` must be legal");

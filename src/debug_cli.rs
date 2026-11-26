@@ -21,7 +21,10 @@ fn main() {
 
     println!(
         "best_move={:?}",
-        result.best_move.as_ref().map(std::string::ToString::to_string)
+        result
+            .best_move
+            .as_ref()
+            .map(std::string::ToString::to_string)
     );
     println!("score={}", result.score);
     println!("nodes={}", result.nodes);
