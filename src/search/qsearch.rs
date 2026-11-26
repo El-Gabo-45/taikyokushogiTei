@@ -27,6 +27,53 @@ use super::tt;
 use crate::eval::{MATE_SCORE, evaluate};
 use crate::types::{BLACK, GameResult, WHITE};
 
+/// Generate and order the captures for one quiescence node.
+fn score_captures(ctx: &Ctx<'_>, pb: &mut super::buffers::PlyBuffers) {
+    crate::movegen::generate_pseudo_legal_captures_into(&mut pb.caps, ctx.board);
+    let values = piece_vals();
+    pb.scored.clear();
+    for (i, m) in pb.caps.iter().enumerate() {
+        let s = ordering::capture_qs_score(ctx.board, m, values);
+        if s < params::QS_PREFILTER {
+            continue;
+        }
+        pb.scored.push((s, i as u32, 0));
+    }
+    pb.scored.sort_unstable_by_key(|e| std::cmp::Reverse(e.0));
+}
+
+/// Terminal score from the mover's perspective, with the quiescence ply.
+fn terminal_qscore(result: GameResult, stm: u8, qd: u32) -> i32 {
+    match result {
+        GameResult::BlackWins => {
+            if stm == BLACK {
+                MATE_SCORE - qd as i32
+            } else {
+                -(MATE_SCORE - qd as i32)
+            }
+        }
+        GameResult::WhiteWins => {
+            if stm == WHITE {
+                MATE_SCORE - qd as i32
+            } else {
+                -(MATE_SCORE - qd as i32)
+            }
+        }
+        GameResult::Draw => 0,
+    }
+}
+
+/// Cached quiescence score, if the TT entry is usable at this window.
+fn probe_qtt(ctx: &Ctx<'_>, q_hash: u64, alpha: i32, beta: i32) -> Option<i32> {
+    let entry = ctx.tt.probe(q_hash)?;
+    match entry.flag {
+        0 => Some(entry.score),
+        1 if entry.score >= beta => Some(entry.score),
+        2 if entry.score <= alpha => Some(entry.score),
+        _ => None,
+    }
+}
+
 /// Quiescence entry (qd = 0 from the main search).
 pub(crate) fn run(ctx: &mut Ctx, alpha: i32, beta: i32) -> i32 {
     ctx.qsearch(alpha, beta, 0)
@@ -44,39 +91,14 @@ impl Ctx<'_> {
 
         // Terminal check (same semantics as pvs, with the quiescence ply).
         if let Some(result) = self.board.game_result() {
-            let stm = self.board.side_to_move;
-            return match result {
-                GameResult::BlackWins => {
-                    if stm == BLACK {
-                        MATE_SCORE - qd as i32
-                    } else {
-                        -(MATE_SCORE - qd as i32)
-                    }
-                }
-                GameResult::WhiteWins => {
-                    if stm == WHITE {
-                        MATE_SCORE - qd as i32
-                    } else {
-                        -(MATE_SCORE - qd as i32)
-                    }
-                }
-                GameResult::Draw => 0,
-            };
+            return terminal_qscore(result, self.board.side_to_move, qd);
         }
 
-        // ── TT PROBE (quiescence) ─────────────────────────────────────
-        // Reuse shallow results at leaf nodes: on a 36×36 board the transposition
-        // count in quiescence is enormous (captures transpose constantly), so
-        // caching here saves whole quiescence subtrees.
+        // Reuse shallow leaf results: captures transpose constantly on 36×36.
         let q_hash = self.board.tt_key();
         if qd > 0 {
-            if let Some(entry) = self.tt.probe(q_hash) {
-                match entry.flag {
-                    0 => return entry.score,
-                    1 if entry.score >= beta => return entry.score,
-                    2 if entry.score <= alpha => return entry.score,
-                    _ => {}
-                }
+            if let Some(score) = probe_qtt(self, q_hash, alpha, beta) {
+                return score;
             }
         }
 
@@ -103,17 +125,7 @@ impl Ctx<'_> {
         // a live PV buffer.
         let slot = self.ply as usize + qd as usize;
         let mut pb = self.pool.take(slot);
-        crate::movegen::generate_pseudo_legal_captures_into(&mut pb.caps, self.board);
-        let values = piece_vals();
-        pb.scored.clear();
-        for (i, m) in pb.caps.iter().enumerate() {
-            let s = ordering::capture_qs_score(self.board, m, values);
-            if s < params::QS_PREFILTER {
-                continue;
-            }
-            pb.scored.push((s, i as u32, 0));
-        }
-        pb.scored.sort_unstable_by_key(|e| std::cmp::Reverse(e.0));
+        score_captures(self, &mut pb);
 
         // `early` reproduces the old straight-line `return`s: a stop or a beta
         // cutoff skips the TT store, while falling out of the loop stores.

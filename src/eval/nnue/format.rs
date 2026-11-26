@@ -147,6 +147,103 @@ fn mismatch<T>(what: impl Into<String>) -> Result<T, NnueError> {
     Err(NnueError::ArchMismatch(what.into()))
 }
 
+/// Validated fields from a TKN1 file header.
+struct Header {
+    hash: [u8; 32],
+    planes: usize,
+    class_map: Vec<u8>,
+    thresholds: [u16; NUM_THRESHOLDS],
+}
+
+/// Read and validate the fixed header of a TKN1 image.
+fn read_and_validate_header(r: &mut Reader<'_>, arch: &ArchSpec) -> Result<Header, NnueError> {
+    if r.take(4)? != MAGIC {
+        return Err(NnueError::BadMagic);
+    }
+    let ver = r.u16()?;
+    if ver != VERSION {
+        return Err(NnueError::UnsupportedVersion(ver));
+    }
+    let Ok(hash) = r.take(32)?.try_into() else {
+        panic!("32 bytes -> [u8; 32] is infallible");
+    };
+    if hash != arch.arch_hash() {
+        return mismatch(
+            "architecture hash differs (class map, thresholds or layout changed; retrain and re-export)",
+        );
+    }
+    let (kb, planes, l1, ob, npiece) = (
+        r.u32()?,
+        r.u32()? as usize,
+        r.u32()? as usize,
+        r.u32()? as usize,
+        r.u32()? as usize,
+    );
+    if kb != 1 {
+        return mismatch(format!("kingbuckets={kb}, expected 1"));
+    }
+    if planes != arch.planes() || l1 != L1 || ob != OUT_BUCKETS {
+        return mismatch(format!("dimensions planes={planes} L1={l1} buckets={ob}"));
+    }
+    if npiece != arch.class_map.len() {
+        return mismatch(format!(
+            "class map has {npiece} entries, expected {}",
+            arch.class_map.len()
+        ));
+    }
+    let class_map = r.take(npiece)?.to_vec();
+    if class_map != arch.class_map {
+        return mismatch("class map differs from rules/nnue_arch.json");
+    }
+    let mut thresholds = [0u16; NUM_THRESHOLDS];
+    for t in &mut thresholds {
+        *t = r.u16()?;
+    }
+    if thresholds.as_slice() != arch.thresholds_pieces.as_slice() {
+        return mismatch("output-bucket thresholds differ from rules/nnue_arch.json");
+    }
+    Ok(Header {
+        hash,
+        planes,
+        class_map,
+        thresholds,
+    })
+}
+
+/// Prove all i32 accumulators cannot overflow for any board.
+fn verify_no_overflow(ft: &[i16], ft_bias: &[i32], psqt: &[i32]) -> Result<(), NnueError> {
+    let max_ft = ft.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
+    let max_bias = ft_bias
+        .iter()
+        .map(|&w| i64::from(w).abs())
+        .max()
+        .unwrap_or(0);
+    if MAX_BOARD_PIECES as i64 * max_ft + max_bias >= 1 << 31 {
+        return Err(NnueError::Overflow(
+            "feature-transformer accumulator".into(),
+        ));
+    }
+    // PSQT: at most MAX_BOARD_PIECES features are active, so the worst case of
+    // one bucket is the sum of its largest MAX_BOARD_PIECES magnitudes. It must
+    // stay below 2^30 so the difference of both perspectives fits in an i32.
+    for b in 0..OUT_BUCKETS {
+        let mut col: Vec<i64> = psqt
+            .iter()
+            .skip(b)
+            .step_by(OUT_BUCKETS)
+            .map(|&w| i64::from(w).abs())
+            .collect();
+        let k = MAX_BOARD_PIECES.min(col.len());
+        col.select_nth_unstable_by(k - 1, |a, b| b.cmp(a));
+        if col[..k].iter().sum::<i64>() >= 1 << 30 {
+            return Err(NnueError::Overflow(format!(
+                "PSQT accumulator of bucket {b}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 impl Network {
     /// Parse a network image against `arch`.
     ///
@@ -168,53 +265,9 @@ impl Network {
     /// Parse and validate a raw TKN1 v2 image against `arch`.
     fn from_tkn1_bytes_with_arch(bytes: &[u8], arch: &ArchSpec) -> Result<Network, NnueError> {
         let mut r = Reader { buf: bytes, pos: 0 };
-        if r.take(4)? != MAGIC {
-            return Err(NnueError::BadMagic);
-        }
-        let ver = r.u16()?;
-        if ver != VERSION {
-            return Err(NnueError::UnsupportedVersion(ver));
-        }
-        let Ok(hash) = r.take(32)?.try_into() else {
-            panic!("32 bytes -> [u8; 32] is infallible");
-        };
-        if hash != arch.arch_hash() {
-            return mismatch(
-                "architecture hash differs (class map, thresholds or layout changed; retrain and re-export)",
-            );
-        }
-        let (kb, planes, l1, ob, npiece) = (
-            r.u32()?,
-            r.u32()? as usize,
-            r.u32()? as usize,
-            r.u32()? as usize,
-            r.u32()? as usize,
-        );
-        if kb != 1 {
-            return mismatch(format!("kingbuckets={kb}, expected 1"));
-        }
-        if planes != arch.planes() || l1 != L1 || ob != OUT_BUCKETS {
-            return mismatch(format!("dimensions planes={planes} L1={l1} buckets={ob}"));
-        }
-        if npiece != arch.class_map.len() {
-            return mismatch(format!(
-                "class map has {npiece} entries, expected {}",
-                arch.class_map.len()
-            ));
-        }
-        let class_map = r.take(npiece)?.to_vec();
-        if class_map != arch.class_map {
-            return mismatch("class map differs from rules/nnue_arch.json");
-        }
-        let mut thresholds = [0u16; NUM_THRESHOLDS];
-        for t in &mut thresholds {
-            *t = r.u16()?;
-        }
-        if thresholds.as_slice() != arch.thresholds_pieces.as_slice() {
-            return mismatch("output-bucket thresholds differ from rules/nnue_arch.json");
-        }
+        let header = read_and_validate_header(&mut r, arch)?;
 
-        let dims = planes * NSQ;
+        let dims = header.planes * NSQ;
         let ft = r.i16s(dims * L1)?;
         let ft_bias = r.i32s(L1)?;
         let psqt = r.i32s(dims * OUT_BUCKETS)?;
@@ -228,43 +281,13 @@ impl Network {
             return Err(NnueError::TrailingBytes(bytes.len() - r.pos));
         }
 
-        // The accumulators are i32: prove they cannot overflow for any board.
-        let max_ft = ft.iter().map(|&w| i64::from(w).abs()).max().unwrap_or(0);
-        let max_bias = ft_bias
-            .iter()
-            .map(|&w| i64::from(w).abs())
-            .max()
-            .unwrap_or(0);
-        if MAX_BOARD_PIECES as i64 * max_ft + max_bias >= 1 << 31 {
-            return Err(NnueError::Overflow(
-                "feature-transformer accumulator".into(),
-            ));
-        }
-        // PSQT: at most MAX_BOARD_PIECES features are active, so the worst case
-        // of one bucket is the sum of its largest MAX_BOARD_PIECES magnitudes.
-        // It must stay below 2^30 so that the difference of the two
-        // perspectives also fits in an i32.
-        for b in 0..OUT_BUCKETS {
-            let mut col: Vec<i64> = psqt
-                .iter()
-                .skip(b)
-                .step_by(OUT_BUCKETS)
-                .map(|&w| i64::from(w).abs())
-                .collect();
-            let k = MAX_BOARD_PIECES.min(col.len());
-            col.select_nth_unstable_by(k - 1, |a, b| b.cmp(a));
-            if col[..k].iter().sum::<i64>() >= 1 << 30 {
-                return Err(NnueError::Overflow(format!(
-                    "PSQT accumulator of bucket {b}"
-                )));
-            }
-        }
+        verify_no_overflow(&ft, &ft_bias, &psqt)?;
 
         Ok(Network {
-            planes,
-            class_map,
-            thresholds,
-            arch_hash: hash,
+            planes: header.planes,
+            class_map: header.class_map,
+            thresholds: header.thresholds,
+            arch_hash: header.hash,
             eval_limit: arch.eval_limit,
             tt_salt: super::next_tt_salt(),
             ft,

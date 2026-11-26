@@ -117,6 +117,120 @@ pub struct Searcher {
     order_offset: usize,
 }
 
+/// Print a one-line deepening trace (`RPS_DEBUG`).
+fn log_iteration(depth: u32, nodes: u64, score: i32, time_ms: u64) {
+    eprintln!("iter d={depth} nodes={nodes} score={score} t={time_ms}ms");
+}
+
+/// Static-eval-only result for a zero-depth search.
+fn depth_zero_result(board: &Board) -> SearchResult {
+    SearchResult {
+        best_move: None,
+        score: evaluate(board),
+        nodes: 1,
+        time_ms: 0,
+    }
+}
+
+/// Whether the cooperative stop flag or the wall-clock deadline fired.
+fn budget_exhausted(stop: &AtomicBool, deadline: Option<Instant>) -> bool {
+    stop.load(Ordering::Relaxed) || deadline.is_some_and(|dl| Instant::now() >= dl)
+}
+
+/// Report a completed iteration to the protocol callback and SMP master.
+fn report_iteration(
+    state: &SearchState,
+    depth: u32,
+    result: &SearchResult,
+    on_iter: IterMutFn<'_>,
+    publish: Option<&SharedBest>,
+) {
+    on_iter(&IterInfo {
+        depth,
+        score: result.score,
+        nodes: state.nodes,
+        time_ms: state.start.elapsed().as_millis() as u64,
+        best_move: result.best_move.map(|m| crate::Move { inner: m }),
+    });
+    if let Some(shared) = publish {
+        if let Some(m) = result.best_move.as_ref() {
+            shared.publish(depth, result.score, ordering::m_pack(m));
+        }
+    }
+}
+
+/// Accumulated state of an iterative-deepening search.
+struct SearchState {
+    start: Instant,
+    debug_log: bool,
+    best: SearchResult,
+    nodes: u64,
+    hint: Option<u32>,
+    guess: i32,
+    last_depth: u32,
+}
+
+impl SearchState {
+    fn new(board: &Board) -> Self {
+        let best = SearchResult {
+            best_move: None,
+            score: evaluate(board),
+            nodes: 0,
+            time_ms: 0,
+        };
+        Self {
+            start: Instant::now(),
+            debug_log: std::env::var_os("RPS_DEBUG").is_some(),
+            guess: best.score,
+            best,
+            nodes: 0,
+            hint: None,
+            last_depth: 0,
+        }
+    }
+}
+
+/// Mutable context shared across one iteration's aspiration re-searches.
+struct Aspiration<'a> {
+    board: &'a mut Board,
+    rc: &'a mut root::RootCtx<'a>,
+    hint: Option<u32>,
+    guess: &'a mut i32,
+    deadline: Option<Instant>,
+}
+
+/// Search one iteration with aspiration windows, widening on fail.
+///
+/// At all depths >= 2: start with ±64 (±200 at d >= 5); on the first fail
+/// grow ×8; on the second fail keep the bounded result. Each failed
+/// re-search is cheap thanks to TT hits.
+fn search_with_aspiration(ctx: &mut Aspiration<'_>, depth: u32) -> SearchResult {
+    let mut window = params::aspiration_window(depth);
+    let mut fails = 0u8;
+    let mut alpha = ctx.guess.saturating_sub(window);
+    let mut beta = ctx.guess.saturating_add(window);
+    loop {
+        let result = root::search_root_window(ctx.board, depth, ctx.rc, ctx.hint, (alpha, beta));
+        if ctx.deadline.is_some_and(|dl| Instant::now() >= dl) {
+            return result;
+        }
+        if result.score <= alpha || result.score >= beta {
+            fails += 1;
+            if fails >= params::ASPIRATION_MAX_FAILS as u8 {
+                return result;
+            }
+            window = (window * params::ASPIRATION_WINDOW_GROW).min(MATE_SCORE);
+            if result.score <= alpha {
+                *ctx.guess = result.score;
+            }
+            alpha = ctx.guess.saturating_sub(window);
+            beta = ctx.guess.saturating_add(window);
+            continue;
+        }
+        return result;
+    }
+}
+
 impl Searcher {
     /// Creates a searcher with the production config (all techniques enabled).
     #[must_use]
@@ -266,62 +380,26 @@ impl Searcher {
         publish: Option<&SharedBest>,
         on_iter: IterMutFn<'_>,
     ) -> (SearchResult, u32) {
-        let start = Instant::now();
-        // env::var takes a global lock — cache it once per search, not per iteration.
-        let debug_log = std::env::var_os("RPS_DEBUG").is_some();
-
+        let mut state = SearchState::new(board);
         self.tt.new_generation();
         ordering::piece_vals();
-        let mut best_result = SearchResult {
-            best_move: None,
-            score: evaluate(board),
-            nodes: 0,
-            time_ms: 0,
-        };
-        // `nodes` is cumulative for the whole search; the scratch pool, the
-        // cached root move list and the worker's own heuristics tables live on
-        // `self`, so they survive between iterations — and between searches
-        // when the caller keeps the searcher.
-        let mut nodes: u64 = 0;
-        let mut root_hint: Option<u32> = None;
-        let mut score_guess = best_result.score;
-        let mut last_depth: u32 = 0;
 
         if depth == 0 {
-            let r = SearchResult {
-                best_move: None,
-                score: evaluate(board),
-                nodes: 1,
-                time_ms: 0,
-            };
-            return (r, 0);
+            return (depth_zero_result(board), 0);
         }
 
         for current_depth in 1..=depth {
-            // A cooperative stop (a USI `stop`, an SMP master winding its
-            // workers down) acts like an expired deadline: no new iteration
-            // starts.
-            if stop.load(Ordering::Relaxed) {
+            // A cooperative stop or an expired deadline ends the deepening.
+            if budget_exhausted(stop, deadline) {
                 break;
             }
-            if let Some(dl) = deadline {
-                if Instant::now() >= dl {
-                    break;
-                }
-            }
-
-            // ── TIME MANAGEMENT ─────────────────────────────────────
-            // Each iteration internally respects the deadline (see pvs/root),
-            // so we simply keep deepening until the budget is exhausted.
-            // A partial iteration is only adopted when there is no completed
-            // result to fall back to (handled below).
 
             // Search context shared by every root move of this iteration. The
             // node counter, scratch pool and cached root move list all outlive the
             // iteration, so nothing is reallocated or regenerated between depths.
             let mut rc = root::RootCtx {
                 cfg: self.cfg,
-                nodes: &mut nodes,
+                nodes: &mut state.nodes,
                 deadline,
                 stop,
                 pool: &mut self.pool,
@@ -335,115 +413,51 @@ impl Searcher {
                     board,
                     current_depth,
                     &mut rc,
-                    root_hint,
-                    -MATE_SCORE - 1,
-                    MATE_SCORE + 1,
+                    state.hint,
+                    (-MATE_SCORE - 1, MATE_SCORE + 1),
                 )
             } else {
-                // Aspiration windows at ALL depths >= 2. The previous version
-                // disabled them for d >= 5 because a *narrow* (±64) window failed
-                // constantly on this game's volatile scores (the eval can jump
-                // thousands of centipawns between iterations when a large capture
-                // is found), causing long cascades of re-searches. Policy:
-                // initial window ±64 (±200 at d >= 5); on the FIRST fail grow ×8;
-                // on the SECOND fail fall back to the FULL window. At most two
-                // re-searches per iteration, and each failed re-search is much
-                // cheaper than a full-window search thanks to TT hits.
-                let mut window = params::aspiration_window(current_depth);
-                let mut fails = 0u8;
-                let mut alpha = score_guess.saturating_sub(window);
-                let mut beta = score_guess.saturating_add(window);
-                let mut local_result;
-                loop {
-                    local_result = root::search_root_window(
-                        board,
-                        current_depth,
-                        &mut rc,
-                        root_hint,
-                        alpha,
-                        beta,
-                    );
-                    if let Some(dl) = deadline {
-                        if Instant::now() >= dl {
-                            break;
-                        }
-                    }
-                    if local_result.score <= alpha || local_result.score >= beta {
-                        fails += 1;
-                        if fails >= params::ASPIRATION_MAX_FAILS as u8 {
-                            break; // keep the (bounded) result — full re-search not worth it
-                        }
-                        window = (window * params::ASPIRATION_WINDOW_GROW).min(MATE_SCORE);
-                        if local_result.score <= alpha {
-                            // Fail low: the true score is LOWER than guessed —
-                            // recenter the window on the failed score so the next
-                            // search is bounded around the right region.
-                            score_guess = local_result.score;
-                        }
-                        alpha = score_guess.saturating_sub(window);
-                        beta = score_guess.saturating_add(window);
-                        continue;
-                    }
-                    break;
-                }
-                local_result
+                let mut ctx = Aspiration {
+                    board,
+                    rc: &mut rc,
+                    hint: state.hint,
+                    guess: &mut state.guess,
+                    deadline,
+                };
+                search_with_aspiration(&mut ctx, current_depth)
             };
 
-            // A time limit or a cooperative stop can cut an iteration short.
-            // Its partial result is only adopted when there is nothing better
-            // to return: the FIRST iteration running out of budget mid-way
-            // still ranks the root moves it reached, while for later
-            // iterations the last COMPLETED iteration is the more reliable
-            // answer.
-            let out_of_time =
-                stop.load(Ordering::Relaxed) || deadline.is_some_and(|dl| Instant::now() >= dl);
-            if out_of_time {
-                if best_result.best_move.is_none() && result.best_move.is_some() {
-                    best_result = result;
+            // A time limit or cooperative stop can cut an iteration short; its
+            // partial result is kept only when no earlier iteration completed.
+            if budget_exhausted(stop, deadline) {
+                if state.best.best_move.is_none() && result.best_move.is_some() {
+                    state.best = result;
                 }
                 break;
             }
-            // `nodes` is cumulative across the whole search (the root shares one
-            // counter with every iteration), so there is nothing to add up here.
-            if debug_log {
-                eprintln!(
-                    "iter d={} nodes={} score={} t={}ms",
-                    current_depth, nodes, result.score, result.time_ms
-                );
+            if state.debug_log {
+                log_iteration(current_depth, state.nodes, result.score, result.time_ms);
             }
-            root_hint = result.best_move.as_ref().map(ordering::m_pack);
-            score_guess = result.score;
-            best_result = result;
-            last_depth = current_depth;
-            // Report the completed iteration to the caller (protocol
-            // front-ends emit their `info` lines from here).
-            on_iter(&IterInfo {
-                depth: current_depth,
-                score: best_result.score,
-                nodes,
-                time_ms: start.elapsed().as_millis() as u64,
-                best_move: best_result.best_move.map(|m| crate::Move { inner: m }),
-            });
-            // Tell the Lazy SMP master that this iteration is done, so it can adopt
-            // our result if it is deeper than what the master has reached itself.
-            if let Some(shared) = publish {
-                if let Some(m) = best_result.best_move.as_ref() {
-                    shared.publish(current_depth, best_result.score, ordering::m_pack(m));
-                }
-            }
+            state.hint = result.best_move.as_ref().map(ordering::m_pack);
+            state.guess = result.score;
+            state.best = result;
+            state.last_depth = current_depth;
+            report_iteration(&state, current_depth, &result, on_iter, publish);
         }
 
-        let elapsed = start.elapsed().as_millis() as u64;
+        let elapsed = state.start.elapsed().as_millis() as u64;
         if let Some(shared) = publish {
-            shared.add_nodes(nodes);
+            shared.add_nodes(state.nodes);
         }
-        let result = SearchResult {
-            best_move: best_result.best_move,
-            score: best_result.score,
-            nodes: nodes.max(best_result.nodes),
-            time_ms: elapsed,
-        };
-        (result, last_depth)
+        (
+            SearchResult {
+                best_move: state.best.best_move,
+                score: state.best.score,
+                nodes: state.nodes.max(state.best.nodes),
+                time_ms: elapsed,
+            },
+            state.last_depth,
+        )
     }
 }
 

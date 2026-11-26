@@ -78,92 +78,104 @@ const fn empty_template() -> Template {
 
 static TEMPLATES: OnceLock<Box<[[Template; 2]]>> = OnceLock::new();
 
-pub fn templates() -> &'static [[Template; 2]] {
-    TEMPLATES.get_or_init(|| {
-        let mut table: Vec<[Template; 2]> = Vec::with_capacity(512);
-        table.push([empty_template(); 2]); // index 0 unused
-        for pt in 1..=511u16 {
-            let mv = pieces::movement(pt);
-            // Skip special pieces that need the fallback path.
-            let special = mv.hook.is_some()
-                || !mv.range_capture.is_empty()
-                || (mv.area >= 2 && !mv.jumps.is_empty()); // lion mid-capture
+/// Pieces that need the generic `pieces::movement` fallback path (hooks,
+/// range-capturers, lion mid-captures) have no precomputed template.
+fn is_special_movement(mv: &Movement) -> bool {
+    mv.hook.is_some() || !mv.range_capture.is_empty() || (mv.area >= 2 && !mv.jumps.is_empty())
+}
 
-            let mut entry = [empty_template(); 2];
-            if !special {
-                for color in 0..2u8 {
-                    let mut t = empty_template();
-                    let flip: i8 = if color == BLACK { 1 } else { -1 };
-                    let mut ti = 0usize;
-
-                    // Jumps.
-                    for &(jdr, jdc) in &mv.jumps {
-                        if ti >= MAX_JUMP_DELTAS {
-                            break;
-                        }
-                        t.jumps[ti] = (jdr * flip, jdc * flip);
-                        ti += 1;
-                    }
-
-                    // Steps (range == 1 slides).
-                    for &(dir, max_range) in &mv.slides {
-                        if max_range == 1 && ti < MAX_JUMP_DELTAS {
-                            let (dr, dc) = get_deltas(dir as usize, color);
-                            t.jumps[ti] = (dr as i8, dc as i8);
-                            ti += 1;
-                        }
-                    }
-
-                    // Area: radius-1 or radius-2 squares (no mid-capture since
-                    // those are excluded above; pure distance-1/2 jumps).
-                    if mv.area > 0 {
-                        for dr in -2i8..=2 {
-                            for dc in -2i8..=2 {
-                                if dr == 0 && dc == 0 {
-                                    continue;
-                                }
-                                if dr.abs() > 1 && mv.area < 2 {
-                                    continue;
-                                }
-                                if dc.abs() > 1 && mv.area < 2 {
-                                    continue;
-                                }
-                                if ti >= MAX_JUMP_DELTAS {
-                                    break;
-                                }
-                                t.jumps[ti] = (dr, dc);
-                                ti += 1;
-                            }
-                        }
-                    }
-
-                    t.n_jumps = ti as u8;
-
-                    // Slides.
-                    let mut si = 0usize;
-                    for &(dir, max_range) in &mv.slides {
-                        if max_range == 1 {
-                            continue;
-                        }
-                        if si >= MAX_SLIDES {
-                            break;
-                        }
-                        t.slides[si] = (dir, max_range);
-                        si += 1;
-                    }
-                    t.n_slides = si as u8;
-
-                    t.has_igui = mv.igui;
-                    t.area = mv.area;
-                    t.valid = true;
-
-                    entry[color as usize] = t;
-                }
+/// Append the area-movement deltas (radius 1 or 2) to a template.
+fn add_area_jumps(t: &mut Template, mv: &Movement, ti: &mut usize) {
+    if mv.area == 0 {
+        return;
+    }
+    for dr in -2i8..=2 {
+        for dc in -2i8..=2 {
+            if dr == 0 && dc == 0 {
+                continue;
             }
-            table.push(entry);
+            if dr.abs() > 1 && mv.area < 2 {
+                continue;
+            }
+            if dc.abs() > 1 && mv.area < 2 {
+                continue;
+            }
+            if *ti >= MAX_JUMP_DELTAS {
+                break;
+            }
+            t.jumps[*ti] = (dr, dc);
+            *ti += 1;
         }
-        table.into_boxed_slice()
-    })
+    }
+}
+
+/// Build one colour's flat template from a movement descriptor.
+fn build_template(mv: &Movement, color: u8) -> Template {
+    let mut t = empty_template();
+    let flip: i8 = if color == BLACK { 1 } else { -1 };
+    let mut ti = 0usize;
+
+    // Jumps.
+    for &(jdr, jdc) in &mv.jumps {
+        if ti >= MAX_JUMP_DELTAS {
+            break;
+        }
+        t.jumps[ti] = (jdr * flip, jdc * flip);
+        ti += 1;
+    }
+
+    // Steps (range == 1 slides).
+    for &(dir, max_range) in &mv.slides {
+        if max_range == 1 && ti < MAX_JUMP_DELTAS {
+            let (dr, dc) = get_deltas(dir as usize, color);
+            t.jumps[ti] = (dr as i8, dc as i8);
+            ti += 1;
+        }
+    }
+
+    // Area: radius-1 or radius-2 squares (no mid-capture since those are
+    // excluded above; pure distance-1/2 jumps).
+    add_area_jumps(&mut t, mv, &mut ti);
+    t.n_jumps = ti as u8;
+
+    // Slides.
+    let mut si = 0usize;
+    for &(dir, max_range) in &mv.slides {
+        if max_range == 1 {
+            continue;
+        }
+        if si >= MAX_SLIDES {
+            break;
+        }
+        t.slides[si] = (dir, max_range);
+        si += 1;
+    }
+    t.n_slides = si as u8;
+
+    t.has_igui = mv.igui;
+    t.area = mv.area;
+    t.valid = true;
+    t
+}
+
+fn build_templates() -> Box<[[Template; 2]]> {
+    let mut table: Vec<[Template; 2]> = Vec::with_capacity(512);
+    table.push([empty_template(); 2]); // index 0 unused
+    for pt in 1..=511u16 {
+        let mv = pieces::movement(pt);
+        let mut entry = [empty_template(); 2];
+        if !is_special_movement(mv) {
+            for color in 0..2u8 {
+                entry[color as usize] = build_template(mv, color);
+            }
+        }
+        table.push(entry);
+    }
+    table.into_boxed_slice()
+}
+
+pub fn templates() -> &'static [[Template; 2]] {
+    TEMPLATES.get_or_init(build_templates)
 }
 
 /// Generate tactical (capture / promotion / igui / mid-capture) moves into a
@@ -175,43 +187,32 @@ pub fn templates() -> &'static [[Template; 2]] {
 /// range-capturers **and** lion mid-captures are all handled natively here
 /// (`gen_hook_captures` / `gen_range_capture_captures` / `gen_lion_captures`),
 /// so no caller needs a slow fallback into the generic movegen path.
-pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Board) {
-    moves.clear();
-    let color = board.side_to_move;
-    let c = color as usize;
-    let t = templates();
-    let rt = ray_table();
+/// Shared context for generating a piece's tactical captures.
+struct CaptureGen<'a> {
+    board: &'a Board,
+    templates: &'a [[Template; 2]],
+    moves: &'a mut Vec<crate::types::Move>,
+}
 
-    for i in 0..board.piece_list_len[c] {
-        let sq = board.piece_list[c][i] as usize;
-        if sq == INVALID_SQ as usize {
-            continue;
+impl CaptureGen<'_> {
+    /// Hooks, range-capturers and lion mid-captures use the generic paths.
+    fn special(&mut self, sq: usize, pt: u16, color: u8, start: usize) {
+        let mv = pieces::movement(pt);
+        let rt = ray_table();
+        if mv.hook.is_some() {
+            gen_hook_captures(self.board, sq, pt, color, mv, rt, self.moves);
         }
-        let cell = board.cells[sq];
-        if cell == EMPTY_CELL {
-            continue;
+        if !mv.range_capture.is_empty() {
+            gen_range_capture_captures(self.board, sq, pt, color, mv, rt, self.moves);
         }
-        let pt = cell_piece(cell);
-        let start = moves.len();
-        let tmpl = &t[(pt as usize).min(511)][color as usize];
+        if mv.area >= 2 {
+            gen_lion_captures(self.board, sq, pt, color, mv, self.moves);
+        }
+        crate::movegen::dedup_piece_range(self.moves, start);
+    }
 
-        if !tmpl.valid {
-            // Special piece: handle hooks, range-capturers AND lion
-            // mid-captures directly.
-            let mv = pieces::movement(pt);
-            if mv.hook.is_some() {
-                gen_hook_captures(board, sq, pt, color, mv, rt, moves);
-            }
-            if !mv.range_capture.is_empty() {
-                gen_range_capture_captures(board, sq, pt, color, mv, rt, moves);
-            }
-            if mv.area >= 2 {
-                gen_lion_captures(board, sq, pt, color, mv, moves);
-            }
-            crate::movegen::dedup_piece_range(moves, start);
-            continue;
-        }
-
+    /// Flat template: jumps/steps/area, sliders and igui.
+    fn flat(&mut self, sq: usize, pt: u16, color: u8, tmpl: &Template) {
         let sq_r = sq_row(sq) as i32;
         let sq_c = sq_col(sq) as i32;
 
@@ -223,29 +224,69 @@ pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Bo
                 continue;
             }
             let nsq = (nr as usize) * BOARD_SIZE + (nc as usize);
-            let target = board.cells[nsq];
+            let target = self.board.cells[nsq];
             if target != EMPTY_CELL && cell_color(target) != color {
-                push_move(moves, sq as u16, nsq as u16, pt, color, target);
+                push_move(self.moves, sq as u16, nsq as u16, pt, color, target);
             }
         }
 
         // Sliders: walk rays (occupancy-dependent blocking).
         for &(dir, max_range) in tmpl.slides.iter().take(tmpl.n_slides as usize) {
-            walk_ray_captures(board, rt, sq, pt, color, dir as usize, max_range, moves);
+            walk_ray_captures(
+                self.board,
+                ray_table(),
+                sq,
+                pt,
+                color,
+                dir as usize,
+                max_range,
+                self.moves,
+            );
         }
 
         // Igui (capture in place).
         if tmpl.has_igui {
             for d in 0..NUM_DIRS {
                 if let Some(nsq) = step_sq(sq, d, color) {
-                    let target = board.cells[nsq];
+                    let target = self.board.cells[nsq];
                     if target != EMPTY_CELL && cell_color(target) != color {
-                        push_move_igui(moves, sq as u16, nsq, pt, color, target);
+                        push_move_igui(self.moves, sq as u16, nsq, pt, color, target);
                     }
                 }
             }
         }
-        crate::movegen::dedup_piece_range(moves, start);
+    }
+}
+
+pub fn generate_captures_bb_into(moves: &mut Vec<crate::types::Move>, board: &Board) {
+    moves.clear();
+    let color = board.side_to_move;
+    let c = color as usize;
+    let mut cg = CaptureGen {
+        board,
+        templates: templates(),
+        moves,
+    };
+
+    for i in 0..board.piece_list_len[c] {
+        let sq = board.piece_list[c][i] as usize;
+        if sq == INVALID_SQ as usize {
+            continue;
+        }
+        let cell = board.cells[sq];
+        if cell == EMPTY_CELL {
+            continue;
+        }
+        let pt = cell_piece(cell);
+        let start = cg.moves.len();
+        let tmpl = &cg.templates[(pt as usize).min(511)][color as usize];
+
+        if !tmpl.valid {
+            cg.special(sq, pt, color, start);
+            continue;
+        }
+        cg.flat(sq, pt, color, tmpl);
+        crate::movegen::dedup_piece_range(cg.moves, start);
     }
 }
 

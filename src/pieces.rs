@@ -2561,6 +2561,78 @@ pub fn must_promote_at_far_rank(pt: u16) -> bool {
 // ============================================================
 // Betza Parser (same logic as Python version)
 // ============================================================
+/// Parse one Betza atom into slide/jump deltas.
+fn parse_betza_atom(
+    atom: char,
+    range_val: Option<u8>,
+    modifier: &str,
+    slides: &mut Vec<SlideDir>,
+    jumps: &mut Vec<JumpDelta>,
+) {
+    match atom {
+        'W' | 'F' | 'K' | 'R' | 'B' | 'Q' => {
+            let (base_dirs, base_range) = match atom {
+                'W' => (&[N, E, S, W][..], 1u8),
+                'F' => (&[NE, SE, SW, NW][..], 1),
+                'K' => (&[N, NE, E, SE, S, SW, W, NW][..], 1),
+                'R' => (&[N, E, S, W][..], 0),
+                'B' => (&[NE, SE, SW, NW][..], 0),
+                'Q' => (&[N, NE, E, SE, S, SW, W, NW][..], 0),
+                _ => unreachable!(),
+            };
+            let eff_range = range_val.unwrap_or(base_range);
+            let mod_dirs = get_mod_dirs(modifier);
+            for &d in base_dirs {
+                if mod_dirs & (1 << d) != 0 {
+                    slides.push((d as u8, eff_range));
+                }
+            }
+        }
+        'D' | 'A' | 'N' | 'H' | 'G' => {
+            let base_jumps: &[JumpDelta] = match atom {
+                'D' => &[(-2, 0), (0, 2), (2, 0), (0, -2)],
+                'A' => &[(-2, 2), (2, 2), (2, -2), (-2, -2)],
+                'N' => &[
+                    (-2, 1),
+                    (-2, -1),
+                    (-1, 2),
+                    (-1, -2),
+                    (1, 2),
+                    (1, -2),
+                    (2, 1),
+                    (2, -1),
+                ],
+                'H' => &[(-3, 0), (0, 3), (3, 0), (0, -3)],
+                'G' => &[(-3, 3), (3, 3), (3, -3), (-3, -3)],
+                _ => unreachable!(),
+            };
+            for &(dr, dc) in base_jumps {
+                if jump_matches(dr, dc, modifier, atom) {
+                    jumps.push((dr, dc));
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Merge Betza slides, keeping the longest range per direction.
+fn merge_betza_slides(slides: &[SlideDir]) -> Vec<SlideDir> {
+    let mut best = [0u8; 8]; // 0 means not present
+    let mut present = [false; 8];
+    for &(d, r) in slides {
+        let di = d as usize;
+        if !present[di] || r == 0 || (best[di] != 0 && r > best[di]) {
+            best[di] = r;
+            present[di] = true;
+        }
+    }
+    (0..8)
+        .filter(|&d| present[d])
+        .map(|d| (d as u8, best[d]))
+        .collect()
+}
+
 fn parse_betza(notation: &str) -> Option<Movement> {
     if notation.contains('(') {
         return None;
@@ -2597,67 +2669,10 @@ fn parse_betza(notation: &str) -> Option<Movement> {
             None
         };
 
-        match atom {
-            'W' | 'F' | 'K' | 'R' | 'B' | 'Q' => {
-                let (base_dirs, base_range) = match atom {
-                    'W' => (&[N, E, S, W][..], 1u8),
-                    'F' => (&[NE, SE, SW, NW][..], 1),
-                    'K' => (&[N, NE, E, SE, S, SW, W, NW][..], 1),
-                    'R' => (&[N, E, S, W][..], 0),
-                    'B' => (&[NE, SE, SW, NW][..], 0),
-                    'Q' => (&[N, NE, E, SE, S, SW, W, NW][..], 0),
-                    _ => unreachable!(),
-                };
-                let eff_range = range_val.unwrap_or(base_range);
-                let mod_dirs = get_mod_dirs(modifier);
-                for &d in base_dirs {
-                    if mod_dirs & (1 << d) != 0 {
-                        slides.push((d as u8, eff_range));
-                    }
-                }
-            }
-            'D' | 'A' | 'N' | 'H' | 'G' => {
-                let base_jumps: &[JumpDelta] = match atom {
-                    'D' => &[(-2, 0), (0, 2), (2, 0), (0, -2)],
-                    'A' => &[(-2, 2), (2, 2), (2, -2), (-2, -2)],
-                    'N' => &[
-                        (-2, 1),
-                        (-2, -1),
-                        (-1, 2),
-                        (-1, -2),
-                        (1, 2),
-                        (1, -2),
-                        (2, 1),
-                        (2, -1),
-                    ],
-                    'H' => &[(-3, 0), (0, 3), (3, 0), (0, -3)],
-                    'G' => &[(-3, 3), (3, 3), (3, -3), (-3, -3)],
-                    _ => unreachable!(),
-                };
-                for &(dr, dc) in base_jumps {
-                    if jump_matches(dr, dc, modifier, atom) {
-                        jumps.push((dr, dc));
-                    }
-                }
-            }
-            _ => {}
-        }
+        parse_betza_atom(atom, range_val, modifier, &mut slides, &mut jumps);
     }
 
-    // Merge slides: keep longest range per direction
-    let mut best = [0u8; 8]; // 0 means not present
-    let mut present = [false; 8];
-    for &(d, r) in &slides {
-        let di = d as usize;
-        if !present[di] || r == 0 || (best[di] != 0 && r > best[di]) {
-            best[di] = r;
-            present[di] = true;
-        }
-    }
-    let merged: Vec<SlideDir> = (0..8)
-        .filter(|&d| present[d])
-        .map(|d| (d as u8, best[d]))
-        .collect();
+    let merged = merge_betza_slides(&slides);
 
     Some(Movement {
         slides: merged,
@@ -2752,21 +2767,30 @@ fn jump_matches(dr: i8, dc: i8, modifier: &str, atom: char) -> bool {
 // ============================================================
 // Manual movement overrides for complex pieces
 // ============================================================
-fn manual_movement(abbrev: &str) -> Option<Movement> {
-    let all_dirs_slide: Vec<SlideDir> = (0..8).map(|d| (d as u8, 0)).collect();
-    let all_dirs_step: Vec<SlideDir> = (0..8).map(|d| (d as u8, 1)).collect();
-    let lion_jumps: Vec<JumpDelta> = {
-        let mut v = Vec::new();
+/// Precomputed movement vectors shared by the manual piece table.
+struct MovementLists {
+    slide: Vec<SlideDir>,
+    step: Vec<SlideDir>,
+    lion: Vec<JumpDelta>,
+}
+
+impl MovementLists {
+    fn new() -> Self {
+        let slide: Vec<SlideDir> = (0..8).map(|d| (d as u8, 0)).collect();
+        let step: Vec<SlideDir> = (0..8).map(|d| (d as u8, 1)).collect();
+        let mut lion = Vec::new();
         for dr in -2i8..=2 {
             for dc in -2i8..=2 {
                 if (dr != 0 || dc != 0) && (dr.abs() > 1 || dc.abs() > 1) {
-                    v.push((dr, dc));
+                    lion.push((dr, dc));
                 }
             }
         }
-        v
-    };
+        Self { slide, step, lion }
+    }
+}
 
+fn manual_movement_p1(abbrev: &str, _lists: &MovementLists) -> Option<Movement> {
     match abbrev {
         "HM" => Some(Movement {
             slides: vec![(N as u8, 0), (E as u8, 0), (S as u8, 0), (W as u8, 0)],
@@ -2784,6 +2808,12 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p2(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "CA" => Some(Movement {
             slides: vec![
                 (N as u8, 1),
@@ -2810,20 +2840,27 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "LN" => Some(Movement {
-            slides: all_dirs_step.clone(),
-            jumps: lion_jumps.clone(),
+            slides: lists.step.clone(),
+            jumps: lists.lion.clone(),
             hook: None,
             area: 2,
             range_capture: vec![],
             igui: true,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p3(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "LI" => Some(Movement {
             slides: {
                 let mut s = vec![(N as u8, 1), (E as u8, 1), (S as u8, 1), (W as u8, 1)];
                 s.extend([(NE as u8, 0), (SE as u8, 0), (SW as u8, 0), (NW as u8, 0)]);
                 s
             },
-            jumps: lion_jumps.clone(),
+            jumps: lists.lion.clone(),
             hook: None,
             area: 2,
             range_capture: vec![],
@@ -2831,20 +2868,26 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "+FFI" => Some(Movement {
             slides: (0..8).map(|d| (d as u8, 3)).collect(),
-            jumps: lion_jumps.clone(),
+            jumps: lists.lion.clone(),
             hook: None,
             area: 2,
             range_capture: vec![],
             igui: true,
         }),
         "+BSP" => Some(Movement {
-            slides: all_dirs_slide.clone(),
-            jumps: lion_jumps.clone(),
+            slides: lists.slide.clone(),
+            jumps: lists.lion.clone(),
             hook: None,
             area: 2,
             range_capture: vec![],
             igui: true,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p4(abbrev: &str, _lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "GG" => Some(Movement {
             slides: vec![],
             jumps: vec![],
@@ -2869,6 +2912,13 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![N as u8, E as u8, S as u8, W as u8],
             igui: false,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p5(abbrev: &str, _lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "BG" => Some(Movement {
             slides: vec![],
             jumps: vec![],
@@ -2885,6 +2935,12 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![NE as u8, SE as u8, SW as u8, NW as u8],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p6(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "+FCR" => Some(Movement {
             slides: vec![(SE as u8, 2), (SW as u8, 2), (NE as u8, 3), (NW as u8, 3)],
             jumps: vec![],
@@ -2895,7 +2951,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "BA" => Some(Movement {
             slides: {
-                let mut s = all_dirs_step.clone();
+                let mut s = lists.step.clone();
                 s.push((NE as u8, 0));
                 s.push((SW as u8, 0));
                 s
@@ -2914,6 +2970,13 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p7(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "FC" => Some(Movement {
             slides: vec![(S as u8, 1), (SE as u8, 1), (SW as u8, 1)],
             jumps: vec![(-3, 0), (0, 3), (0, -3), (-3, 3), (-3, -3)],
@@ -2923,7 +2986,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "EL" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![(-2, 2), (-2, -2)],
             hook: None,
             area: 0,
@@ -2931,15 +2994,21 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "HF" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![(-2, 0)],
             hook: None,
             area: 0,
             range_capture: vec![],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p8(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "FE" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![
                 (-2, 0),
                 (0, 2),
@@ -2977,7 +3046,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "TF" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![
                 (-2, 0),
                 (0, 2),
@@ -2997,6 +3066,13 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p9(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "DG" => Some(Movement {
             slides: {
                 let mut s: Vec<SlideDir> = vec![
@@ -3018,7 +3094,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "LD" | "+KTE" | "+MCR" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![
                 (-3, 0),
                 (0, 3),
@@ -3034,6 +3110,12 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p10(abbrev: &str, _lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "GS" => Some(Movement {
             slides: {
                 let mut s: Vec<SlideDir> =
@@ -3088,6 +3170,13 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p11(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "MR" => Some(Movement {
             slides: {
                 let mut s: Vec<SlideDir> = vec![
@@ -3110,7 +3199,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "GT" | "LL" => Some(Movement {
             slides: {
-                let mut s = all_dirs_slide.clone();
+                let mut s = lists.slide.clone();
                 s.push((E as u8, 2));
                 s.push((W as u8, 2));
                 s
@@ -3138,6 +3227,12 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p12(abbrev: &str, _lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "PM" => Some(Movement {
             slides: vec![
                 (N as u8, 0),
@@ -3189,6 +3284,13 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p13(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "PE" => Some(Movement {
             slides: vec![
                 (N as u8, 0),
@@ -3215,7 +3317,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "+GEA" | "+GHK" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: if abbrev == "+GEA" {
                 vec![(-2, 2), (-2, -2)]
             } else {
@@ -3226,8 +3328,14 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p14(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "+HTK" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![
                 (-2, 0),
                 (0, 2),
@@ -3244,7 +3352,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "+SPT" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![(-3, 0), (0, 3), (3, 0), (0, -3)],
             hook: None,
             area: 0,
@@ -3252,15 +3360,22 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             igui: false,
         }),
         "+TRT" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![(-2, 0), (0, 2), (2, 0), (0, -2)],
             hook: None,
             area: 0,
             range_capture: vec![],
             igui: false,
         }),
+
+        _ => None,
+    }
+}
+
+fn manual_movement_p15(abbrev: &str, lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "+GDE" => Some(Movement {
-            slides: all_dirs_slide.clone(),
+            slides: lists.slide.clone(),
             jumps: vec![(0, 3), (0, -3)],
             hook: None,
             area: 0,
@@ -3294,6 +3409,12 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+        _ => None,
+    }
+}
+
+fn manual_movement_p16(abbrev: &str, _lists: &MovementLists) -> Option<Movement> {
+    match abbrev {
         "+HHO" => Some(Movement {
             slides: vec![(N as u8, 0)],
             jumps: vec![(-2, 1), (-2, -1), (2, 1), (2, -1)],
@@ -3332,8 +3453,29 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
             range_capture: vec![],
             igui: false,
         }),
+
         _ => None,
     }
+}
+
+fn manual_movement(abbrev: &str) -> Option<Movement> {
+    let lists = MovementLists::new();
+    manual_movement_p1(abbrev, &lists)
+        .or_else(|| manual_movement_p2(abbrev, &lists))
+        .or_else(|| manual_movement_p3(abbrev, &lists))
+        .or_else(|| manual_movement_p4(abbrev, &lists))
+        .or_else(|| manual_movement_p5(abbrev, &lists))
+        .or_else(|| manual_movement_p6(abbrev, &lists))
+        .or_else(|| manual_movement_p7(abbrev, &lists))
+        .or_else(|| manual_movement_p8(abbrev, &lists))
+        .or_else(|| manual_movement_p9(abbrev, &lists))
+        .or_else(|| manual_movement_p10(abbrev, &lists))
+        .or_else(|| manual_movement_p11(abbrev, &lists))
+        .or_else(|| manual_movement_p12(abbrev, &lists))
+        .or_else(|| manual_movement_p13(abbrev, &lists))
+        .or_else(|| manual_movement_p14(abbrev, &lists))
+        .or_else(|| manual_movement_p15(abbrev, &lists))
+        .or_else(|| manual_movement_p16(abbrev, &lists))
 }
 
 // ============================================================

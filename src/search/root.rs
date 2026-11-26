@@ -149,14 +149,155 @@ pub(crate) struct RootCtx<'a> {
 #[allow(clippy::too_many_arguments)]
 // Hot movegen / search path: a parameters struct would add indirection without
 // improving readability, so the flat signature is kept on purpose.
+/// Running best-move state during a root iteration.
+struct RootSearchState<'a> {
+    best_score: i32,
+    best_move: &'a mut Option<Move>,
+    root_beta: i32,
+}
+
+/// Per-move context for one root search.
+struct RootMoveCtx {
+    rank: usize,
+    idx: usize,
+    best_score: i32,
+    root_alpha: i32,
+}
+
+/// Context shared while searching the root moves of one iteration.
+struct RootSearch<'a> {
+    board: &'a mut Board,
+    deadline: Option<Instant>,
+    stop: &'a AtomicBool,
+    nodes: &'a mut u64,
+    pool: &'a mut SearchPool,
+    tt: &'a Tt,
+    heur: &'a mut Heuristics,
+    cfg: SearchConfig,
+}
+
+impl RootSearch<'_> {
+    /// Warm the TT with a shallower full-window search before the real iteration.
+    fn warm_up(&mut self, depth: u32) {
+        let _ = pvs::pvs_with_pool(
+            self.board,
+            depth - 2,
+            -MATE_SCORE - 1,
+            MATE_SCORE + 1,
+            self.nodes,
+            self.deadline,
+            0,
+            0,
+            self.stop,
+            self.pool,
+            self.tt,
+            self.heur,
+            self.cfg,
+        );
+    }
+
+    /// Search one ranked root move, update the running best, and report
+    /// whether the beta cutoff ended the iteration.
+    fn search_rank(
+        &mut self,
+        root: &mut RootState,
+        depth: u32,
+        ctx: &mut RootMoveCtx,
+        state: &mut RootSearchState<'_>,
+    ) -> bool {
+        let idx = ctx.idx;
+        let m = root.moves[idx];
+        let packed = ordering::m_pack(&m);
+        self.board.apply_move(&m);
+        *self.nodes += 1;
+        ctx.best_score = state.best_score;
+        let score = self.search_move(depth, packed, ctx);
+        if score > state.best_score {
+            state.best_score = score;
+            *state.best_move = Some(m);
+        }
+        root.scores[idx] = score;
+        self.board.undo_move();
+        state.best_score >= state.root_beta
+    }
+
+    /// Search one root move with PVS and window refinement. Returns its score.
+    fn search_move(&mut self, depth: u32, packed: u32, ctx: &RootMoveCtx) -> i32 {
+        let (rank, best_score, root_alpha) = (ctx.rank, ctx.best_score, ctx.root_alpha);
+        let (sa, sb) = if rank == 0 && best_score > root_alpha + params::ROOT_WINDOW_REFINE_GATE {
+            (
+                best_score - params::ROOT_WINDOW_REFINE,
+                best_score + params::ROOT_WINDOW_REFINE,
+            )
+        } else {
+            (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
+        };
+        let mut search = |a: i32, b: i32| {
+            pvs::pvs_with_pool(
+                self.board,
+                depth - 1,
+                a,
+                b,
+                self.nodes,
+                self.deadline,
+                0,
+                packed,
+                self.stop,
+                self.pool,
+                self.tt,
+                self.heur,
+                self.cfg,
+            )
+        };
+        let score = if rank == 0 {
+            -search(sa, sb)
+        } else {
+            let nw = -search(-sa - 1, -sa);
+            if nw > sa && nw < sb {
+                -search(-sb, -sa)
+            } else {
+                nw
+            }
+        };
+        if score <= sa || score >= sb {
+            -search(-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
+        } else {
+            score
+        }
+    }
+}
+
+/// Static-eval-only result for a zero-depth root search.
+fn zero_depth_result(board: &Board) -> super::SearchResult {
+    super::SearchResult {
+        best_move: None,
+        score: evaluate(board),
+        nodes: 1,
+        time_ms: 0,
+    }
+}
+
+/// Result when the position has no legal root move (SPEC §7.3: a loss).
+fn no_moves_result(depth: u32, nodes: u64, start: Instant) -> super::SearchResult {
+    super::SearchResult {
+        best_move: None,
+        score: -(MATE_SCORE - depth as i32),
+        nodes,
+        time_ms: start.elapsed().as_millis() as u64,
+    }
+}
+
+/// Aspiration window for a root iteration.
+pub(crate) type RootWindow = (i32, i32);
+
 pub(crate) fn search_root_window(
     board: &mut Board,
     depth: u32,
     rc: &mut RootCtx,
     root_hint: Option<u32>,
-    root_alpha: i32,
-    root_beta: i32,
+    window: RootWindow,
 ) -> super::SearchResult {
+    let (root_alpha, root_beta) = window;
     let start = Instant::now();
     piece_vals();
     let deadline = rc.deadline;
@@ -170,42 +311,28 @@ pub(crate) fn search_root_window(
     let cfg = rc.cfg;
 
     if depth == 0 {
-        return super::SearchResult {
-            best_move: None,
-            score: evaluate(board),
-            nodes: 1,
-            time_ms: 0,
-        };
+        return zero_depth_result(board);
     }
 
-    // Historical note: depths 1-3 used to take a "material-delta fast path"
-    // that scored each root move on its material change alone, ignoring the
-    // opponent's reply — which made "depth 2/3" behave like depth 1 and
-    // silently invalidated every strength comparison across depths. The
-    // shortcut was removed outright instead of being left behind as a switch:
-    // every depth runs the real alpha-beta root below.
+    // Every depth runs the real alpha-beta root: the old depth 1-3
+    // material-delta shortcut was removed (it made shallow depths lie).
     let mut best_move = None;
     let mut best_score = -MATE_SCORE - 1;
     let root_tt_move = tt.probe(board.tt_key()).map_or(0, |e| e.best_move);
 
-    // A depth-2 preliminary search warms the TT and gives the ordering a
-    // cheap head start before the real iteration.
+    // A depth-2 preliminary search warms the TT and the move ordering.
     if depth > 2 {
-        let _ = pvs::pvs_with_pool(
+        RootSearch {
             board,
-            depth - 2,
-            -MATE_SCORE - 1,
-            MATE_SCORE + 1,
-            nodes,
             deadline,
-            0,
-            0,
             stop,
+            nodes,
             pool,
             tt,
             heur,
             cfg,
-        );
+        }
+        .warm_up(depth);
     }
 
     // ── ROOT MOVE LIST (cached across iterations) ──────────────
@@ -214,14 +341,7 @@ pub(crate) fn search_root_window(
     // move ordering for the root (the returned best move is tried first).
     root.prepare(board, root_tt_move, depth, root_hint, heur, order_offset);
     if root.moves.is_empty() {
-        // No legal move at all: the side to move loses (SPEC §7.3).
-        let score = -(MATE_SCORE - depth as i32);
-        return super::SearchResult {
-            best_move: None,
-            score,
-            nodes: *nodes,
-            time_ms: start.elapsed().as_millis() as u64,
-        };
+        return no_moves_result(depth, *nodes, start);
     }
 
     // ── SEARCH EVERY ROOT MOVE, BEST-FIRST ─────────────────────
@@ -241,123 +361,64 @@ pub(crate) fn search_root_window(
             break;
         }
         let idx = root.order[rank] as usize;
-        let m = &root.moves[idx];
-        let packed = ordering::m_pack(m);
-        board.apply_move(m);
-        *nodes += 1;
-        let (sa, sb) = if rank == 0 && best_score > root_alpha + params::ROOT_WINDOW_REFINE_GATE {
-            (
-                best_score - params::ROOT_WINDOW_REFINE,
-                best_score + params::ROOT_WINDOW_REFINE,
-            )
-        } else {
-            (-MATE_SCORE - 1, -best_score.max(-MATE_SCORE - 1))
+        let mut rs = RootSearch {
+            board,
+            deadline,
+            stop,
+            nodes,
+            pool,
+            tt,
+            heur,
+            cfg,
         };
-        let score = if rank == 0 {
-            -pvs::pvs_with_pool(
-                board,
-                depth - 1,
-                sa,
-                sb,
-                nodes,
-                deadline,
-                0,
-                packed,
-                stop,
-                pool,
-                tt,
-                heur,
-                cfg,
-            )
-        } else {
-            let nw = -pvs::pvs_with_pool(
-                board,
-                depth - 1,
-                -sa - 1,
-                -sa,
-                nodes,
-                deadline,
-                0,
-                packed,
-                stop,
-                pool,
-                tt,
-                heur,
-                cfg,
-            );
-            if nw > sa && nw < sb {
-                -pvs::pvs_with_pool(
-                    board,
-                    depth - 1,
-                    -sb,
-                    -sa,
-                    nodes,
-                    deadline,
-                    0,
-                    packed,
-                    stop,
-                    pool,
-                    tt,
-                    heur,
-                    cfg,
-                )
-            } else {
-                nw
-            }
+        let mut state = RootSearchState {
+            best_score,
+            best_move: &mut best_move,
+            root_beta,
         };
-        let score = if score <= sa || score >= sb {
-            let full = -pvs::pvs_with_pool(
-                board,
-                depth - 1,
-                -MATE_SCORE - 1,
-                -best_score.max(-MATE_SCORE - 1),
-                nodes,
-                deadline,
-                0,
-                packed,
-                stop,
-                pool,
-                tt,
-                heur,
-                cfg,
-            );
-            if full > best_score {
-                best_score = full;
-                best_move = Some(*m);
-            }
-            full
-        } else {
-            if score > best_score {
-                best_score = score;
-                best_move = Some(*m);
-            }
-            score
+        let mut move_ctx = RootMoveCtx {
+            rank,
+            idx,
+            best_score,
+            root_alpha,
         };
-        // Feed the result back into the root ordering: next iteration tries
-        // the moves in decreasing order of THIS iteration's score.
-        root.scores[idx] = score;
-        board.undo_move();
-        if best_score >= root_beta {
+        let cutoff = rs.search_rank(root, depth, &mut move_ctx, &mut state);
+        best_score = state.best_score;
+        if cutoff {
             break;
         }
     }
     root.sort_best_first();
 
     if best_move.is_none() {
-        // The budget (or a stop) expired before a single root move was scored.
-        // Returning None would tell the caller this side has no legal move at
-        // all — a loss, SPEC §7.3 — so hand back the first move of the root
-        // ordering together with the static score: the best guess available.
-        if let Some(&i) = root.order.first() {
-            best_move = Some(root.moves[i as usize]);
-            best_score = evaluate(board);
+        // Budget/stop expired before scoring any move: return the first
+        // ordered move with the static score (None would mean "no moves").
+        if let Some((m, s)) = fallback_move(root, board) {
+            best_move = Some(m);
+            best_score = s;
         }
     }
+    make_result(best_move, best_score, *nodes, start)
+}
 
+/// A best-guess move and its static score.
+type Fallback = (Move, i32);
+
+fn fallback_move(root: &RootState, board: &Board) -> Option<Fallback> {
+    let i = *root.order.first()?;
+    Some((root.moves[i as usize], evaluate(board)))
+}
+
+fn make_result(
+    best_move: Option<Move>,
+    score: i32,
+    nodes: u64,
+    start: Instant,
+) -> super::SearchResult {
     super::SearchResult {
         best_move,
-        score: best_score,
-        nodes: *nodes,
+        score,
+        nodes,
         time_ms: start.elapsed().as_millis() as u64,
     }
 }

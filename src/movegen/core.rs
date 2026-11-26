@@ -91,8 +91,10 @@ fn jump_table() -> &'static [[[[u16; 8]; 2]; NUM_SQUARES]] {
         // Heap-allocated directly (a fixed-size Box<[[[..];..];512]> would
         // materialize ~21 MB on the stack during construction). Building via
         // map/collect creates each entry on the stack one at a time.
+        // `from_fn` builds each entry directly in the Vec's storage, avoiding
+        // a ~41 KB stack temporary per element.
         let mut table: Vec<JumpEntry> = (0..512)
-            .map(|_| [[[INVALID_SQ; 8]; 2]; NUM_SQUARES])
+            .map(|_| std::array::from_fn(|_| [[INVALID_SQ; 8]; 2]))
             .collect();
         for pt in 1..=301u16 {
             let mv = pieces::movement(pt);
@@ -527,114 +529,49 @@ fn can_promote(pt: u16) -> bool {
 #[allow(clippy::too_many_arguments)]
 // Hot movegen / search path: a parameters struct would add indirection without
 // improving readability, so the flat signature is kept on purpose.
+/// Build a plain (non-igui, non-range) move to `to`, optionally promoting.
+fn simple_move(from: u16, to: u16, promotion: bool, captured: u16, cap_color: u8) -> Move {
+    Move {
+        from_sq: from,
+        to_sq: to,
+        promotion,
+        captured_piece: captured,
+        captured_color: cap_color,
+        is_igui: false,
+        mid_sq: INVALID_SQ,
+        mid_piece: 0,
+        mid_color: 0,
+        range_cap: false,
+        caps_value: 0,
+    }
+}
+
 pub fn add_move(moves: &mut Vec<Move>, from: u16, to: u16, pt: u16, color: u8, target: Cell) {
-    let captured = if target == EMPTY_CELL {
-        0
+    let (captured, cap_color) = if target == EMPTY_CELL {
+        (0, 0)
     } else {
-        cell_piece(target)
-    };
-    let cap_color = if target == EMPTY_CELL {
-        0
-    } else {
-        cell_color(target)
+        (cell_piece(target), cell_color(target))
     };
 
     if !can_promote(pt) {
-        push_move_raw(
-            moves,
-            Move {
-                from_sq: from,
-                to_sq: to,
-                promotion: false,
-                captured_piece: captured,
-                captured_color: cap_color,
-                is_igui: false,
-                mid_sq: INVALID_SQ,
-                mid_piece: 0,
-                mid_color: 0,
-                range_cap: false,
-                caps_value: 0,
-            },
-        );
+        push_move_raw(moves, simple_move(from, to, false, captured, cap_color));
         return;
     }
 
     let from_in_zone = in_promo_zone(from as usize, color);
     let to_in_zone = in_promo_zone(to as usize, color);
     let is_capture = captured != 0;
-
     let may_promote = to_in_zone && (!from_in_zone || is_capture);
-
     let must_promote =
         to_in_zone && is_farthest_rank(to as usize, color) && pieces::must_promote_at_far_rank(pt);
 
     if must_promote {
-        push_move_raw(
-            moves,
-            Move {
-                from_sq: from,
-                to_sq: to,
-                promotion: true,
-                captured_piece: captured,
-                captured_color: cap_color,
-                is_igui: false,
-                mid_sq: INVALID_SQ,
-                mid_piece: 0,
-                mid_color: 0,
-                range_cap: false,
-                caps_value: 0,
-            },
-        );
+        push_move_raw(moves, simple_move(from, to, true, captured, cap_color));
     } else if may_promote {
-        push_move_raw(
-            moves,
-            Move {
-                from_sq: from,
-                to_sq: to,
-                promotion: false,
-                captured_piece: captured,
-                captured_color: cap_color,
-                is_igui: false,
-                mid_sq: INVALID_SQ,
-                mid_piece: 0,
-                mid_color: 0,
-                range_cap: false,
-                caps_value: 0,
-            },
-        );
-        push_move_raw(
-            moves,
-            Move {
-                from_sq: from,
-                to_sq: to,
-                promotion: true,
-                captured_piece: captured,
-                captured_color: cap_color,
-                is_igui: false,
-                mid_sq: INVALID_SQ,
-                mid_piece: 0,
-                mid_color: 0,
-                range_cap: false,
-                caps_value: 0,
-            },
-        );
+        push_move_raw(moves, simple_move(from, to, false, captured, cap_color));
+        push_move_raw(moves, simple_move(from, to, true, captured, cap_color));
     } else {
-        push_move_raw(
-            moves,
-            Move {
-                from_sq: from,
-                to_sq: to,
-                promotion: false,
-                captured_piece: captured,
-                captured_color: cap_color,
-                is_igui: false,
-                mid_sq: INVALID_SQ,
-                mid_piece: 0,
-                mid_color: 0,
-                range_cap: false,
-                caps_value: 0,
-            },
-        );
+        push_move_raw(moves, simple_move(from, to, false, captured, cap_color));
     }
 }
 

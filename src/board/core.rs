@@ -336,132 +336,157 @@ impl Board {
             self.no_progress_plies += 1;
         }
 
-        if m.range_cap {
-            let fr = (from / BOARD_SIZE) as i32;
-            let fc = (from % BOARD_SIZE) as i32;
-            let tr = (to / BOARD_SIZE) as i32;
-            let tc = (to % BOARD_SIZE) as i32;
-            let dr = (tr - fr).signum();
-            let dc = (tc - fc).signum();
-            let mut r = fr + dr;
-            let mut c = fc + dc;
-            while (r, c) != (tr, tc) {
-                let sq = (r * BOARD_SIZE as i32 + c) as u16;
-                let cap_cell = self.cells[sq as usize];
-                if cap_cell != EMPTY_CELL {
-                    let cap_pt = cell_piece(cap_cell);
-                    let cap_c = cell_color(cap_cell);
-                    self.hash ^= zobrist_piece_key(cap_pt, sq as usize, cap_c);
-                    // Update incremental material and PSQT score for captured piece
-                    let cap_val = pieces::value(cap_pt);
-                    if cap_c == BLACK {
-                        self.material_score -= cap_val;
-                        self.psqt_score -= psqt::psqt(cap_pt, sq as usize, cap_c);
-                    } else {
-                        self.material_score += cap_val;
-                        self.psqt_score += psqt::psqt(cap_pt, sq as usize, cap_c);
-                    }
-                    self.remove_from_lists(sq as usize);
-                    self.cells[sq as usize] = EMPTY_CELL;
-                    self.cap_stack.push((sq, cap_cell));
-                    if nnue_on {
-                        self.nnue_sub(sq as usize, cell_piece(cap_cell), cell_color(cap_cell));
-                    }
-                }
-                r += dr;
-                c += dc;
-            }
-        }
+        self.apply_range_captures(m, from, to, nnue_on);
 
-        // Handle lion mid-capture
-        if m.mid_sq != INVALID_SQ {
-            let msq = m.mid_sq as usize;
-            undo.mid_cell = self.cells[msq];
-            if undo.mid_cell != EMPTY_CELL {
-                self.hash ^=
-                    zobrist_piece_key(cell_piece(undo.mid_cell), msq, cell_color(undo.mid_cell));
-                // Update incremental material score for mid-captured piece
-                let mid_val = pieces::value(cell_piece(undo.mid_cell));
-                let mid_c = cell_color(undo.mid_cell);
-                if mid_c == BLACK {
-                    self.material_score -= mid_val;
-                } else {
-                    self.material_score += mid_val;
-                }
-                // Update incremental PSQT score
-                let mid_pt = cell_piece(undo.mid_cell);
-                let mid_psq = psqt::psqt(mid_pt, msq, mid_c);
-                if mid_c == BLACK {
-                    self.psqt_score -= mid_psq;
-                } else {
-                    self.psqt_score += mid_psq;
-                }
-            }
-            self.remove_from_lists(msq);
-            self.cells[msq] = EMPTY_CELL;
-            if nnue_on && undo.mid_cell != EMPTY_CELL {
-                self.nnue_sub(msq, cell_piece(undo.mid_cell), cell_color(undo.mid_cell));
-            }
-        }
+        self.apply_mid_capture(m, &mut undo, nnue_on);
 
-        // Handle igui (stationary capture): the mover stays on `from`. The
-        // victim sits on `mid_sq` (stored there by movegen) and was already
-        // removed by the mid-capture block above. Here we only handle the
-        // optional in-place promotion — the mover itself must NOT be
-        // captured (from == to would otherwise delete the moving piece).
+        // Igui: the mover stays on `from` (the victim was already removed by
+        // the mid-capture block). Only the optional in-place promotion is
+        // handled here — the mover itself must NOT be captured.
         if m.is_igui {
-            if m.promotion {
-                if let Some(promo_pt) = pieces::promotes_to(pt) {
-                    if nnue_on {
-                        self.nnue_sub(from, pt, color);
-                        self.nnue_add(from, promo_pt, color);
-                    }
-                    self.hash ^= zobrist_piece_key(pt, from, color);
-                    // Update material score for promotion
-                    let old_val = pieces::value(pt);
-                    let new_val = pieces::value(promo_pt);
-                    let delta = new_val - old_val;
-                    if color == BLACK {
-                        self.material_score += delta;
-                    } else {
-                        self.material_score -= delta;
-                    }
-                    // Update incremental PSQT score for promotion
-                    let old_psq = psqt::psqt(pt, from, color);
-                    let new_psq = psqt::psqt(promo_pt, from, color);
-                    let psq_delta = new_psq - old_psq;
-                    if color == BLACK {
-                        self.psqt_score += psq_delta;
-                    } else {
-                        self.psqt_score -= psq_delta;
-                    }
-                    let new_cell = make_cell(promo_pt, color);
-                    self.cells[from] = new_cell;
-                    self.hash ^= zobrist_piece_key(promo_pt, from, color);
-                    self.update_royal_status(from, pt, promo_pt, c);
-                }
-            }
-            self.side_to_move = 1 - self.side_to_move;
-            self.hash ^= zobrist_side_key();
-            if self.side_to_move == BLACK {
-                self.move_number += 1;
-            }
-            self.history.push(undo);
+            self.apply_igui(m, undo, from, pt, color, c, nnue_on);
             return;
         }
 
-        // Remove piece from origin
+        self.remove_mover(from, pt, color, c, nnue_on);
+        self.capture_destination(to, to_cell, nnue_on);
+
+        self.place_mover(m, to, pt, color, c, nnue_on);
+
+        self.side_to_move = 1 - self.side_to_move;
+        self.hash ^= zobrist_side_key();
+        if self.side_to_move == BLACK {
+            self.move_number += 1;
+        }
+        self.history.push(undo);
+    }
+
+    /// Remove every piece along a range-capture ray (strictly between origin
+    /// and destination), updating all incremental state.
+    fn apply_range_captures(&mut self, m: &Move, from: usize, to: usize, nnue_on: bool) {
+        if !m.range_cap {
+            return;
+        }
+        let fr = (from / BOARD_SIZE) as i32;
+        let fc = (from % BOARD_SIZE) as i32;
+        let tr = (to / BOARD_SIZE) as i32;
+        let tc = (to % BOARD_SIZE) as i32;
+        let dr = (tr - fr).signum();
+        let dc = (tc - fc).signum();
+        let (mut r, mut c) = (fr + dr, fc + dc);
+        while (r, c) != (tr, tc) {
+            let sq = (r * BOARD_SIZE as i32 + c) as u16;
+            let cap_cell = self.cells[sq as usize];
+            if cap_cell != EMPTY_CELL {
+                let cap_pt = cell_piece(cap_cell);
+                let cap_c = cell_color(cap_cell);
+                self.hash ^= zobrist_piece_key(cap_pt, sq as usize, cap_c);
+                let cap_val = pieces::value(cap_pt);
+                if cap_c == BLACK {
+                    self.material_score -= cap_val;
+                    self.psqt_score -= psqt::psqt(cap_pt, sq as usize, cap_c);
+                } else {
+                    self.material_score += cap_val;
+                    self.psqt_score += psqt::psqt(cap_pt, sq as usize, cap_c);
+                }
+                self.remove_from_lists(sq as usize);
+                self.cells[sq as usize] = EMPTY_CELL;
+                self.cap_stack.push((sq, cap_cell));
+                if nnue_on {
+                    self.nnue_sub(sq as usize, cap_pt, cap_c);
+                }
+            }
+            r += dr;
+            c += dc;
+        }
+    }
+
+    /// Remove the lion's mid-captured piece, recording it in `undo`.
+    fn apply_mid_capture(&mut self, m: &Move, undo: &mut UndoInfo, nnue_on: bool) {
+        if m.mid_sq == INVALID_SQ {
+            return;
+        }
+        let msq = m.mid_sq as usize;
+        undo.mid_cell = self.cells[msq];
+        if undo.mid_cell != EMPTY_CELL {
+            self.hash ^=
+                zobrist_piece_key(cell_piece(undo.mid_cell), msq, cell_color(undo.mid_cell));
+            let mid_val = pieces::value(cell_piece(undo.mid_cell));
+            let mid_c = cell_color(undo.mid_cell);
+            if mid_c == BLACK {
+                self.material_score -= mid_val;
+            } else {
+                self.material_score += mid_val;
+            }
+            let mid_pt = cell_piece(undo.mid_cell);
+            let mid_psq = psqt::psqt(mid_pt, msq, mid_c);
+            if mid_c == BLACK {
+                self.psqt_score -= mid_psq;
+            } else {
+                self.psqt_score += mid_psq;
+            }
+        }
+        self.remove_from_lists(msq);
+        self.cells[msq] = EMPTY_CELL;
+        if nnue_on && undo.mid_cell != EMPTY_CELL {
+            self.nnue_sub(msq, cell_piece(undo.mid_cell), cell_color(undo.mid_cell));
+        }
+    }
+
+    /// Finish an igui move: optional in-place promotion, then side swap.
+    fn apply_igui(
+        &mut self,
+        m: &Move,
+        undo: UndoInfo,
+        from: usize,
+        pt: u16,
+        color: u8,
+        c: usize,
+        nnue_on: bool,
+    ) {
+        if m.promotion {
+            if let Some(promo_pt) = pieces::promotes_to(pt) {
+                if nnue_on {
+                    self.nnue_sub(from, pt, color);
+                    self.nnue_add(from, promo_pt, color);
+                }
+                self.hash ^= zobrist_piece_key(pt, from, color);
+                let delta = pieces::value(promo_pt) - pieces::value(pt);
+                if color == BLACK {
+                    self.material_score += delta;
+                } else {
+                    self.material_score -= delta;
+                }
+                let psq_delta = psqt::psqt(promo_pt, from, color) - psqt::psqt(pt, from, color);
+                if color == BLACK {
+                    self.psqt_score += psq_delta;
+                } else {
+                    self.psqt_score -= psq_delta;
+                }
+                self.cells[from] = make_cell(promo_pt, color);
+                self.hash ^= zobrist_piece_key(promo_pt, from, color);
+                self.update_royal_status(from, pt, promo_pt, c);
+            }
+        }
+        self.side_to_move = 1 - self.side_to_move;
+        self.hash ^= zobrist_side_key();
+        if self.side_to_move == BLACK {
+            self.move_number += 1;
+        }
+        self.history.push(undo);
+    }
+
+    /// Remove the moving piece from its origin square.
+    fn remove_mover(&mut self, from: usize, pt: u16, color: u8, c: usize, nnue_on: bool) {
         self.hash ^= zobrist_piece_key(pt, from, color);
         self.cells[from] = EMPTY_CELL;
         self.remove_sq_from_piece_list(from, c);
-        // Update incremental PSQT score for origin
         let from_psq = psqt::psqt(pt, from, color);
         if color == BLACK {
             self.psqt_score -= from_psq;
         } else {
             self.psqt_score += from_psq;
         }
-        // Update bitboards for from-square
         self.occupancy[c].clear_usize(from);
         self.all_occupancy.clear_usize(from);
         if pieces::is_royal(pt) {
@@ -470,52 +495,49 @@ impl Board {
         if nnue_on {
             self.nnue_sub(from, pt, color);
         }
+    }
 
-        // Capture at destination
-        if to_cell != EMPTY_CELL {
-            self.hash ^= zobrist_piece_key(cell_piece(to_cell), to, cell_color(to_cell));
-            // Update incremental material score for captured piece
-            let cap_val = pieces::value(cell_piece(to_cell));
-            let cap_c = cell_color(to_cell);
-            if cap_c == BLACK {
-                self.material_score -= cap_val;
-            } else {
-                self.material_score += cap_val;
-            }
-            // Update incremental PSQT score
-            let cap_pt = cell_piece(to_cell);
-            let cap_psq = psqt::psqt(cap_pt, to, cap_c);
-            if cap_c == BLACK {
-                self.psqt_score -= cap_psq;
-            } else {
-                self.psqt_score += cap_psq;
-            }
-            self.remove_from_lists(to);
-            // Bitboard cleanup for captured piece is handled in remove_from_lists
-            if nnue_on {
-                self.nnue_sub(to, cap_pt, cap_c);
-            }
+    /// Capture the destination piece, if any.
+    fn capture_destination(&mut self, to: usize, to_cell: Cell, nnue_on: bool) {
+        if to_cell == EMPTY_CELL {
+            return;
         }
+        self.hash ^= zobrist_piece_key(cell_piece(to_cell), to, cell_color(to_cell));
+        let cap_val = pieces::value(cell_piece(to_cell));
+        let cap_c = cell_color(to_cell);
+        if cap_c == BLACK {
+            self.material_score -= cap_val;
+        } else {
+            self.material_score += cap_val;
+        }
+        let cap_pt = cell_piece(to_cell);
+        let cap_psq = psqt::psqt(cap_pt, to, cap_c);
+        if cap_c == BLACK {
+            self.psqt_score -= cap_psq;
+        } else {
+            self.psqt_score += cap_psq;
+        }
+        self.remove_from_lists(to);
+        if nnue_on {
+            self.nnue_sub(to, cap_pt, cap_c);
+        }
+    }
 
+    /// Place the (possibly promoted) mover on the destination square.
+    fn place_mover(&mut self, m: &Move, to: usize, pt: u16, color: u8, c: usize, nnue_on: bool) {
         let final_pt = if m.promotion {
             pieces::promotes_to(pt).unwrap_or(pt)
         } else {
             pt
         };
-
-        // Update material score for promotion (if applicable)
         if m.promotion && final_pt != pt {
-            let old_val = pieces::value(pt);
-            let new_val = pieces::value(final_pt);
-            let delta = new_val - old_val;
+            let delta = pieces::value(final_pt) - pieces::value(pt);
             if color == BLACK {
                 self.material_score += delta;
             } else {
                 self.material_score -= delta;
             }
         }
-
-        // Update incremental PSQT score for destination (accounting for promotion)
         let to_psq = psqt::psqt(final_pt, to, color);
         if color == BLACK {
             self.psqt_score += to_psq;
@@ -525,12 +547,9 @@ impl Board {
         if nnue_on {
             self.nnue_add(to, final_pt, color);
         }
-
-        // Place at destination
         self.hash ^= zobrist_piece_key(final_pt, to, color);
         self.cells[to] = make_cell(final_pt, color);
         self.add_sq_to_piece_list(to, c);
-        // Update bitboards for to-square
         self.occupancy[c].set_usize(to);
         self.all_occupancy.set_usize(to);
         if pieces::is_royal(final_pt) {
@@ -538,13 +557,6 @@ impl Board {
             self.royal_list[c][ri] = to as u16;
             self.royal_count[c] = ri + 1;
         }
-
-        self.side_to_move = 1 - self.side_to_move;
-        self.hash ^= zobrist_side_key();
-        if self.side_to_move == BLACK {
-            self.move_number += 1;
-        }
-        self.history.push(undo);
     }
 
     /// Undo the last move, restoring all incremental state.
@@ -589,14 +601,23 @@ impl Board {
         }
 
         // ── Incremental undo ─────────────────────────────────────────────
+        self.undo_restore_squares(&undo, from, to);
+        self.undo_restore_range_captures(&undo);
 
+        if nnue_refresh {
+            self.nnue_reset();
+        }
+        true
+    }
+
+    /// Restore the mover, captured piece and lion mid-capture squares.
+    fn undo_restore_squares(&mut self, undo: &UndoInfo, from: usize, to: usize) {
         // 1. Remove piece from destination
         let dest_cell = self.cells[to];
         if dest_cell != EMPTY_CELL {
             let dest_pt = cell_piece(dest_cell);
             let dest_c = cell_color(dest_cell) as usize;
             self.remove_sq_from_piece_list(to, dest_c);
-            // Update bitboards
             self.occupancy[dest_c].clear_usize(to);
             self.all_occupancy.clear_usize(to);
             if pieces::is_royal(dest_pt) {
@@ -610,7 +631,6 @@ impl Board {
         let orig_c = cell_color(undo.from_cell) as usize;
         self.cells[from] = undo.from_cell;
         self.add_sq_to_piece_list(from, orig_c);
-        // Update bitboards
         self.occupancy[orig_c].set_usize(from);
         self.all_occupancy.set_usize(from);
         if pieces::is_royal(orig_pt) {
@@ -620,55 +640,37 @@ impl Board {
 
         // 3. Restore captured piece at destination
         if undo.to_cell != EMPTY_CELL {
-            let cap_pt = cell_piece(undo.to_cell);
-            let cap_c = cell_color(undo.to_cell) as usize;
-            self.cells[to] = undo.to_cell;
-            self.add_sq_to_piece_list(to, cap_c);
-            // Update bitboards
-            self.occupancy[cap_c].set_usize(to);
-            self.all_occupancy.set_usize(to);
-            if pieces::is_royal(cap_pt) {
-                self.royal_list[cap_c][self.royal_count[cap_c]] = to as u16;
-                self.royal_count[cap_c] += 1;
-            }
+            self.restore_piece(to, undo.to_cell);
         }
 
         // 4. Restore mid-capture (lion)
         if undo.mid_sq != INVALID_SQ && undo.mid_cell != EMPTY_CELL {
-            let msq = undo.mid_sq as usize;
-            let mid_pt = cell_piece(undo.mid_cell);
-            let mid_c = cell_color(undo.mid_cell) as usize;
-            self.cells[msq] = undo.mid_cell;
-            self.add_sq_to_piece_list(msq, mid_c);
-            self.occupancy[mid_c].set_usize(msq);
-            self.all_occupancy.set_usize(msq);
-            if pieces::is_royal(mid_pt) {
-                self.royal_list[mid_c][self.royal_count[mid_c]] = msq as u16;
-                self.royal_count[mid_c] += 1;
-            }
+            self.restore_piece(undo.mid_sq as usize, undo.mid_cell);
         }
+    }
 
+    /// Re-insert a saved cell into the piece lists, bitboards and royal list.
+    fn restore_piece(&mut self, sq: usize, cell: Cell) {
+        let pt = cell_piece(cell);
+        let c = cell_color(cell) as usize;
+        self.cells[sq] = cell;
+        self.add_sq_to_piece_list(sq, c);
+        self.occupancy[c].set_usize(sq);
+        self.all_occupancy.set_usize(sq);
+        if pieces::is_royal(pt) {
+            self.royal_list[c][self.royal_count[c]] = sq as u16;
+            self.royal_count[c] += 1;
+        }
+    }
+
+    /// Restore every piece removed along a range-capture ray.
+    fn undo_restore_range_captures(&mut self, undo: &UndoInfo) {
         while self.cap_stack.len() > undo.cap_base {
             let Some((sq, cell)) = self.cap_stack.pop() else {
                 panic!("cap_stack should not be empty at this point");
             };
-            let squ = sq as usize;
-            let cap_pt = cell_piece(cell);
-            let cap_c = cell_color(cell) as usize;
-            self.cells[squ] = cell;
-            self.add_sq_to_piece_list(squ, cap_c);
-            self.occupancy[cap_c].set_usize(squ);
-            self.all_occupancy.set_usize(squ);
-            if pieces::is_royal(cap_pt) {
-                self.royal_list[cap_c][self.royal_count[cap_c]] = sq;
-                self.royal_count[cap_c] += 1;
-            }
+            self.restore_piece(sq as usize, cell);
         }
-
-        if nnue_refresh {
-            self.nnue_reset();
-        }
-        true
     }
 
     pub fn rebuild_lists_pub(&mut self) {
