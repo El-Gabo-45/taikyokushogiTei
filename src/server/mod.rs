@@ -16,6 +16,7 @@
 pub mod handlers;
 pub mod types;
 
+use std::fmt::Write;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
@@ -409,7 +410,7 @@ fn mint_session_id() -> String {
     let mut id = String::with_capacity(5 + 2 * bytes.len());
     id.push_str("anon-");
     for b in bytes {
-        id.push_str(&format!("{b:02x}"));
+        let _ = write!(id, "{b:02x}");
     }
     id
 }

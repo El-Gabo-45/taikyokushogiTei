@@ -10,6 +10,7 @@
 // indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
 // warnings would only produce noise.
 
+use std::fmt::Write;
 use crate::bitboard::Bitboard1296;
 use crate::eval::psqt;
 use crate::pieces;
@@ -284,6 +285,13 @@ impl Board {
         self.cells[sq]
     }
 
+    /// Apply a move to the board, updating all incremental state.
+    ///
+    /// # Safety / Panics
+    ///
+    /// The caller must ensure `m` is a legal move in the current position.
+    /// Panics if the NNUE accumulator is enabled but `None` (internal
+    /// inconsistency), or if the board state is corrupted.
     pub fn apply_move(&mut self, m: &Move) {
         let from = m.from_sq as usize;
         let to = m.to_sq as usize;
@@ -292,15 +300,14 @@ impl Board {
         let pt = cell_piece(from_cell);
         let color = cell_color(from_cell);
         let c = color as usize;
-        let _opp = 1 - c;
 
         // ── NNUE: remember the accumulator for undo (ring, no allocation) ──
         let nnue_on = self.nnue.is_some();
         if nnue_on {
-            self.nnue
-                .as_deref_mut()
-                .expect("nnue must be Some when push_snapshot is called")
-                .push_snapshot();
+            match self.nnue.as_deref_mut() {
+                Some(st) => st.push_snapshot(),
+                None => panic!("nnue must be Some when push_snapshot is called"),
+            }
         }
 
         let mut undo = UndoInfo {
@@ -540,10 +547,15 @@ impl Board {
         self.history.push(undo);
     }
 
+    /// Undo the last move, restoring all incremental state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the capture stack is empty when it shouldn't be
+    /// (internal inconsistency).
     pub fn undo_move(&mut self) -> bool {
-        let undo = match self.history.pop() {
-            Some(u) => u,
-            None => return false,
+        let Some(undo) = self.history.pop() else {
+            return false;
         };
 
         self.hash = undo.hash;
@@ -637,10 +649,10 @@ impl Board {
         }
 
         while self.cap_stack.len() > undo.cap_base {
-            let (sq, cell) = self
-                .cap_stack
-                .pop()
-                .expect("cap_stack should not be empty at this point");
+            let (sq, cell) = match self.cap_stack.pop() {
+                Some(v) => v,
+                None => panic!("cap_stack should not be empty at this point"),
+            };
             let squ = sq as usize;
             let cap_pt = cell_piece(cell);
             let cap_c = cell_color(cell) as usize;
@@ -829,7 +841,7 @@ impl Board {
     pub fn display(&self) -> String {
         let mut s = String::new();
         for r in 0..BOARD_SIZE {
-            s.push_str(&format!("{:2} ", BOARD_SIZE - r));
+            let _ = write!(s, "{:2} ", BOARD_SIZE - r);
             for c in 0..BOARD_SIZE {
                 let cell = self.cells[sq_index(r, c)];
                 if cell == EMPTY_CELL {
@@ -840,7 +852,7 @@ impl Board {
                     let prefix = if color == WHITE { 'v' } else { '^' };
                     let ab = pieces::abbrev(pt);
                     s.push(prefix);
-                    s.push_str(&format!("{:<2}", &ab[..ab.len().min(2)]));
+                    let _ = write!(s, "{:<2}", &ab[..ab.len().min(2)]);
                 }
             }
             s.push('\n');

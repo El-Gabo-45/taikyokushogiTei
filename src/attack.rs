@@ -76,91 +76,93 @@ const fn empty_template() -> Template {
     }
 }
 
-static TEMPLATES: OnceLock<Box<[[Template; 2]; 512]>> = OnceLock::new();
+static TEMPLATES: OnceLock<Box<[[Template; 2]]>> = OnceLock::new();
 
-pub fn templates() -> &'static [[Template; 2]; 512] {
+pub fn templates() -> &'static [[Template; 2]] {
     TEMPLATES.get_or_init(|| {
-        let mut table = Box::new([[empty_template(); 2]; 512]);
+        let mut table: Vec<[Template; 2]> = Vec::with_capacity(512);
+        table.push([empty_template(); 2]); // index 0 unused
         for pt in 1..=511u16 {
             let mv = pieces::movement(pt);
             // Skip special pieces that need the fallback path.
             let special = mv.hook.is_some()
                 || !mv.range_capture.is_empty()
                 || (mv.area >= 2 && !mv.jumps.is_empty()); // lion mid-capture
-            if special {
-                continue;
-            }
 
-            for color in 0..2u8 {
-                let mut t = empty_template();
-                let flip: i8 = if color == BLACK { 1 } else { -1 };
-                let mut ti = 0usize;
+            let mut entry = [empty_template(); 2];
+            if !special {
+                for color in 0..2u8 {
+                    let mut t = empty_template();
+                    let flip: i8 = if color == BLACK { 1 } else { -1 };
+                    let mut ti = 0usize;
 
-                // Jumps.
-                for &(jdr, jdc) in &mv.jumps {
-                    if ti >= MAX_JUMP_DELTAS {
-                        break;
-                    }
-                    t.jumps[ti] = (jdr * flip, jdc * flip);
-                    ti += 1;
-                }
-
-                // Steps (range == 1 slides).
-                for &(dir, max_range) in &mv.slides {
-                    if max_range == 1 && ti < MAX_JUMP_DELTAS {
-                        let (dr, dc) = get_deltas(dir as usize, color);
-                        t.jumps[ti] = (dr as i8, dc as i8);
+                    // Jumps.
+                    for &(jdr, jdc) in &mv.jumps {
+                        if ti >= MAX_JUMP_DELTAS {
+                            break;
+                        }
+                        t.jumps[ti] = (jdr * flip, jdc * flip);
                         ti += 1;
                     }
-                }
 
-                // Area: radius-1 or radius-2 squares (no mid-capture since
-                // those are excluded above; pure distance-1/2 jumps).
-                if mv.area > 0 {
-                    for dr in -2i8..=2 {
-                        for dc in -2i8..=2 {
-                            if dr == 0 && dc == 0 {
-                                continue;
-                            }
-                            if dr.abs() > 1 && mv.area < 2 {
-                                continue;
-                            }
-                            if dc.abs() > 1 && mv.area < 2 {
-                                continue;
-                            }
-                            if ti >= MAX_JUMP_DELTAS {
-                                break;
-                            }
-                            t.jumps[ti] = (dr, dc);
+                    // Steps (range == 1 slides).
+                    for &(dir, max_range) in &mv.slides {
+                        if max_range == 1 && ti < MAX_JUMP_DELTAS {
+                            let (dr, dc) = get_deltas(dir as usize, color);
+                            t.jumps[ti] = (dr as i8, dc as i8);
                             ti += 1;
                         }
                     }
-                }
 
-                t.n_jumps = ti as u8;
-
-                // Slides.
-                let mut si = 0usize;
-                for &(dir, max_range) in &mv.slides {
-                    if max_range == 1 {
-                        continue;
+                    // Area: radius-1 or radius-2 squares (no mid-capture since
+                    // those are excluded above; pure distance-1/2 jumps).
+                    if mv.area > 0 {
+                        for dr in -2i8..=2 {
+                            for dc in -2i8..=2 {
+                                if dr == 0 && dc == 0 {
+                                    continue;
+                                }
+                                if dr.abs() > 1 && mv.area < 2 {
+                                    continue;
+                                }
+                                if dc.abs() > 1 && mv.area < 2 {
+                                    continue;
+                                }
+                                if ti >= MAX_JUMP_DELTAS {
+                                    break;
+                                }
+                                t.jumps[ti] = (dr, dc);
+                                ti += 1;
+                            }
+                        }
                     }
-                    if si >= MAX_SLIDES {
-                        break;
+
+                    t.n_jumps = ti as u8;
+
+                    // Slides.
+                    let mut si = 0usize;
+                    for &(dir, max_range) in &mv.slides {
+                        if max_range == 1 {
+                            continue;
+                        }
+                        if si >= MAX_SLIDES {
+                            break;
+                        }
+                        t.slides[si] = (dir, max_range);
+                        si += 1;
                     }
-                    t.slides[si] = (dir, max_range);
-                    si += 1;
+                    t.n_slides = si as u8;
+
+                    t.has_igui = mv.igui;
+                    t.area = mv.area;
+                    t.valid = true;
+
+                    entry[color as usize] = t;
                 }
-                t.n_slides = si as u8;
-
-                t.has_igui = mv.igui;
-                t.area = mv.area;
-                t.valid = true;
-
-                table[pt as usize][color as usize] = t;
             }
+            table.push(entry);
         }
-        table
+        table.into_boxed_slice()
     })
 }
 
@@ -541,11 +543,11 @@ fn push_move_igui(
     moves: &mut Vec<crate::types::Move>,
     from: u16,
     victim_sq: usize,
-    _pt: u16,
+    pt: u16,
     color: u8,
     target: Cell,
 ) {
-    crate::movegen::add_igui_move(moves, from as usize, victim_sq, _pt, color, target);
+    crate::movegen::add_igui_move(moves, from as usize, victim_sq, pt, color, target);
 }
 
 #[inline]

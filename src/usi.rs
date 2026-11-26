@@ -58,6 +58,7 @@
 //!   the default comes from `TAIKYOKU_NET`) and `Ponder` (accepted for GUI
 //!   compatibility).
 
+use std::fmt::Write;
 use crate::search::{IterInfo, Searcher};
 use crate::{Board, Color, Network};
 use std::io::BufRead;
@@ -371,22 +372,22 @@ fn format_info(info: &IterInfo) -> String {
         let plies = (crate::MATE_SCORE - info.score.abs()).max(1);
         let moves = (plies + 1) / 2;
         if info.score > 0 {
-            line.push_str(&format!(" score mate {moves}"));
+            let _ = write!(line, " score mate {moves}");
         } else {
-            line.push_str(&format!(" score mate -{moves}"));
+            let _ = write!(line, " score mate -{moves}");
         }
     } else {
-        line.push_str(&format!(" score cp {}", info.score));
+        let _ = write!(line, " score cp {}", info.score);
     }
     if let Some(nps) = info
         .nodes
         .checked_mul(1000)
         .and_then(|n| n.checked_div(info.time_ms))
     {
-        line.push_str(&format!(" nps {nps}"));
+        let _ = write!(line, " nps {nps}");
     }
     if let Some(m) = &info.best_move {
-        line.push_str(&format!(" pv {}", usi_move_str(&m.inner)));
+        let _ = write!(line, " pv {}", usi_move_str(&m.inner));
     }
     line
 }

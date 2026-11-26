@@ -18,6 +18,11 @@ use crate::types::{
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+/// A (row, col) jump/step delta.
+type JumpDelta = (i8, i8);
+/// A (direction, range) slide descriptor.
+type SlideDir = (u8, u8);
+
 // ============================================================
 // Piece type IDs (1-based, 0 = no piece)
 // ============================================================
@@ -2612,7 +2617,7 @@ fn parse_betza(notation: &str) -> Option<Movement> {
                 }
             }
             'D' | 'A' | 'N' | 'H' | 'G' => {
-                let base_jumps: &[(i8, i8)] = match atom {
+                let base_jumps: &[JumpDelta] = match atom {
                     'D' => &[(-2, 0), (0, 2), (2, 0), (0, -2)],
                     'A' => &[(-2, 2), (2, 2), (2, -2), (-2, -2)],
                     'N' => &[
@@ -2649,7 +2654,7 @@ fn parse_betza(notation: &str) -> Option<Movement> {
             present[di] = true;
         }
     }
-    let merged: Vec<(u8, u8)> = (0..8)
+    let merged: Vec<SlideDir> = (0..8)
         .filter(|&d| present[d])
         .map(|d| (d as u8, best[d]))
         .collect();
@@ -2748,9 +2753,9 @@ fn jump_matches(dr: i8, dc: i8, modifier: &str, atom: char) -> bool {
 // Manual movement overrides for complex pieces
 // ============================================================
 fn manual_movement(abbrev: &str) -> Option<Movement> {
-    let all_dirs_slide: Vec<(u8, u8)> = (0..8).map(|d| (d as u8, 0)).collect();
-    let all_dirs_step: Vec<(u8, u8)> = (0..8).map(|d| (d as u8, 1)).collect();
-    let lion_jumps: Vec<(i8, i8)> = {
+    let all_dirs_slide: Vec<SlideDir> = (0..8).map(|d| (d as u8, 0)).collect();
+    let all_dirs_step: Vec<SlideDir> = (0..8).map(|d| (d as u8, 1)).collect();
+    let lion_jumps: Vec<JumpDelta> = {
         let mut v = Vec::new();
         for dr in -2i8..=2 {
             for dc in -2i8..=2 {
@@ -2960,7 +2965,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "WO" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> =
+                let mut s: Vec<SlideDir> =
                     vec![(N as u8, 2), (E as u8, 2), (S as u8, 2), (W as u8, 2)];
                 s.extend([(NE as u8, 0), (SE as u8, 0), (SW as u8, 0), (NW as u8, 0)]);
                 s
@@ -2994,7 +2999,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "DG" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> = vec![
+                let mut s: Vec<SlideDir> = vec![
                     (N as u8, 0),
                     (E as u8, 0),
                     (S as u8, 0),
@@ -3031,7 +3036,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "GS" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> =
+                let mut s: Vec<SlideDir> =
                     vec![(N as u8, 0), (E as u8, 0), (S as u8, 0), (W as u8, 0)];
                 s.push((SE as u8, 2));
                 s.push((SW as u8, 2));
@@ -3045,7 +3050,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "MF" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> = vec![
+                let mut s: Vec<SlideDir> = vec![
                     (N as u8, 0),
                     (E as u8, 0),
                     (S as u8, 0),
@@ -3065,7 +3070,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "ML" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> = vec![
+                let mut s: Vec<SlideDir> = vec![
                     (N as u8, 0),
                     (E as u8, 0),
                     (S as u8, 0),
@@ -3085,7 +3090,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "MR" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> = vec![
+                let mut s: Vec<SlideDir> = vec![
                     (N as u8, 0),
                     (E as u8, 0),
                     (S as u8, 0),
@@ -3281,7 +3286,7 @@ fn manual_movement(abbrev: &str) -> Option<Movement> {
         }),
         "+GEL" => Some(Movement {
             slides: {
-                let mut s: Vec<(u8, u8)> = vec![(NE as u8, 3), (NW as u8, 3)];
+                let mut s: Vec<SlideDir> = vec![(NE as u8, 3), (NW as u8, 3)];
                 s.extend([(N as u8, 0), (E as u8, 0), (S as u8, 0), (W as u8, 0)]);
                 s
             },

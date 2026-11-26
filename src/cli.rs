@@ -67,6 +67,7 @@
 //!
 //! Run: `taikyokushogi-cli` (REPL), or `taikyokushogi-cli perft 2` etc.
 
+use std::fmt::Write;
 use std::io::{BufRead, Write};
 use taikyokushogi::elo::{self, EngineConfig, MatchConfig, Sprt};
 use taikyokushogi::search::params::SearchConfig;
@@ -825,13 +826,13 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 let r = m.raw();
                 let mut extra = String::new();
                 if r.captured_piece != 0 {
-                    extra.push_str(&format!(" x{}", r.captured_piece));
+                    let _ = write!(extra, " x{}", r.captured_piece);
                 }
                 if r.mid_piece != 0 {
-                    extra.push_str(&format!(" +mid{}", r.mid_piece));
+                    let _ = write!(extra, " +mid{}", r.mid_piece);
                 }
                 if r.range_cap && r.caps_value != 0 {
-                    extra.push_str(&format!(" rc({})", r.caps_value));
+                    let _ = write!(extra, " rc({})", r.caps_value);
                 }
                 if r.is_igui {
                     extra.push_str(" igui");

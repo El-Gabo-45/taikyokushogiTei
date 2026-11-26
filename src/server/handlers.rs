@@ -148,8 +148,11 @@ pub async fn get_health() -> Json<HealthResponse> {
 // GET /api/state — full board snapshot
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_state(SessionGame(game): SessionGame) -> Json<BoardResponse> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     Json(crate::server::board_to_response(&state))
 }
 
@@ -157,8 +160,11 @@ pub async fn get_state(SessionGame(game): SessionGame) -> Json<BoardResponse> {
 // GET /api/history and GET /api/status
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_history(SessionGame(game): SessionGame) -> Json<HistoryResponse> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     Json(HistoryResponse {
         move_log: state.move_log.clone(),
         half_move: state.half_move,
@@ -167,8 +173,11 @@ pub async fn get_history(SessionGame(game): SessionGame) -> Json<HistoryResponse
     })
 }
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_status(SessionGame(game): SessionGame) -> Json<StatusResponse> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     Json(StatusResponse {
         game_over: state.game_over,
         result: game_result_string(&state.board),
@@ -186,6 +195,12 @@ pub async fn get_status(SessionGame(game): SessionGame) -> Json<StatusResponse> 
 // GET /api/moves?r=&c= — legal destinations for one piece
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn get_moves(
     SessionGame(game): SessionGame,
     Query(params): Query<MoveQuery>,
@@ -197,7 +212,7 @@ pub async fn get_moves(
             BOARD - 1
         )));
     }
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     let moves = crate::server::get_moves_for_square(&state, r, c);
     Ok(Json(MoveListResponse {
         moves,
@@ -209,8 +224,11 @@ pub async fn get_moves(
 // GET /api/legal-moves — every legal move of the side to move
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_legal_moves(SessionGame(game): SessionGame) -> Json<serde_json::Value> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     let stm = state.board.side_to_move() as u8;
     let moves: Vec<MoveData> = if state.game_over {
         Vec::new()
@@ -243,8 +261,11 @@ pub async fn get_legal_moves(SessionGame(game): SessionGame) -> Json<serde_json:
 // GET /api/evaluate — static evaluation + material balance
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_evaluate(SessionGame(game): SessionGame) -> Json<EvalResponse> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     Json(EvalResponse {
         eval_score: state.board.evaluate(),
         material_score: state.board.material_score(),
@@ -258,6 +279,9 @@ pub async fn get_evaluate(SessionGame(game): SessionGame) -> Json<EvalResponse> 
 // GET /api/engine-info — engine metadata for the web UI
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoResponse> {
     const TECHNIQUES: &[&str] = &[
         "razoring",
@@ -277,8 +301,8 @@ pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoR
         "quiescence",
     ];
     let all = crate::all_pieces();
-    let royal = all.iter().filter(|p| p.flags.is_royal).count();
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let royal = all.iter().filter(|p| p.flags.is_royal()).count();
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     let using_nnue = state.board.network().is_some();
     Json(EngineInfoResponse {
         name: "taikyokushogi",
@@ -312,11 +336,11 @@ fn piece_response(p: &crate::PieceInfo) -> PieceInfoResponse {
         promotes_to: p.promotes_to.map(std::string::ToString::to_string),
         slide_directions: p.slide_directions,
         jump_destinations: p.jump_destinations,
-        has_hook: p.flags.has_hook,
+        has_hook: p.flags.has_hook(),
         area_steps: p.area_steps,
-        has_range_capture: p.flags.has_range_capture,
-        has_igui: p.flags.has_igui,
-        is_royal: p.flags.is_royal,
+        has_range_capture: p.flags.has_range_capture(),
+        has_igui: p.flags.has_igui(),
+        is_royal: p.flags.is_royal(),
         betza: p.betza.map(std::string::ToString::to_string),
     }
 }
@@ -329,6 +353,9 @@ pub async fn get_pieces() -> Json<PieceListResponse> {
     })
 }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn get_piece_info(
     Path(abbrev): Path<String>,
 ) -> Result<Json<PieceInfoResponse>, ApiError> {
@@ -349,8 +376,11 @@ pub async fn api_not_found() -> ApiError {
 // TSFEN: GET/POST /api/position, GET/POST /api/save, POST /api/load
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_position(SessionGame(game): SessionGame) -> Json<PositionResponse> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     Json(PositionResponse {
         tsfen: state.board.to_tsfen(),
         side_to_move: state.board.side_to_move() as u8,
@@ -361,18 +391,27 @@ pub async fn get_position(SessionGame(game): SessionGame) -> Json<PositionRespon
 /// `POST /api/position` and `POST /api/load` — install a position from
 /// TSFEN. The change counter advances and history restarts from the
 /// imported position.
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn post_position(
     SessionGame(game): SessionGame,
     Json(body): Json<LoadBody>,
 ) -> Result<Json<BoardResponse>, ApiError> {
-    let mut state = game.lock().expect("game mutex should not be poisoned");
+    let mut state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     let board = Board::from_tsfen(&body.tsfen).map_err(ApiError::bad_request)?;
     state.set_board(board);
     Ok(Json(crate::server::board_to_response(&state)))
 }
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn get_save(SessionGame(game): SessionGame) -> Json<SaveBody> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     Json(SaveBody {
         ok: true,
         tsfen: state.board.to_tsfen(),
@@ -386,6 +425,9 @@ pub async fn post_save(sess: SessionGame) -> Json<SaveBody> {
     get_save(sess).await
 }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn post_load(
     sess: SessionGame,
     Json(body): Json<LoadBody>,
@@ -397,8 +439,11 @@ pub async fn post_load(
 // POST /api/new-game
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn post_new_game(SessionGame(game): SessionGame) -> Json<NewGameResponse> {
-    let mut state = game.lock().expect("game mutex should not be poisoned");
+    let mut state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     state.reset();
     Json(NewGameResponse {
         ok: true,
@@ -410,6 +455,12 @@ pub async fn post_new_game(SessionGame(game): SessionGame) -> Json<NewGameRespon
 // POST /api/move — human move by coordinates
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn post_move(
     SessionGame(game): SessionGame,
     Json(body): Json<MoveBody>,
@@ -430,7 +481,7 @@ pub async fn post_move(
         }
     }
 
-    let mut state = game.lock().expect("game mutex should not be poisoned");
+    let mut state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     if state.game_over {
         return Err(ApiError::conflict("Game is over"));
     }
@@ -469,7 +520,7 @@ pub async fn post_move(
 /// before the CPU-bound search, so the async runtime keeps serving the
 /// other endpoints. The counter lets callers detect a stale position.
 fn snapshot_for_search(game: &Arc<Mutex<ServerGameState>>) -> Result<(Board, u64), ApiError> {
-    let state = game.lock().expect("game mutex should not be poisoned");
+    let state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     if state.game_over {
         return Err(ApiError::conflict("Game is over"));
     }
@@ -537,6 +588,12 @@ async fn execute_search(snapshot: Board, depth: u32, time_limit: u64) -> SearchO
 // POST /api/ai-move — search and apply for the side to move
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn post_ai_move(
     SessionGame(game): SessionGame,
     Json(body): Json<AiMoveBody>,
@@ -549,7 +606,7 @@ pub async fn post_ai_move(
     if outcome.no_moves {
         // Distinguish a terminal position from a search that stopped early
         // (e.g. a very short time limit): only the former ends the game.
-        let mut state = game.lock().expect("game mutex should not be poisoned");
+        let mut state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
         if state.board.legal_moves().is_empty() {
             state.game_over = true;
             return Err(ApiError::conflict("No legal moves"));
@@ -559,13 +616,12 @@ pub async fn post_ai_move(
         ));
     }
 
-    let mv = match outcome.best_move {
-        Some(m) => m,
-        None => return Err(ApiError::conflict("Search task failed")),
+    let Some(mv) = outcome.best_move else {
+        return Err(ApiError::conflict("Search task failed"));
     };
     let (fr, fc, tr, tc, promotion, mid_sq) = coords_of(&mv);
 
-    let mut state = game.lock().expect("game mutex should not be poisoned");
+    let mut state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
 
     // ── CONCURRENCY GUARD ──
     // If another request changed the board while the AI was thinking
@@ -624,6 +680,9 @@ pub async fn post_ai_move(
 // POST /api/search — pure analysis, board is never mutated
 // ============================================================
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid input or conflicting game state.
 pub async fn post_search(
     SessionGame(game): SessionGame,
     Json(body): Json<SearchBody>,
@@ -650,13 +709,16 @@ pub async fn post_search(
 // POST /api/undo — revert N plies (default 1)
 // ============================================================
 
+    /// # Panics
+    ///
+    /// Panics if the game mutex is poisoned.
 pub async fn post_undo(
     SessionGame(game): SessionGame,
     body: Option<Json<UndoBody>>,
 ) -> Json<UndoResponse> {
     let plies = body.and_then(|b| b.plies).unwrap_or(1).clamp(1, 100);
 
-    let mut state = game.lock().expect("game mutex should not be poisoned");
+    let mut state = game.lock().unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
     let mut undone = 0u32;
     while undone < plies {
         if !state.board.undo() {

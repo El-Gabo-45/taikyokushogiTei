@@ -35,7 +35,6 @@ pub struct Bitboard1296 {
 
 impl Bitboard1296 {
     /// Create an empty bitboard.
-    #[inline(always)]
     pub const fn new() -> Self {
         Bitboard1296 {
             words: [0u64; U64_COUNT],
@@ -43,7 +42,6 @@ impl Bitboard1296 {
     }
 
     /// Create a bitboard with all bits set.
-    #[inline(always)]
     pub fn all() -> Self {
         let mut bb = Bitboard1296::new();
         // Set all bits in all words
@@ -58,7 +56,6 @@ impl Bitboard1296 {
     }
 
     /// Test if a square is set.
-    #[inline(always)]
     pub fn get(&self, sq: u16) -> bool {
         let word = (sq as usize) >> 6;
         let bit = 1u64 << (sq & 63);
@@ -66,7 +63,6 @@ impl Bitboard1296 {
     }
 
     /// Test if a square is set (usize version).
-    #[inline(always)]
     pub fn get_usize(&self, sq: usize) -> bool {
         let word = sq >> 6;
         let bit = 1u64 << (sq & 63);
@@ -74,35 +70,30 @@ impl Bitboard1296 {
     }
 
     /// Set a square.
-    #[inline(always)]
     pub fn set(&mut self, sq: u16) {
         let word = (sq as usize) >> 6;
         self.words[word] |= 1u64 << (sq & 63);
     }
 
     /// Set a square (usize version).
-    #[inline(always)]
     pub fn set_usize(&mut self, sq: usize) {
         let word = sq >> 6;
         self.words[word] |= 1u64 << (sq & 63);
     }
 
     /// Clear a square.
-    #[inline(always)]
     pub fn clear(&mut self, sq: u16) {
         let word = (sq as usize) >> 6;
         self.words[word] &= !(1u64 << (sq & 63));
     }
 
     /// Clear a square (usize version).
-    #[inline(always)]
     pub fn clear_usize(&mut self, sq: usize) {
         let word = sq >> 6;
         self.words[word] &= !(1u64 << (sq & 63));
     }
 
     /// Bitwise AND with another bitboard, store in self.
-    #[inline(always)]
     pub fn and(&mut self, other: &Bitboard1296) {
         for i in 0..U64_COUNT {
             self.words[i] &= other.words[i];
@@ -110,7 +101,6 @@ impl Bitboard1296 {
     }
 
     /// Bitwise OR with another bitboard, store in self.
-    #[inline(always)]
     pub fn or(&mut self, other: &Bitboard1296) {
         for i in 0..U64_COUNT {
             self.words[i] |= other.words[i];
@@ -118,7 +108,6 @@ impl Bitboard1296 {
     }
 
     /// Bitwise XOR with another bitboard, store in self.
-    #[inline(always)]
     pub fn xor(&mut self, other: &Bitboard1296) {
         for i in 0..U64_COUNT {
             self.words[i] ^= other.words[i];
@@ -126,7 +115,6 @@ impl Bitboard1296 {
     }
 
     /// Bitwise NOT (in-place).
-    #[inline(always)]
     pub fn not(&mut self) {
         for w in &mut self.words {
             *w = !*w;
@@ -140,7 +128,6 @@ impl Bitboard1296 {
     }
 
     /// Return a new bitboard that is the AND of self and other.
-    #[inline(always)]
     pub fn and_new(&self, other: &Bitboard1296) -> Bitboard1296 {
         let mut result = *self;
         result.and(other);
@@ -148,7 +135,6 @@ impl Bitboard1296 {
     }
 
     /// Return a new bitboard that is the OR of self and other.
-    #[inline(always)]
     pub fn or_new(&self, other: &Bitboard1296) -> Bitboard1296 {
         let mut result = *self;
         result.or(other);
@@ -156,7 +142,6 @@ impl Bitboard1296 {
     }
 
     /// Return a new bitboard that is the XOR of self and other.
-    #[inline(always)]
     pub fn xor_new(&self, other: &Bitboard1296) -> Bitboard1296 {
         let mut result = *self;
         result.xor(other);
@@ -164,7 +149,6 @@ impl Bitboard1296 {
     }
 
     /// Return a new bitboard that is the NOT of self.
-    #[inline(always)]
     pub fn not_new(&self) -> Bitboard1296 {
         let mut result = *self;
         result.not();
@@ -172,19 +156,16 @@ impl Bitboard1296 {
     }
 
     /// Check if the bitboard is empty.
-    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.words.iter().all(|&w| w == 0)
     }
 
     /// Count the number of set bits.
-    #[inline(always)]
     pub fn count(&self) -> u32 {
         self.words.iter().map(|&w| w.count_ones()).sum()
     }
 
     /// Iterate over all set squares, calling `f` for each.
-    #[inline(always)]
     pub fn iter<F: FnMut(u16)>(&self, mut f: F) {
         for (word_idx, &word) in self.words.iter().enumerate() {
             let mut w = word;
@@ -197,7 +178,6 @@ impl Bitboard1296 {
     }
 
     /// Iterate over all set squares, calling `f` for each (usize version).
-    #[inline(always)]
     pub fn iter_usize<F: FnMut(usize)>(&self, mut f: F) {
         for (word_idx, &word) in self.words.iter().enumerate() {
             let mut w = word;
@@ -210,7 +190,6 @@ impl Bitboard1296 {
     }
 
     /// Get the first set square, or None if empty.
-    #[inline(always)]
     pub fn first(&self) -> Option<u16> {
         for (word_idx, &word) in self.words.iter().enumerate() {
             if word != 0 {
@@ -222,7 +201,6 @@ impl Bitboard1296 {
     }
 
     /// Get the first set square as usize, or None if empty.
-    #[inline(always)]
     pub fn first_usize(&self) -> Option<usize> {
         for (word_idx, &word) in self.words.iter().enumerate() {
             if word != 0 {
@@ -237,7 +215,6 @@ impl Bitboard1296 {
     /// Used together with `first_usize` to find the "first blocker" along a
     /// ray depending on whether the ray's square indices increase or
     /// decrease in the direction of travel (see `is_in_check_bitboard`).
-    #[inline(always)]
     pub fn last_usize(&self) -> Option<usize> {
         for (word_idx, &word) in self.words.iter().enumerate().rev() {
             if word != 0 {
@@ -249,7 +226,6 @@ impl Bitboard1296 {
     }
 
     /// Remove and return the first set square.
-    #[inline(always)]
     pub fn pop_first(&mut self) -> Option<u16> {
         for (word_idx, word) in self.words.iter_mut().enumerate() {
             if *word != 0 {
@@ -263,7 +239,6 @@ impl Bitboard1296 {
 
     /// Shift all bits by `delta` squares (positive = forward, negative = backward).
     /// This is useful for generating pawn attacks, etc.
-    #[inline(always)]
     pub fn shift(&self, delta: i32) -> Bitboard1296 {
         if delta == 0 {
             return *self;
@@ -279,7 +254,6 @@ impl Bitboard1296 {
     }
 
     /// Shift by row delta and column delta.
-    #[inline(always)]
     pub fn shift_rc(&self, dr: i32, dc: i32) -> Bitboard1296 {
         if dr == 0 && dc == 0 {
             return *self;
@@ -296,7 +270,6 @@ impl Bitboard1296 {
     }
 
     /// Create a bitboard with a single square set.
-    #[inline(always)]
     pub fn single(sq: u16) -> Self {
         let mut bb = Bitboard1296::new();
         bb.set(sq);
@@ -304,7 +277,6 @@ impl Bitboard1296 {
     }
 
     /// Create a bitboard with a single square set (usize version).
-    #[inline(always)]
     pub fn single_usize(sq: usize) -> Self {
         let mut bb = Bitboard1296::new();
         bb.set_usize(sq);
@@ -312,7 +284,6 @@ impl Bitboard1296 {
     }
 
     /// Create a bitboard from a list of squares.
-    #[inline(always)]
     pub fn from_squares(squares: &[u16]) -> Self {
         let mut bb = Bitboard1296::new();
         for &sq in squares {
@@ -322,7 +293,6 @@ impl Bitboard1296 {
     }
 
     /// Create a bitboard from a list of usize squares.
-    #[inline(always)]
     pub fn from_squares_usize(squares: &[usize]) -> Self {
         let mut bb = Bitboard1296::new();
         for &sq in squares {
@@ -332,7 +302,6 @@ impl Bitboard1296 {
     }
 
     /// Fill a rectangle on the board.
-    #[inline(always)]
     pub fn fill_rect(
         &mut self,
         row_start: usize,
@@ -432,19 +401,16 @@ impl AttackTable {
     }
 
     /// Get the ray from `sq` in direction `dir` as a bitboard.
-    #[inline(always)]
     pub fn ray_bb(&self, sq: usize, dir: usize) -> &Bitboard1296 {
         &self.rays[sq * NUM_DIRS + dir]
     }
 
     /// Get the first square along the ray from `sq` in direction `dir`.
-    #[inline(always)]
     pub fn first_along(&self, sq: usize, dir: usize) -> u16 {
         self.first_blocker[sq * NUM_DIRS + dir]
     }
 
     /// Get ray adjusted for color.
-    #[inline(always)]
     pub fn ray_for_color(&self, sq: usize, dir: usize, color: u8) -> &Bitboard1296 {
         if color == BLACK {
             &self.rays[sq * NUM_DIRS + dir]
@@ -491,7 +457,6 @@ impl KingAreaTable {
         KingAreaTable { areas }
     }
 
-    #[inline(always)]
     pub fn area(&self, sq: usize) -> &Bitboard1296 {
         &self.areas[sq]
     }
@@ -536,7 +501,6 @@ impl LimitedRangeTable {
         LimitedRangeTable { attacks }
     }
 
-    #[inline(always)]
     pub fn attacks(&self, sq: usize, dir: usize, max_dist: u8) -> &Bitboard1296 {
         let idx = (sq * NUM_DIRS + dir) * 4 + (max_dist as usize).saturating_sub(1).min(3);
         &self.attacks[idx]
@@ -602,7 +566,6 @@ impl ThreatZoneTable {
         ThreatZoneTable { zones }
     }
 
-    #[inline(always)]
     pub fn zone(&self, sq: usize) -> &Bitboard1296 {
         &self.zones[sq]
     }

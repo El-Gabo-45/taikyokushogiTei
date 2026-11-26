@@ -19,6 +19,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 
+/// Samples and the game record produced by one self-play game.
+type GameOutcome = (Vec<TrainingSample>, GameRecord);
+/// Handle of a worker/writer/db thread that reports a `Result`.
+type WorkerHandle = JoinHandle<Result<(), String>>;
+
 use crossbeam::channel::{Receiver, Sender, bounded};
 
 #[derive(Debug, Clone)]
@@ -241,7 +246,7 @@ struct SelfPlayWorker {
 }
 
 impl SelfPlayWorker {
-    fn play_one_game(&mut self, game_id: u64) -> (Vec<TrainingSample>, GameRecord) {
+    fn play_one_game(&mut self, game_id: u64) -> GameOutcome {
         let mut board = Board::new();
         board.setup_initial();
         board.set_network(self.config.net.clone());
@@ -419,9 +424,9 @@ pub struct SelfPlayCoordinator {
     config: SelfPlayConfig,
     game_id_offset: u64,
     stats: Arc<SelfPlayStats>,
-    workers: Vec<JoinHandle<Result<(), String>>>,
-    writer_handle: Option<JoinHandle<Result<(), String>>>,
-    db_handle: Option<JoinHandle<Result<(), String>>>,
+    workers: Vec<WorkerHandle>,
+    writer_handle: Option<WorkerHandle>,
+    db_handle: Option<WorkerHandle>,
     sample_tx: Sender<TrainingSample>,
     game_tx: Sender<GameRecord>,
 }

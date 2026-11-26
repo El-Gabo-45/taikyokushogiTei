@@ -106,7 +106,10 @@ pub fn generate_class_map() -> Vec<u8> {
     assert!(distinct.len() <= 255, "too many NNUE classes");
     let mut map = vec![0u8; n + 1];
     for (i, k) in keys.iter().enumerate() {
-        map[i + 1] = distinct.binary_search(k).expect("class key must be found") as u8;
+        map[i + 1] = match distinct.binary_search(k) {
+            Ok(pos) => pos as u8,
+            Err(_) => panic!("class key must be found"),
+        };
     }
     map
 }

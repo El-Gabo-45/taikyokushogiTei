@@ -431,6 +431,13 @@ fn parse_square(s: &str) -> Option<Square> {
     Some(Square::new(row, col))
 }
 
+/// Callback invoked after each completed search iteration (see
+/// [`Board::search_with_info`]).
+pub type IterCallback<'a> = Option<&'a mut dyn FnMut(&search::IterInfo)>;
+
+/// A piece and the square it occupies.
+pub type SquarePiece = (Square, Piece);
+
 /// Result of a search.
 pub struct SearchResult {
     /// Best move found, if any.
@@ -443,12 +450,38 @@ pub struct SearchResult {
     pub time_ms: u64,
 }
 
-/// Flags describing piece capabilities.
-pub struct PieceFlags {
-    pub has_hook: bool,
-    pub has_range_capture: bool,
-    pub has_igui: bool,
-    pub is_royal: bool,
+/// Bit-packed flags describing piece capabilities.
+pub struct PieceFlags(u8);
+
+impl PieceFlags {
+    const HAS_HOOK: u8 = 1;
+    const HAS_RANGE_CAPTURE: u8 = 2;
+    const HAS_IGUI: u8 = 4;
+    const IS_ROYAL: u8 = 8;
+
+    /// Build flags from a raw bitmask (bit 0 = hook, 1 = range capture,
+    /// 2 = igui, 3 = royal).
+    #[must_use]
+    pub const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    #[must_use]
+    pub const fn has_hook(&self) -> bool {
+        self.0 & Self::HAS_HOOK != 0
+    }
+    #[must_use]
+    pub const fn has_range_capture(&self) -> bool {
+        self.0 & Self::HAS_RANGE_CAPTURE != 0
+    }
+    #[must_use]
+    pub const fn has_igui(&self) -> bool {
+        self.0 & Self::HAS_IGUI != 0
+    }
+    #[must_use]
+    pub const fn is_royal(&self) -> bool {
+        self.0 & Self::IS_ROYAL != 0
+    }
 }
 
 /// Information about a piece type.
@@ -482,6 +515,19 @@ pub fn piece_info(abbrev: &str) -> Option<PieceInfo> {
 pub fn piece_info_by_id(pt: u16) -> PieceInfo {
     let mv = pieces::movement(pt);
     let promo = pieces::promotes_to(pt).map(pieces::abbrev);
+    let mut flags = 0u8;
+    if mv.hook.is_some() {
+        flags |= 1;
+    }
+    if !mv.range_capture.is_empty() {
+        flags |= 2;
+    }
+    if mv.igui {
+        flags |= 4;
+    }
+    if pieces::is_royal(pt) {
+        flags |= 8;
+    }
     PieceInfo {
         abbrev: pieces::abbrev(pt),
         name: pieces::name(pt),
@@ -490,12 +536,7 @@ pub fn piece_info_by_id(pt: u16) -> PieceInfo {
         slide_directions: mv.slides.len(),
         jump_destinations: mv.jumps.len(),
         area_steps: mv.area,
-        flags: PieceFlags {
-            has_hook: mv.hook.is_some(),
-            has_range_capture: !mv.range_capture.is_empty(),
-            has_igui: mv.igui,
-            is_royal: pieces::is_royal(pt),
-        },
+        flags: PieceFlags::from_bits(flags),
         betza: pieces::betza(pt),
     }
 }
@@ -505,7 +546,7 @@ pub fn piece_info_by_id(pt: u16) -> PieceInfo {
 /// ```rust
 /// let all = taikyokushogi::all_pieces();
 /// assert_eq!(all.len(), taikyokushogi::num_piece_types());
-/// assert!(all.iter().any(|p| p.abbrev == "K" && p.flags.is_royal));
+/// assert!(all.iter().any(|p| p.abbrev == "K" && p.flags.is_royal()));
 /// ```
 pub fn all_pieces() -> Vec<PieceInfo> {
     (1..=pieces::num_piece_types() as u16)
@@ -596,8 +637,10 @@ impl Board {
     /// (not 0 or 1), which indicates a bug in the engine.
     #[must_use]
     pub fn side_to_move(&self) -> Color {
-        Color::from_raw(self.inner.side_to_move)
-            .expect("invalid side_to_move value (must be 0 or 1)")
+        match Color::from_raw(self.inner.side_to_move) {
+            Some(c) => c,
+            None => panic!("invalid side_to_move value (must be 0 or 1)"),
+        }
     }
 
     /// Current full-move number (starts at 1, increments after White moves).
@@ -632,8 +675,10 @@ impl Board {
         } else {
             Some(Piece {
                 type_id: types::cell_piece(cell),
-                color: Color::from_raw(types::cell_color(cell))
-                    .expect("invalid cell color value (must be 0 or 1)"),
+                color: match Color::from_raw(types::cell_color(cell)) {
+                    Some(c) => c,
+                    None => panic!("invalid cell color value (must be 0 or 1)"),
+                },
             })
         }
     }
@@ -809,6 +854,11 @@ impl Board {
     }
 
     /// Pick a uniformly random legal move, or `None` if no moves exist.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the RNG returns an index outside the move list (should not
+    /// happen; indicates an internal bug).
     #[must_use]
     pub fn random_move(&self) -> Option<Move> {
         use rand::Rng;
@@ -818,10 +868,10 @@ impl Board {
         }
         let idx = rand::thread_rng().gen_range(0..moves.len());
         Some(Move {
-            inner: moves
-                .into_iter()
-                .nth(idx)
-                .expect("random move index must be valid"),
+            inner: match moves.into_iter().nth(idx) {
+                Some(m) => m,
+                None => panic!("random move index must be valid"),
+            },
         })
     }
 
@@ -885,7 +935,7 @@ impl Board {
         depth: u32,
         time_limit_ms: u64,
         threads: usize,
-        on_iter: Option<&mut dyn FnMut(&search::IterInfo)>,
+        on_iter: IterCallback<'_>,
     ) -> SearchResult {
         let stop = std::sync::atomic::AtomicBool::new(false);
         let r = searcher.search_threads_with_stop(
@@ -954,6 +1004,11 @@ impl Board {
     ///
     /// Returns `Err` with a description if the TSFEN is malformed.
     ///
+    /// # Errors
+    ///
+    /// Returns an error `String` if the TSFEN is malformed (bad ranks,
+    /// unknown piece abbreviations, wrong side-to-move, etc.).
+    ///
     /// ```rust
     /// let board = taikyokushogi::Board::initial();
     /// let tsfen = board.to_tsfen();
@@ -966,7 +1021,7 @@ impl Board {
 
     /// Iterate over all pieces of a given color.
     #[must_use]
-    pub fn pieces(&self, color: Color) -> Vec<(Square, Piece)> {
+    pub fn pieces(&self, color: Color) -> Vec<SquarePiece> {
         let c = color.raw() as usize;
         let mut result = Vec::new();
         for i in 0..self.inner.piece_list_len[c] {

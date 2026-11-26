@@ -104,18 +104,20 @@ impl<'a> Reader<'a> {
         Ok(s)
     }
     fn u16(&mut self) -> Result<u16, NnueError> {
-        Ok(u16::from_le_bytes(
-            self.take(2)?
-                .try_into()
-                .expect("2 bytes -> u16 is infallible"),
-        ))
+        let bytes = self.take(2)?;
+        let arr: [u8; 2] = match bytes.try_into() {
+            Ok(a) => a,
+            Err(_) => panic!("2 bytes -> u16 is infallible"),
+        };
+        Ok(u16::from_le_bytes(arr))
     }
     fn u32(&mut self) -> Result<u32, NnueError> {
-        Ok(u32::from_le_bytes(
-            self.take(4)?
-                .try_into()
-                .expect("4 bytes -> u32 is infallible"),
-        ))
+        let bytes = self.take(4)?;
+        let arr: [u8; 4] = match bytes.try_into() {
+            Ok(a) => a,
+            Err(_) => panic!("4 bytes -> u32 is infallible"),
+        };
+        Ok(u32::from_le_bytes(arr))
     }
     fn i16s(&mut self, n: usize) -> Result<Box<[i16]>, NnueError> {
         Ok(self
@@ -165,10 +167,10 @@ impl Network {
         if ver != VERSION {
             return Err(NnueError::UnsupportedVersion(ver));
         }
-        let hash: [u8; 32] = r
-            .take(32)?
-            .try_into()
-            .expect("32 bytes -> [u8; 32] is infallible");
+        let hash: [u8; 32] = match r.take(32)?.try_into() {
+            Ok(h) => h,
+            Err(_) => panic!("32 bytes -> [u8; 32] is infallible"),
+        };
         if hash != arch.arch_hash() {
             return mismatch(
                 "architecture hash differs (class map, thresholds or layout changed; retrain and re-export)",
