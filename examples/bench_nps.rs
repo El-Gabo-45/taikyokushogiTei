@@ -110,9 +110,7 @@ fn main() {
         let nodes = perft(&mut board, depth);
         let secs = t.elapsed().as_secs_f64();
         let nps = nodes as f64 / secs;
-        println!(
-            "  perft({depth}): {nodes:>12} nodes  {secs:>8.3}s  {nps:>12.0} nps"
-        );
+        println!("  perft({depth}): {nodes:>12} nodes  {secs:>8.3}s  {nps:>12.0} nps");
     }
 
     // ── 3. Search NPS at fixed depths ────────────────────────────

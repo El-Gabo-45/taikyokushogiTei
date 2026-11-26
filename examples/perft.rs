@@ -25,8 +25,6 @@ fn main() {
     let t = std::time::Instant::now();
     let n = perft(&mut board, depth);
     let ms = t.elapsed().as_millis() as u64;
-    println!(
-        "perft({depth}) = {n}   (reference perft(1)=512 perft(2)=260917)"
-    );
+    println!("perft({depth}) = {n}   (reference perft(1)=512 perft(2)=260917)");
     println!("elapsed: {ms}ms");
 }

@@ -16,7 +16,6 @@
 pub mod handlers;
 pub mod types;
 
-use std::fmt::Write;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
@@ -25,6 +24,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 use tower_http::services::ServeDir;
@@ -211,9 +211,9 @@ pub fn new_state() -> Arc<AppState> {
 /// The network is stored in the game state (not just on the initial board) so
 /// it survives `new game`, TSFEN loads and undo.
 #[must_use]
-    /// # Panics
-    ///
-    /// Panics on invalid internal state or arguments.
+/// # Panics
+///
+/// Panics on invalid internal state or arguments.
 pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
     // Invalid environment configuration must abort startup, never degrade the
     // CORS policy (same policy as the TAIKYOKU_NET/bind handling in `run`).
@@ -769,7 +769,8 @@ async fn sessions_middleware(
             let cookie = format!("taikyoku_session={fresh}; Path=/; SameSite=Lax");
             res.headers_mut().append(
                 header::SET_COOKIE,
-                HeaderValue::from_str(&cookie).unwrap_or_else(|e| panic!("cookie with minted ASCII id: {e}")),
+                HeaderValue::from_str(&cookie)
+                    .unwrap_or_else(|e| panic!("cookie with minted ASCII id: {e}")),
             );
             res.headers_mut().insert(
                 "x-session-id",
@@ -782,7 +783,10 @@ async fn sessions_middleware(
 
 /// Directory holding the built frontend (`TAIKYOKU_DIST` overrides).
 pub fn dist_dir() -> std::path::PathBuf {
-    std::env::var("TAIKYOKU_DIST").map_or_else(|_| std::path::PathBuf::from("web/dist"), std::path::PathBuf::from)
+    std::env::var("TAIKYOKU_DIST").map_or_else(
+        |_| std::path::PathBuf::from("web/dist"),
+        std::path::PathBuf::from,
+    )
 }
 
 /// SPA fallback: serve `index.html` for unknown non-API paths.
@@ -814,9 +818,9 @@ async fn serve_frontend() -> impl IntoResponse {
 /// restricting the CORS policy to exact origins (a malformed value aborts
 /// startup) and `TAIKYOKU_ANON` choosing
 /// what id-less `/api/*` requests get (default `auto`: a fresh session).
-    /// # Panics
-    ///
-    /// Panics on invalid internal state or arguments.
+/// # Panics
+///
+/// Panics on invalid internal state or arguments.
 pub async fn run() {
     let net = match std::env::var("TAIKYOKU_NET")
         .ok()
@@ -837,9 +841,9 @@ pub async fn run() {
 }
 
 /// [`run`] with an already-loaded network (useful for embedders and tests).
-    /// # Panics
-    ///
-    /// Panics on invalid internal state or arguments.
+/// # Panics
+///
+/// Panics on invalid internal state or arguments.
 pub async fn run_with_network(net: Option<Arc<Network>>) {
     let bind_addr = std::env::var("TAIKYOKU_BIND").unwrap_or_else(|_| "127.0.0.1:8000".to_string());
     let listener = tokio::net::TcpListener::bind(&bind_addr)

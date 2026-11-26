@@ -41,7 +41,6 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// Shared, lazily-initialized TT storage.
 type SharedTt = OnceLock<RwLock<Arc<TtStorage>>>;
 
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TTEntry {
     pub score: i32,

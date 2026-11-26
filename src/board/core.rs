@@ -10,7 +10,6 @@
 // indices 0..7, small enums, eval scores), so truncation/sign/wrap/precision
 // warnings would only produce noise.
 
-use std::fmt::Write;
 use crate::bitboard::Bitboard1296;
 use crate::eval::psqt;
 use crate::pieces;
@@ -19,6 +18,7 @@ use crate::types::{
     MAX_ROYALS, Move, NUM_SQUARES, UndoInfo, WHITE, cell_color, cell_piece, make_cell, sq_index,
     zobrist_piece_key, zobrist_side_key,
 };
+use std::fmt::Write;
 
 pub struct Board {
     pub cells: [Cell; NUM_SQUARES],

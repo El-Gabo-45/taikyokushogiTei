@@ -111,9 +111,7 @@ pub(crate) fn load_net(args: &[String]) -> NetResult {
 
 /// Positional `<tsfen>` argument (defaults to the initial position) with an
 /// optional `--net` attached, so `evaluate()` speaks with the network.
-pub(crate) fn load_position(
-    args: &[String],
-) -> Result<PositionNet, String> {
+pub(crate) fn load_position(args: &[String]) -> Result<PositionNet, String> {
     let net = load_net(args)?;
     let mut board = match positional(args) {
         Some(fen) => {
@@ -203,9 +201,9 @@ pub struct ReplaySummary {
 ///
 /// The database is opened read-only: a selfplay run owns it, this tool only
 /// reads.
-    /// # Errors
-    ///
-    /// Returns an error describing the failure.
+/// # Errors
+///
+/// Returns an error describing the failure.
 pub fn replay_games<F>(
     db_path: &str,
     net: Option<Arc<Network>>,

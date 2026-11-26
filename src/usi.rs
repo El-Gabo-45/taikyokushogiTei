@@ -1,4 +1,3 @@
-
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -59,9 +58,9 @@
 //!   the default comes from `TAIKYOKU_NET`) and `Ponder` (accepted for GUI
 //!   compatibility).
 
-use std::fmt::Write;
 use crate::search::{IterInfo, Searcher};
 use crate::{Board, Color, Network};
+use std::fmt::Write;
 use std::io::BufRead;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

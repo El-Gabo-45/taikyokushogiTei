@@ -33,7 +33,6 @@ type PsqtTable = [[[i32; 2]; NUM_SQUARES]];
 /// One piece type's PSQT: [square][color].
 type PsqtEntry = [[i32; 2]; NUM_SQUARES];
 
-
 /// PSQT value for a piece of type `pt` at square `sq` for color `color`.
 /// Positive = good for that color.
 pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
@@ -48,7 +47,11 @@ pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
     let base = zone.bonus();
     let zone_bonus = match fam_enum {
         Family::Royal => 0,
-        Family::RangeCap | Family::Lion | Family::Eagle | Family::Dragon | Family::Demon
+        Family::RangeCap
+        | Family::Lion
+        | Family::Eagle
+        | Family::Dragon
+        | Family::Demon
         | Family::Special => base * 2,
         Family::Standard | Family::Slider | Family::Hook => base,
         Family::Stepper | Family::Pawn | Family::Other => base / 2,

@@ -166,7 +166,7 @@ impl Bitboard1296 {
     }
 
     /// Iterate over all set squares, calling `f` for each.
-    pub fn iter<F: FnMut(u16)>(&self, mut f: F) {
+    pub fn for_each<F: FnMut(u16)>(&self, mut f: F) {
         for (word_idx, &word) in self.words.iter().enumerate() {
             let mut w = word;
             while w != 0 {

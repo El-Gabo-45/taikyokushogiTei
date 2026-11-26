@@ -67,7 +67,11 @@ pub fn zone_family_bonus(zone: Zone, family: crate::eval::families::Family) -> i
     let base = zone.bonus();
     match family {
         Family::Royal => 0, // King safety is handled elsewhere
-        Family::RangeCap | Family::Lion | Family::Eagle | Family::Dragon | Family::Demon
+        Family::RangeCap
+        | Family::Lion
+        | Family::Eagle
+        | Family::Dragon
+        | Family::Demon
         | Family::Special => base * 2,
         Family::Standard | Family::Slider | Family::Hook => base,
         Family::Stepper | Family::Pawn | Family::Other => base / 2,

@@ -33,14 +33,13 @@ type Interaction = (usize, usize, u64);
 /// (piece type, count) tally.
 type PtCount = (usize, u64);
 
-
 /// Piece types are 1..=301 (9-bit cell field); index 0 = "none" is unused
 /// for both mover and victim.
 const MAX_PT: usize = 302;
 
-    /// # Errors
-    ///
-    /// Returns an error describing the failure.
+/// # Errors
+///
+/// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let db = positional(args)
         .map(std::string::ToString::to_string)

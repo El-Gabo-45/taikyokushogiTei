@@ -48,7 +48,8 @@ fn run_search(board: &mut Board, depth: u32, time_limit_ms: u64) -> RunStats {
         score: result.score,
         overshoot_ms: overshoot,
         best_move: result
-            .best_move.map_or_else(|| "none".to_string(), |m| format!("{m}")),
+            .best_move
+            .map_or_else(|| "none".to_string(), |m| format!("{m}")),
     }
 }
 

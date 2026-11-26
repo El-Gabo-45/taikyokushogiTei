@@ -64,7 +64,6 @@ type IterFn<'a> = Option<&'a mut dyn FnMut(&IterInfo)>;
 /// A mandatory per-iteration callback.
 type IterMutFn<'a> = &'a mut dyn FnMut(&IterInfo);
 
-
 /// Result of a completed search.
 #[derive(Debug, Clone)]
 pub struct SearchResult {
@@ -659,11 +658,7 @@ mod tests {
         let moves = board.legal_moves();
         assert!(!moves.is_empty(), "initial position must have legal moves");
         for m in &moves {
-            assert_eq!(
-                m.mid_sq(),
-                None,
-                "initial move {m:?} must have mid_sq=None"
-            );
+            assert_eq!(m.mid_sq(), None, "initial move {m:?} must have mid_sq=None");
         }
     }
 

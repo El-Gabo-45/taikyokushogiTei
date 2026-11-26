@@ -68,7 +68,7 @@
 //! Run: `taikyokushogi-cli` (REPL), or `taikyokushogi-cli perft 2` etc.
 
 use std::fmt::Write;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Write as IoWrite};
 use taikyokushogi::elo::{self, EngineConfig, MatchConfig, Sprt};
 use taikyokushogi::search::params::SearchConfig;
 use taikyokushogi::{Board, Color, Move};
@@ -1855,8 +1855,7 @@ mod tests {
         );
         drop(probe);
 
-        let (board, _, hist) =
-            run_cmds(&[&format!("move {m1}"), &format!("move {m2}"), "undo"]);
+        let (board, _, hist) = run_cmds(&[&format!("move {m1}"), &format!("move {m2}"), "undo"]);
         assert_eq!(
             hist.len(),
             1,
@@ -1960,7 +1959,10 @@ mod tests {
 
     // ── command-line flags ─────────────────────────────────────
     fn argv(tokens: &[&str]) -> Vec<String> {
-        tokens.iter().map(std::string::ToString::to_string).collect()
+        tokens
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect()
     }
 
     #[test]

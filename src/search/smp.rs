@@ -41,7 +41,6 @@ use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 /// Callback invoked after each completed iteration.
 type IterFn<'a> = Option<&'a mut dyn FnMut(&super::IterInfo)>;
 
-
 /// Best completed iteration published by any worker of a search group.
 ///
 /// The publisher writes `score`/`packed` first and `depth` last with `Release`;

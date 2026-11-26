@@ -46,7 +46,6 @@ use std::time::Instant;
 /// A (from, to) move pair tracked in quiet-move lists.
 type MovePair = (u16, u16);
 
-
 /// Per-node search state threaded through the recursive calls, replacing the
 /// previous 8-argument `pvs(...)` signature.
 ///

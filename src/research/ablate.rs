@@ -35,7 +35,6 @@ type Positions = Vec<Position>;
 /// One technique-vs-baseline row.
 type AblationRow<'a> = (&'a str, Aggregate);
 
-
 /// Every `SearchConfig` switch, in struct order.
 const TECHNIQUES: &[&str] = &[
     "razoring",
@@ -166,9 +165,9 @@ struct Aggregate {
     positions: usize,
 }
 
-    /// # Errors
-    ///
-    /// Returns an error describing the failure.
+/// # Errors
+///
+/// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let depth = num(args, "--depth", 2u32)?;
     let time_ms = num(args, "--time-ms", 0u64)?;

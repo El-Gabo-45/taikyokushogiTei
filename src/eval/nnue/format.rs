@@ -42,7 +42,6 @@ type I16Result = Result<Box<[i16]>, NnueError>;
 type I32Result = Result<Box<[i32]>, NnueError>;
 type I8Result = Result<Box<[i8]>, NnueError>;
 
-
 pub const MAGIC: &[u8; 4] = b"TKN1";
 /// zstd frame magic (`0xFD2FB528` little-endian).
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];

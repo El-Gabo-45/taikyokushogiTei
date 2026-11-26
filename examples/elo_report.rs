@@ -249,10 +249,14 @@ fn update_md(path: &str, payload: &str) {
         std::fs::read_to_string(path).unwrap_or_else(|e| die(&format!("cannot read {path}: {e}")));
     const BEGIN: &str = "<!-- elo-report:begin -->";
     const END: &str = "<!-- elo-report:end -->";
-    let start = text
-        .find(BEGIN).map_or_else(|| die(&format!("{path} has no `{BEGIN}` marker")), |i| i + BEGIN.len());
-    let end = text[start..]
-        .find(END).map_or_else(|| die(&format!("{path} has no `{END}` marker")), |i| start + i);
+    let start = text.find(BEGIN).map_or_else(
+        || die(&format!("{path} has no `{BEGIN}` marker")),
+        |i| i + BEGIN.len(),
+    );
+    let end = text[start..].find(END).map_or_else(
+        || die(&format!("{path} has no `{END}` marker")),
+        |i| start + i,
+    );
     let updated = format!(
         "{}\n{}\n{}",
         &text[..start],

@@ -22,7 +22,6 @@ use crate::types::{EMPTY_CELL, cell_color, cell_piece};
 /// A (piece type, count, color) tally.
 type PieceCount = (u16, u16, u8);
 
-
 /// Everything the Python reference needs to recompute one evaluation.
 pub struct PositionDump {
     /// Side to move (0 = Black, 1 = White).

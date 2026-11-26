@@ -22,9 +22,9 @@
 
 use super::{load_position, num};
 
-    /// # Errors
-    ///
-    /// Returns an error describing the failure.
+/// # Errors
+///
+/// Returns an error describing the failure.
 pub fn run(args: &[String]) -> Result<(), String> {
     let (mut board, net) = load_position(args)?;
     let depth = num(args, "--depth", 4u32)?;

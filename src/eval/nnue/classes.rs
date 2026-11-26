@@ -28,7 +28,6 @@ use std::fmt::Write;
 /// A (class, value-tier, rank) class-key tuple.
 type ClassKey = (u8, u8, u8);
 
-
 /// Bit mask of the orthogonal directions (N, E, S, W) in a direction set.
 const ORTH: u32 = 0b0101_0101;
 /// Bit mask of the diagonal directions (NE, SE, SW, NW).
@@ -102,9 +101,9 @@ fn class_key(pt: u16) -> (u8, u8, u8) {
 
 /// Generate the class map from the piece table: `map[piece_type]` is the
 /// class id, for `piece_type` in `1..=num_piece_types()`; `map[0] == 0`.
-    /// # Panics
-    ///
-    /// Panics on invalid internal state or arguments.
+/// # Panics
+///
+/// Panics on invalid internal state or arguments.
 pub fn generate_class_map() -> Vec<u8> {
     let n = pieces::num_piece_types();
     let keys: Vec<ClassKey> = (1..=n as u16).map(class_key).collect();

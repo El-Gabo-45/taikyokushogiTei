@@ -136,7 +136,10 @@ fn cmd_gen_classes(args: &[String]) {
     let eval_limit = old["eval_limit"].as_i64().unwrap_or(250_000);
     let map = classes::generate_class_map();
     let cm: Vec<String> = map.iter().map(std::string::ToString::to_string).collect();
-    let th: Vec<String> = thresholds.iter().map(std::string::ToString::to_string).collect();
+    let th: Vec<String> = thresholds
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     let json = format!(
         "{{\n  \"format\": \"TKN1\",\n  \"version\": 2,\n  \"num_squares\": 1296,\n  \"l1\": 256,\n  \"out_buckets\": 8,\n  \"ft_shift\": 6,\n  \"fv_scale\": 16,\n  \"eval_limit\": {},\n  \"num_classes\": {},\n  \"class_map\": [{}],\n  \"class_values\": [{}],\n  \"thresholds_pieces\": [{}]\n}}\n",
         eval_limit,
@@ -284,9 +287,10 @@ fn explain_line(label: &str, value: &str) {
 /// breakdown of one evaluation: bucket, accumulator statistics, PSQT term,
 /// dense output and the incremental-vs-refresh parity check.
 fn cmd_explain(args: &[String]) {
-    let net_path = args
-        .first()
-        .filter(|a| !a.starts_with("--")).map_or_else(|| die("usage: nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]"), std::string::String::as_str);
+    let net_path = args.first().filter(|a| !a.starts_with("--")).map_or_else(
+        || die("usage: nnue explain <net> [--tsfen FEN] [--plies N] [--seed S]"),
+        std::string::String::as_str,
+    );
     let net = Arc::new(load(net_path));
     let mut board = Board::initial();
     if let Some(fen) = flag(args, "--tsfen") {

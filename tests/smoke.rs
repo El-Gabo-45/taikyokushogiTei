@@ -213,7 +213,7 @@ fn all_pieces_matches_num_piece_types() {
         "piece abbreviations must be unique"
     );
 
-    assert!(all.iter().filter(|p| p.is_royal).count() >= 2);
+    assert!(all.iter().filter(|p| p.flags.is_royal()).count() >= 2);
     assert!(
         all.iter().filter(|p| p.betza.is_some()).count() > 100,
         "most pieces carry Betza movement notation"
@@ -228,7 +228,11 @@ fn piece_info_by_id_matches_abbrev_lookup() {
         let by_abbrev = piece_info(by_id.abbrev).expect("abbrev must resolve");
         assert_eq!(by_abbrev.name, by_id.name, "id {id}");
         assert_eq!(by_abbrev.value, by_id.value, "id {id}");
-        assert_eq!(by_abbrev.is_royal, by_id.is_royal, "id {id}");
+        assert_eq!(
+            by_abbrev.flags.is_royal(),
+            by_id.flags.is_royal(),
+            "id {id}"
+        );
         assert_eq!(by_abbrev.betza, by_id.betza, "id {id}");
         assert_eq!(
             by_abbrev.slide_directions, by_id.slide_directions,
@@ -240,14 +244,14 @@ fn piece_info_by_id_matches_abbrev_lookup() {
 #[test]
 fn king_piece_info_has_royal_flag_and_betza() {
     let king = piece_info("K").expect("K exists");
-    assert!(king.is_royal);
+    assert!(king.flags.is_royal());
     assert_eq!(king.name, "King");
     assert_eq!(king.betza, Some("Q2"));
     // The same entry appears in the full enumeration served by /api/pieces.
     let all = taikyokushogi::all_pieces();
     let from_list = all.iter().find(|p| p.abbrev == "K").expect("K in list");
     assert_eq!(from_list.name, "King");
-    assert!(from_list.is_royal);
+    assert!(from_list.flags.is_royal());
     assert_eq!(from_list.betza, king.betza);
 }
 
