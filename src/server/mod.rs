@@ -166,7 +166,7 @@ impl SessionMap {
     /// next request simply starts a fresh game).
     fn get_or_create(&self, id: &str, net: Option<Arc<Network>>) -> Arc<Mutex<GameState>> {
         let now = std::time::Instant::now();
-        let mut games = self.games.lock().unwrap();
+        let mut games = self.games.lock().expect("games mutex should not be poisoned");
         if let Some(entry) = games.get_mut(id) {
             entry.last_used = now;
             return entry.game.clone();
@@ -841,7 +841,7 @@ pub async fn run_with_network(net: Option<Arc<Network>>) {
     }
     axum::serve(listener, build_router(new_state_with_network(net)))
         .await
-        .unwrap();
+        .expect("server should start successfully");
 }
 
 #[cfg(test)]

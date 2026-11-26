@@ -232,6 +232,21 @@ integration suites in `tests/` (`smoke.rs` needs plain `cargo test`,
 `panic = "abort"` — that only affects release binaries; tests always build
 with the `test` profile.
 
+## Code quality gates
+
+The project enforces two hard quality gates in CI (`scripts/ci-check.sh`):
+
+**Clippy** — `cargo clippy --all-targets --features server -- -D warnings`.
+Lint thresholds are customised in **`clippy.toml`** (cognitive complexity,
+max lines per file, max arguments, type complexity, boolean params/fields).
+See [docs/ARCHITECTURE.md#code-quality-gates](docs/ARCHITECTURE.md#code-quality-gates)
+for the full table.
+
+**Mutation testing** — `cargo_mutants` generates small syntactic mutations
+across the source and runs the test suite against each one. Results are
+written to `mutants.out/` (`missed.txt` lists mutants that survived — i.e.
+untested code paths). The goal is to keep `missed.txt` empty.
+
 Full repository tree: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** ·
 module-by-module developer's guide:
 **[docs/MODULE_GUIDE.md](docs/MODULE_GUIDE.md)**.

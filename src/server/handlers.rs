@@ -149,7 +149,7 @@ pub async fn get_health() -> Json<HealthResponse> {
 // ============================================================
 
 pub async fn get_state(SessionGame(game): SessionGame) -> Json<BoardResponse> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     Json(crate::server::board_to_response(&state))
 }
 
@@ -158,7 +158,7 @@ pub async fn get_state(SessionGame(game): SessionGame) -> Json<BoardResponse> {
 // ============================================================
 
 pub async fn get_history(SessionGame(game): SessionGame) -> Json<HistoryResponse> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     Json(HistoryResponse {
         move_log: state.move_log.clone(),
         half_move: state.half_move,
@@ -168,7 +168,7 @@ pub async fn get_history(SessionGame(game): SessionGame) -> Json<HistoryResponse
 }
 
 pub async fn get_status(SessionGame(game): SessionGame) -> Json<StatusResponse> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     Json(StatusResponse {
         game_over: state.game_over,
         result: game_result_string(&state.board),
@@ -197,7 +197,7 @@ pub async fn get_moves(
             BOARD - 1
         )));
     }
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     let moves = crate::server::get_moves_for_square(&state, r, c);
     Ok(Json(MoveListResponse {
         moves,
@@ -210,7 +210,7 @@ pub async fn get_moves(
 // ============================================================
 
 pub async fn get_legal_moves(SessionGame(game): SessionGame) -> Json<serde_json::Value> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     let stm = state.board.side_to_move() as u8;
     let moves: Vec<MoveData> = if state.game_over {
         Vec::new()
@@ -244,7 +244,7 @@ pub async fn get_legal_moves(SessionGame(game): SessionGame) -> Json<serde_json:
 // ============================================================
 
 pub async fn get_evaluate(SessionGame(game): SessionGame) -> Json<EvalResponse> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     Json(EvalResponse {
         eval_score: state.board.evaluate(),
         material_score: state.board.material_score(),
@@ -278,7 +278,7 @@ pub async fn get_engine_info(SessionGame(game): SessionGame) -> Json<EngineInfoR
     ];
     let all = crate::all_pieces();
     let royal = all.iter().filter(|p| p.is_royal).count();
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     let using_nnue = state.board.network().is_some();
     Json(EngineInfoResponse {
         name: "taikyokushogi",
@@ -350,7 +350,7 @@ pub async fn api_not_found() -> ApiError {
 // ============================================================
 
 pub async fn get_position(SessionGame(game): SessionGame) -> Json<PositionResponse> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     Json(PositionResponse {
         tsfen: state.board.to_tsfen(),
         side_to_move: state.board.side_to_move() as u8,
@@ -365,14 +365,14 @@ pub async fn post_position(
     SessionGame(game): SessionGame,
     Json(body): Json<LoadBody>,
 ) -> Result<Json<BoardResponse>, ApiError> {
-    let mut state = game.lock().unwrap();
+    let mut state = game.lock().expect("game mutex should not be poisoned");
     let board = Board::from_tsfen(&body.tsfen).map_err(ApiError::bad_request)?;
     state.set_board(board);
     Ok(Json(crate::server::board_to_response(&state)))
 }
 
 pub async fn get_save(SessionGame(game): SessionGame) -> Json<SaveBody> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     Json(SaveBody {
         ok: true,
         tsfen: state.board.to_tsfen(),
@@ -398,7 +398,7 @@ pub async fn post_load(
 // ============================================================
 
 pub async fn post_new_game(SessionGame(game): SessionGame) -> Json<NewGameResponse> {
-    let mut state = game.lock().unwrap();
+    let mut state = game.lock().expect("game mutex should not be poisoned");
     state.reset();
     Json(NewGameResponse {
         ok: true,
@@ -430,7 +430,7 @@ pub async fn post_move(
         }
     }
 
-    let mut state = game.lock().unwrap();
+    let mut state = game.lock().expect("game mutex should not be poisoned");
     if state.game_over {
         return Err(ApiError::conflict("Game is over"));
     }
@@ -469,7 +469,7 @@ pub async fn post_move(
 /// before the CPU-bound search, so the async runtime keeps serving the
 /// other endpoints. The counter lets callers detect a stale position.
 fn snapshot_for_search(game: &Arc<Mutex<ServerGameState>>) -> Result<(Board, u64), ApiError> {
-    let state = game.lock().unwrap();
+    let state = game.lock().expect("game mutex should not be poisoned");
     if state.game_over {
         return Err(ApiError::conflict("Game is over"));
     }
@@ -549,7 +549,7 @@ pub async fn post_ai_move(
     if outcome.no_moves {
         // Distinguish a terminal position from a search that stopped early
         // (e.g. a very short time limit): only the former ends the game.
-        let mut state = game.lock().unwrap();
+        let mut state = game.lock().expect("game mutex should not be poisoned");
         if state.board.legal_moves().is_empty() {
             state.game_over = true;
             return Err(ApiError::conflict("No legal moves"));
@@ -565,7 +565,7 @@ pub async fn post_ai_move(
     };
     let (fr, fc, tr, tc, promotion, mid_sq) = coords_of(&mv);
 
-    let mut state = game.lock().unwrap();
+    let mut state = game.lock().expect("game mutex should not be poisoned");
 
     // ── CONCURRENCY GUARD ──
     // If another request changed the board while the AI was thinking
@@ -656,7 +656,7 @@ pub async fn post_undo(
 ) -> Json<UndoResponse> {
     let plies = body.and_then(|b| b.plies).unwrap_or(1).clamp(1, 100);
 
-    let mut state = game.lock().unwrap();
+    let mut state = game.lock().expect("game mutex should not be poisoned");
     let mut undone = 0u32;
     while undone < plies {
         if !state.board.undo() {

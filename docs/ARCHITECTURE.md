@@ -145,6 +145,59 @@ the integration suites in `tests/`: `smoke.rs` (engine) and `server_api.rs`
 (full HTTP router in-process, `cargo test --features server --test
 server_api`) — all run with plain `cargo test`.
 
+## Code quality gates
+
+### Clippy (`clippy.toml`)
+
+The project runs `cargo clippy --all-targets --features server -- -D warnings`
+as a hard CI gate (`scripts/ci-check.sh`, `make ci-local`). Lint thresholds are
+customised in **`clippy.toml`** at the repository root:
+
+| Setting | Value | Purpose |
+| ------- | ----- | ------- |
+| `cognitive-complexity-threshold` | 15 | Flag functions whose control flow is too tangled |
+| `too-many-lines-threshold` | 70 | Flag files that have grown too large |
+| `too-many-arguments-threshold` | 5 | Flag functions with too many parameters |
+| `type-complexity-threshold` | 75 | Flag overly complex type signatures |
+| `max-fn-params-bools` | 2 | Discourage boolean parameters (use enums/structs instead) |
+| `max-struct-bools` | 3 | Discourage structs with many boolean fields |
+
+These are stricter than clippy's defaults and are part of the code-review
+bar: a PR that introduces a new clippy warning will not be merged.
+
+### Mutation testing (`cargo_mutants` / `mutants.out`)
+
+The engine is covered by mutation testing with [`cargo_mutants`](https://github.com/rust-secure-code/cargo-mutants).
+Each run:
+
+1. Generates mutants (small syntactic changes: `==` → `!=`, `+` → `-`, etc.)
+   across the crate's source files.
+2. Runs the test suite against each mutant.
+3. Classifies the result:
+   - **caught** — the mutant was killed by a test (good: tests cover it)
+   - **missed** — the mutant survived (bad: a test gap exists)
+   - **timeout** — the mutant made the test suite hang
+   - **unviable** — the mutant produced code that doesn't compile
+
+Results are written to `mutants.out/` (and `mutants.out.old/` for the
+previous run):
+
+| File | Contents |
+| ---- | -------- |
+| `lock.json` | Run metadata: `cargo_mutants` version, start time, host |
+| `caught.txt` | Mutants killed by tests (empty = no mutants generated/killed yet) |
+| `missed.txt` | Mutants that survived — these point at untested code paths |
+| `timeout.txt` | Mutants that caused test timeouts |
+| `unviable.txt` | Mutants that produced non-compiling code |
+| `mutants.json` | Full machine-readable report of every mutant |
+| `diff/` | Per-mutant diffs |
+| `log/` | Per-mutant execution logs |
+
+An empty `missed.txt` means every generated mutant was caught by the test
+suite. The goal is to keep `missed.txt` empty by adding tests for any code
+that survives mutation. The `mutants.out/` directory is **not committed** to
+git (it's a local build artifact).
+
 Typical NNUE workflow (details and quality gates in `docs/NNUE.md`):
 
 1. `selfplay … --out data --opening-plies 8` writes `TKD1` samples.

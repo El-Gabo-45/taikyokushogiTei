@@ -114,9 +114,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
     step "--dry-run: plan (nothing has been changed)"
     cat <<PLAN
   1. bash scripts/ci-check.sh          # fmt, clippy -D warnings, check, USI smoke, tests, web, ruff+pyright
-  2. Cargo.toml:            version $CUR -> $VERSION
+  2. Cargo.toml:            version $CUR -> $VERSION  (source of truth)
      cargo update -w:       Cargo.lock refreshed and verified to say $VERSION (hard-fails otherwise)
-     npm version:           web/package.json + web/package-lock.json -> $VERSION (lockstep)
+     web/package.json:      version forced to $VERSION from Cargo.toml
+     web/package-lock.json: version forced to $VERSION from Cargo.toml
   3. git add Cargo.toml Cargo.lock web/package.json web/package-lock.json
      git commit -m "$MSG"
   4. git tag -a $TAG -m "$TAG"
@@ -149,14 +150,23 @@ grep -A1 '^name = "taikyokushogi"$' Cargo.lock | grep -q "^version = \"$VERSION\
     || die "Cargo.lock did not pick up $VERSION (stale lock). Aborting; fix manually with 'cargo update -w'"
 echo "    Cargo.lock says $VERSION ✓"
 
-if grep -q "\"version\": \"$VERSION\"" web/package.json; then
-    echo "    web/package.json already at $VERSION ✓"
-else
-    ( cd web && npm version "$VERSION" --no-git-tag-version >/dev/null ) \
-        || die "npm version failed inside web/"
-    grep -q "\"version\": \"$VERSION\"" web/package.json \
-        || die "web/package.json did not pick up $VERSION"
-    echo "    web/package.json + package-lock.json say $VERSION ✓"
+# web/ version is forced from Cargo.toml (source of truth), not the other way
+# around. npm version rewrites both package.json and package-lock.json.
+( cd web && npm version "$VERSION" --no-git-tag-version >/dev/null ) \
+    || die "npm version failed inside web/"
+grep -q "\"version\": \"$VERSION\"" web/package.json \
+    || die "web/package.json did not pick up $VERSION"
+grep -q "\"version\": \"$VERSION\"" web/package-lock.json \
+    || die "web/package-lock.json did not pick up $VERSION"
+echo "    web/package.json + package-lock.json say $VERSION ✓"
+
+# Sanity check: any other tracked file still carrying the OLD version
+# ($CUR) is a candidate for manual update. Exclude lockfiles, target/ and
+# .git which legitimately hold old values.
+STRAY="$(git grep -l -- '$CUR' -- ':(exclude)Cargo.lock' ':(exclude)web/package-lock.json' ':(exclude)target/*' ':(exclude).git/*' 2>/dev/null || true)"
+if [ -n "$STRAY" ]; then
+    echo "    ⚠  These tracked files still show the old version $CUR — update manually:"
+    echo "$STRAY" | sed 's/^/        /'
 fi
 
 # ── 3) commit ──────────────────────────────────────────────────────────────
