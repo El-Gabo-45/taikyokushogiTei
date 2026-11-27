@@ -116,6 +116,9 @@ whole router in-process).
 | Endpoint | Method | Description |
 | ---------- | -------- | ------------- |
 | `/api/health` | GET | Liveness, engine version, board size, piece-type count |
+| `/api/ready` | GET | Readiness: free search slots, `503` when saturated |
+| `/api/config` | GET | Public runtime limits (body cap, search slots, session policy, log ring) |
+| `/api/logs?limit=N` | GET | Most recent structured log entries (newest last) |
 | `/api/state` | GET | Full board state + TSFEN, eval score, material, version counter |
 | `/api/status` | GET | Compact summary (result, ply count, piece counts, TSFEN) |
 | `/api/history` | GET | Move log + score history |

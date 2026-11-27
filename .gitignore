@@ -22,5 +22,6 @@ bench/
 # (see nets/README.md). Remove these lines or use `git add -f` to version one.
 nets/*.tkn
 nets/*.tkn.zst
+nets/*.sha256
 training_data/
 data/

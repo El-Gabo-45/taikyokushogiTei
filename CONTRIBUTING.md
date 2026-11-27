@@ -15,6 +15,9 @@ The crate is organized into layers with strict visibility rules:
 | Supporting | `src/attack.rs`, `src/bitboard.rs`, `src/pieces.rs`, `src/tsfen.rs` | `mod` (private) | Bitboards, attack tables, piece definitions, TSFEN |
 | Binaries | `src/main.rs`, `src/cli.rs`, `src/debug_cli.rs`, `src/selfplay_main.rs` | `[[bin]]` | Server, CLI, debug harness, self-play |
 | Libraries | `src/elo.rs`, `src/selfplay.rs`, `src/python.rs` | `pub mod` / `mod` | Elo measurement, self-play engine, Python bindings |
+| GPU detect | `src/gpu.rs` | `pub mod` (feature `gpu-detect`) | Enumerate Vulkan/Metal/DX12/GL adapters via `wgpu` |
+| GPU training | `src/gpu_train.rs` | `pub mod` (feature `gpu-wgpu`) | Autodiff NNUE training on any GPU via `burn`/Wgpu |
+| HTTP logging | `src/server/log.rs` | `pub mod` | Structured ring buffer + optional JSONL log file |
 
 **Rule**: Internal modules are never `pub mod`. External crates can only
 depend on the public API in `lib.rs`. If you add a new file, place it in
@@ -47,6 +50,12 @@ Commit & PR checklist
 NNUE / datasets
 
 - If you modify the `TrainingSample` layout or feature extraction, regenerate the `training_data` and add notes in `training/README.md`.
+- Two training paths exist: the PyTorch pipeline (`make nnue-train DEVICE=…`, CUDA/MPS/CPU) and the GPU-agnostic Rust trainer (`make nnue-gpu-train`, burn/Wgpu → Vulkan/Metal/DX12). Both must keep exporting valid TKN1 v2 files; verify with `nnue verify <net>`.
+- `rules/nnue_arch.json` is the single source of truth for the architecture; keep Rust, Python and the burner in sync with it.
+
+Optional features
+
+- `server`, `python`, `gpu-detect`, `gpu-{cuda,metal,wgpu,vulkan}`. CI checks the default feature set and `--features server`; code behind GPU features must be gated with `#[cfg(feature = …)]` so those builds stay green.
 
 Contact
 

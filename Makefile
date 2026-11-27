@@ -37,7 +37,7 @@ GPU_EPOCHS ?= 2
 GPU_BATCH  ?= 512
 GPU_SAMPLES ?= 2048
 nnue-gpu-train:
-	cargo run --release --features gpu-wgpu --bin nnue -- gpu-train $(DATA) $(NET) $(GPU_EPOCHS) $(GPU_BATCH)
+	cargo run --release --features gpu-wgpu --bin nnue -- gpu-train $(DATA) $(NET) $(GPU_EPOCHS) $(GPU_BATCH) $(GPU_SAMPLES)
 
 # GPU setup / detection for the PyTorch pipeline (CUDA/MPS only).
 nnue-gpu-setup:

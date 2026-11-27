@@ -291,6 +291,7 @@ pub fn run(
     out: &Path,
     epochs: usize,
     batch_size: usize,
+    max_samples: usize,
     lr: f32,
 ) -> Result<(), String> {
     let arch = read_arch()?;
@@ -300,9 +301,9 @@ pub fn run(
     }
     let dims = arch.classes * 2 * 1296;
     let sc = 20_000.0f32;
-    // Use a bounded subset so a quick GPU smoke run does not allocate tens of
-    // GB of dense features. 2048 samples = 4 batches at batch_size 512.
-    let max_samples = samples.len().min(2048);
+    // Bound the subset so a quick GPU run does not allocate tens of GB of
+    // dense features (~286 MB per 512-sample batch at 69,984 dims).
+    let max_samples = samples.len().min(max_samples.max(32));
     let samples = &samples[..max_samples];
     println!(
         "training on {} samples ({} batches/epoch, batch={})",

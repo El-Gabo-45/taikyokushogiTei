@@ -1317,6 +1317,8 @@ fn print_help() {
   setoption threads <N>       hilos Lazy SMP (1..=64, por defecto 1)
   setoption hash <MiB>        tamaño de la tabla de transposiciones
   setoption net <ruta|none>   cargar una red NNUE (o volver al evaluador clásico)
+  compiler                    banner de build (versión, commit, fecha, rustc, target)
+  export_net <archivo.tkn>    guardar la red NNUE adjunta como TKN1 raw (requires --net)
   about                       versión e info del motor
   quit | exit                 salir
 

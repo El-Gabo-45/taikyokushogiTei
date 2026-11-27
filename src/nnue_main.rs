@@ -532,18 +532,23 @@ fn main() {
         #[cfg(feature = "gpu-wgpu")]
         Some("gpu-train") => {
             let data = rest.first().unwrap_or_else(|| {
-                die("usage: nnue gpu-train <data-dir> <out.tkn> [epochs] [batch]")
+                die("usage: nnue gpu-train <data-dir> <out.tkn> [epochs] [batch] [samples]")
             });
             let out = rest
                 .get(1)
                 .unwrap_or_else(|| die("usage: nnue gpu-train <data-dir> <out.tkn>"));
             let epochs = rest.get(2).and_then(|v| v.parse().ok()).unwrap_or(2usize);
             let batch = rest.get(3).and_then(|v| v.parse().ok()).unwrap_or(512usize);
+            let max_samples = rest
+                .get(4)
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2048usize);
             taikyokushogi::gpu_train::run(
                 std::path::Path::new(data),
                 std::path::Path::new(out),
                 epochs,
                 batch,
+                max_samples,
                 2e-3,
             )
             .unwrap_or_else(|e| die(e));
