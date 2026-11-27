@@ -777,7 +777,10 @@ async fn request_context(State(app): State<Arc<AppState>>, req: Request, next: N
                 && s.bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         })
-        .map_or_else(|| format!("req-{:016x}", rand::random::<u64>()), str::to_owned);
+        .map_or_else(
+            || format!("req-{:016x}", rand::random::<u64>()),
+            str::to_owned,
+        );
 
     let method = req.method().clone();
     let path = req.uri().path().to_owned();

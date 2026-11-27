@@ -121,6 +121,9 @@ pub struct LastMoveData {
 // Responses — informational endpoints
 // ============================================================
 
+/// Flat JSON DTO: the four booleans are part of the public REST contract
+/// consumed by the web frontend's Zod schema, not internal state.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Serialize, Clone)]
 pub struct PieceInfoResponse {
     pub abbrev: String,

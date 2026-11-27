@@ -372,12 +372,60 @@ pub(crate) fn search_root_window(
     // "captures first" staging is preserved without a second generation pass.
     // (The material-delta fast path above is disabled by default, so every
     // depth from 1 upwards runs this loop — no per-depth branch is needed.)
-    let n_moves = root.moves.len();
-    for rank in 0..n_moves {
-        if deadline.is_some_and(|dl| Instant::now() >= dl) {
-            break;
+    best_score = search_root_moves(
+        board,
+        root,
+        depth,
+        root_alpha,
+        root_beta,
+        best_score,
+        &mut best_move,
+        deadline,
+        stop,
+        nodes,
+        pool,
+        tt,
+        heur,
+        cfg,
+    );
+    root.sort_best_first();
+
+    if best_move.is_none() {
+        // Budget/stop expired before scoring any move: return the first
+        // ordered move with the static score (None would mean "no moves").
+        if let Some((m, s)) = fallback_move(root, board) {
+            best_move = Some(m);
+            best_score = s;
         }
-        if stop.load(std::sync::atomic::Ordering::Relaxed) {
+    }
+    make_result(best_move, best_score, *nodes, start)
+}
+
+/// Search every cached root move in best-first order until a cutoff or a
+/// stop/deadline. Returns the final best score and fills `best_move`.
+#[allow(clippy::too_many_arguments)]
+// Search inner loop: a parameter struct would add indirection to the hottest
+// code in the engine, so the flat signature is kept on purpose.
+fn search_root_moves(
+    board: &mut Board,
+    root: &mut RootState,
+    depth: u32,
+    root_alpha: i32,
+    root_beta: i32,
+    mut best_score: i32,
+    best_move: &mut Option<Move>,
+    deadline: Option<Instant>,
+    stop: &std::sync::atomic::AtomicBool,
+    nodes: &mut u64,
+    pool: &mut crate::search::buffers::SearchPool,
+    tt: &crate::search::tt::Tt,
+    heur: &mut crate::search::heuristics::Heuristics,
+    cfg: crate::search::params::SearchConfig,
+) -> i32 {
+    for rank in 0..root.moves.len() {
+        if deadline.is_some_and(|dl| Instant::now() >= dl)
+            || stop.load(std::sync::atomic::Ordering::Relaxed)
+        {
             break;
         }
         let idx = root.order[rank] as usize;
@@ -393,7 +441,7 @@ pub(crate) fn search_root_window(
         };
         let mut state = RootSearchState {
             best_score,
-            best_move: &mut best_move,
+            best_move,
             root_beta,
         };
         let mut move_ctx = RootMoveCtx {
@@ -408,17 +456,7 @@ pub(crate) fn search_root_window(
             break;
         }
     }
-    root.sort_best_first();
-
-    if best_move.is_none() {
-        // Budget/stop expired before scoring any move: return the first
-        // ordered move with the static score (None would mean "no moves").
-        if let Some((m, s)) = fallback_move(root, board) {
-            best_move = Some(m);
-            best_score = s;
-        }
-    }
-    make_result(best_move, best_score, *nodes, start)
+    best_score
 }
 
 /// A best-guess move and its static score.

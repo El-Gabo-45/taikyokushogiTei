@@ -1,14 +1,21 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! GPU adapter detection via WebGPU (`wgpu`).
 //!
-//! CUDA and ROCm only see GPUs that expose their respective compute runtimes.
-//! `wgpu` enumerates *graphics* adapters too — Vulkan (AMD, Intel, NVIDIA),
+//! `CUDA` and `ROCm` only see GPUs that expose their respective compute runtimes.
+//! [`wgpu`] enumerates *graphics* adapters too — Vulkan (AMD, Intel, NVIDIA),
 //! Metal (Apple Silicon / Intel Macs), DirectX 12 and OpenGL — so this module
-//! can answer "is there any GPU here at all?" even on a box without CUDA or
-//! ROCm installed. It is detection/reporting only: it never initialize a
+//! can answer "is there any GPU here at all?" even on a box without `CUDA` or
+//! `ROCm` installed. It is detection/reporting only: it never initialize a
 //! training backend on its own, and it works with no feature other than
 //! `gpu-detect`.
 
 use serde::Serialize;
+
+/// List of detected adapters.
+pub type AdapterList = Vec<Adapter>;
+
+/// PCI vendor/device ids.
+pub type VendorDevice = (u32, u32);
 
 /// One GPU/graphics adapter reported by `wgpu`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -18,7 +25,7 @@ pub struct Adapter {
     /// Human-readable device name (`description` or `name`).
     pub name: String,
     /// PCI vendor / device ids when reported (`None` for e.g. Metal).
-    pub vendor_device: Option<(u32, u32)>,
+    pub vendor_device: Option<VendorDevice>,
     /// Driver/version string, if reported.
     pub driver: Option<String>,
     /// Whether this adapter exposes general-purpose compute (WebGPU spec).
@@ -46,8 +53,11 @@ impl Adapter {
 /// Returns an empty list (not an error) when no graphics adapter exists — a
 /// headless server is a valid configuration. Errors are only for a broken
 /// `wgpu` instance, which should never happen with the all-backends descriptor.
-#[must_use]
-pub fn detect() -> Result<Vec<Adapter>, String> {
+///
+/// # Errors
+///
+/// Returns a message when the `wgpu` instance cannot be created.
+pub fn detect() -> Result<AdapterList, String> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
         flags: wgpu::InstanceFlags::default(),
@@ -108,6 +118,13 @@ pub fn report() -> String {
 }
 
 #[cfg(test)]
+// Test-only: panicking is the intended failure mode.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity
+)]
 mod tests {
     use super::*;
 
@@ -115,10 +132,10 @@ mod tests {
     fn detection_never_fails_and_summaries_are_non_empty() {
         // On a headless CI box detect() legitimately returns an empty list.
         for a in detect_or_empty() {
-            assert!(!a.summary().is_empty());
-            assert!(!a.backend.is_empty());
+            assert_ne!(a.summary(), "");
+            assert_ne!(a.backend, "");
         }
-        assert!(!report().is_empty());
+        assert_ne!(report(), "");
     }
 
     #[test]

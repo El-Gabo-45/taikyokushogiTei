@@ -1,3 +1,13 @@
+#![allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::type_complexity,
+    clippy::items_after_statements,
+    clippy::doc_markdown,
+    clippy::format_push_string
+)]
 #![allow(clippy::all)]
 //! Interactive command-line interface for the Taikyoku Shogi engine.
 //!
@@ -1202,12 +1212,14 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             for _ in 0..ITERS {
                 let _ = board.legal_moves();
             }
-            let mg = display_f64_u128(t.elapsed().as_micros()) / ITERS as f64;
+            let mg = display_f64_u128(t.elapsed().as_micros())
+                / f64::from(u32::try_from(ITERS).unwrap_or(u32::MAX));
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
                 let _ = board.evaluate();
             }
-            let ev = display_f64_u128(t.elapsed().as_micros()) / ITERS as f64;
+            let ev = display_f64_u128(t.elapsed().as_micros())
+                / f64::from(u32::try_from(ITERS).unwrap_or(u32::MAX));
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
                 let m = board.legal_moves().into_iter().next();
@@ -1216,7 +1228,8 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     board.undo();
                 }
             }
-            let au = display_f64_u128(t.elapsed().as_micros()) / ITERS as f64;
+            let au = display_f64_u128(t.elapsed().as_micros())
+                / f64::from(u32::try_from(ITERS).unwrap_or(u32::MAX));
             println!(
                 "movegen {mg:.1}us  eval {ev:.1}us  apply+undo {au:.1}us  ({ITERS} iters each)"
             );

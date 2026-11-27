@@ -1,3 +1,13 @@
+#![allow(
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::type_complexity,
+    clippy::items_after_statements,
+    clippy::doc_markdown,
+    clippy::format_push_string
+)]
 #![allow(clippy::all)]
 //! `nnue` — maintenance tool for the NNUE architecture and network files.
 //!

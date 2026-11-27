@@ -1,3 +1,27 @@
+// Benchmarks/tools: panic-on-failure is intentional for a diagnostic.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::unreadable_literal,
+    clippy::many_single_char_names,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::type_complexity,
+    clippy::format_push_string,
+    clippy::items_after_statements,
+    clippy::doc_markdown,
+    clippy::needless_borrow,
+    clippy::redundant_closure,
+    clippy::similar_names,
+    clippy::must_use_candidate,
+    clippy::map_unwrap_or,
+    clippy::unnecessary_cast
+)]
+
 // Exports piece metadata needed by the Python NNUE training pipeline
 // (training/features.py) to a small JSON file, so that piece-type
 // properties (specifically: which piece_type IDs are royal, i.e. count as

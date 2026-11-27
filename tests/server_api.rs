@@ -1,7 +1,16 @@
 // In tests, panic-on-failure is intentional: unwrap/expect turn a broken
 // invariant into a failing test instead of silently passing.
-#![allow(clippy::unwrap_used, clippy::expect_used,         clippy::cognitive_complexity,
-        clippy::too_many_lines, clippy::type_complexity)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cognitive_complexity,
+    clippy::too_many_lines,
+    clippy::type_complexity,
+    clippy::unreadable_literal,
+    clippy::items_after_statements,
+    clippy::format_push_string,
+    clippy::similar_names
+)]
 
 //! Integration tests for the HTTP API.
 //!

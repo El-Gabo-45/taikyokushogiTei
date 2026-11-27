@@ -201,10 +201,10 @@ pub async fn get_config(State(app): State<Arc<crate::server::AppState>>) -> Json
         board_size: BOARD,
         max_body_bytes: crate::server::MAX_BODY_BYTES,
         max_concurrent_searches: crate::server::MAX_CONCURRENT_SEARCHES,
-        max_sessions: app
-            .sessions
-            .as_ref()
-            .map_or(crate::server::DEFAULT_MAX_SESSIONS, crate::server::SessionMap::max),
+        max_sessions: app.sessions.as_ref().map_or(
+            crate::server::DEFAULT_MAX_SESSIONS,
+            crate::server::SessionMap::max,
+        ),
         sessions,
         anon_policy: app.anon_policy().as_str(),
         log_capacity: app.logs.capacity(),
@@ -767,6 +767,28 @@ const SEARCH_PERMIT_WAIT_MS: u64 = 2_000;
 /// # Errors
 ///
 /// Returns an error for invalid input or conflicting game state.
+/// A search with no move is either a terminal position (game over) or a
+/// search that stopped before depth 1 completed (just a failed move).
+fn no_moves_outcome(game: &Arc<Mutex<ServerGameState>>) -> Result<Json<MoveResponse>, ApiError> {
+    let mut state = game
+        .lock()
+        .unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
+    if state.board.legal_moves().is_empty() {
+        state.game_over = true;
+        return Err(ApiError::conflict("No legal moves"));
+    }
+    Ok(failed_move_response(
+        "Search produced no move (time limit reached before completing depth 1?)",
+    ))
+}
+
+/// # Panics
+///
+/// Panics if the game mutex is poisoned.
+/// # Errors
+///
+/// Returns a JSON error on a terminal position, a failed search, or when the
+/// board changed while the AI was thinking.
 pub async fn post_ai_move(
     State(app): State<Arc<crate::server::AppState>>,
     SessionGame(game): SessionGame,
@@ -785,18 +807,7 @@ pub async fn post_ai_move(
     .await?;
 
     if outcome.no_moves {
-        // Distinguish a terminal position from a search that stopped early
-        // (e.g. a very short time limit): only the former ends the game.
-        let mut state = game
-            .lock()
-            .unwrap_or_else(|e| panic!("game mutex should not be poisoned: {e}"));
-        if state.board.legal_moves().is_empty() {
-            state.game_over = true;
-            return Err(ApiError::conflict("No legal moves"));
-        }
-        return Ok(failed_move_response(
-            "Search produced no move (time limit reached before completing depth 1?)",
-        ));
+        return no_moves_outcome(&game);
     }
 
     let Some(mv) = outcome.best_move else {

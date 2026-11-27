@@ -868,9 +868,14 @@ pub fn run() {
 // ============================================================
 
 #[cfg(test)]
-    // Test-only: panicking is the intended failure mode.
-    #[allow(clippy::unwrap_used, clippy::expect_used,             clippy::too_many_lines,
-            clippy::cognitive_complexity, clippy::type_complexity)]
+// Test-only: panicking is the intended failure mode.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::type_complexity
+)]
 mod tests {
     use super::*;
     use std::sync::Mutex;

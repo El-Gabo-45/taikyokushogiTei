@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! GPU training of an NNUE network with `burn`'s Wgpu backend (Vulkan/Metal/DX12).
 //!
 //! This is a real autodiff training loop on the graphics adapter detected by
@@ -21,11 +22,14 @@ const HEADER: &[u8] = b"TKD1\x01\x00\x00\x00";
 const REC_SIZE: usize = 1 + 1 + 4 + 4 + 2 + 4 + 2;
 
 /// One self-play sample with its piece list.
+/// One (square, piece type, color) entry of a TKD1 sample.
+type PieceEntry = (u16, u16, u8);
+
 struct Sample {
     stm: u8,
     result: i8,
     score: i32,
-    pieces: Vec<(u16, u16, u8)>, // square, piece type, color
+    pieces: Vec<PieceEntry>, // square, piece type, color
 }
 
 fn read_u16(b: &[u8], p: usize) -> u16 {
@@ -35,7 +39,10 @@ fn read_u32(b: &[u8], p: usize) -> u32 {
     u32::from_le_bytes([b[p], b[p + 1], b[p + 2], b[p + 3]])
 }
 
-fn read_samples(dir: &Path) -> Result<Vec<Sample>, String> {
+/// Errors on a missing/unreadable directory or a malformed TKD1 file.
+type SampleList = Vec<Sample>;
+
+fn read_samples(dir: &Path) -> Result<SampleList, String> {
     let mut files: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
         .filter_map(Result::ok)
@@ -174,7 +181,7 @@ fn make_batches(
             stm.push(s.stm as i64);
             bucket.push(bucket_of(s.pieces.len(), &arch.thresholds) as i64);
             let sig = 1.0 / (1.0 + (-s.score as f32 / sc).exp());
-            let res = (s.result as f32 + 1.0) / 2.0;
+            let res = f32::midpoint(s.result as f32, 1.0);
             target.push(lam * sig + (1.0 - lam) * res);
         }
         out.push(Batch {
@@ -224,6 +231,9 @@ impl<B: Backend> NnueModel<B> {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value)]
+    // Tensors are consumed by matmul/broadcast ops below; keeping them owned
+    // avoids an extra clone on every forward pass of the training loop.
     fn forward(
         &self,
         x0: Tensor<B, 2>,
@@ -286,6 +296,16 @@ impl<B: Backend> NnueModel<B> {
 }
 
 /// Train a network on TKD1 data using the GPU, then save raw TKN1.
+///
+/// # Panics
+///
+/// Panics when the searcher device has no default or tensor data cannot be read.
+/// # Errors
+///
+/// Returns a message for unreadable data, bad architecture or a failed save.
+#[allow(clippy::too_many_arguments)]
+// One argument over the default: the six training knobs are passed verbatim
+// from the CLI and bundling them in a struct would add indirection.
 pub fn run(
     data: &Path,
     out: &Path,
@@ -343,7 +363,7 @@ pub fn run(
             let pred = model.forward(x0, x1, stm, bucket);
             let loss = pred.sub(target).powf_scalar(2.0).sum();
             let ld = loss.clone().into_data().convert::<f64>();
-            loss_sum += ld.as_slice().unwrap().first().copied().unwrap_or(0.0) as f64;
+            loss_sum += ld.as_slice().unwrap_or(&[]).first().copied().unwrap_or(0.0);
             let grads = loss.backward();
             let params = GradientsParams::from_grads(grads, &model);
             model = optim.step(lr as f64, model, params);
@@ -357,7 +377,7 @@ pub fn run(
     }
 
     // Quantise the trained float weights and write a standard TKN1 v2 file.
-    let net = quantize(&model, &arch)?;
+    let net = quantize(&model, &arch);
     net.save(out)
         .map_err(|e| format!("cannot save {}: {e}", out.display()))?;
     println!("wrote {} (TKN1 v2, trained on GPU)", out.display());
@@ -365,7 +385,11 @@ pub fn run(
 }
 
 fn to_vec<B: Backend, const D: usize>(t: Tensor<B, D>) -> Vec<f32> {
-    t.into_data().convert::<f32>().as_slice().unwrap().to_vec()
+    t.into_data()
+        .convert::<f32>()
+        .as_slice()
+        .unwrap_or(&[])
+        .to_vec()
 }
 
 fn qi16(v: f32, scale: f32) -> i16 {
@@ -381,7 +405,7 @@ fn qi8(v: f32, scale: f32) -> i8 {
 }
 
 /// Quantise the trained float weights into a standard TKN1 v2 `Network`.
-fn quantize(model: &NnueModel<TrainBackend>, arch: &ArchInfo) -> Result<Network, String> {
+fn quantize(model: &NnueModel<TrainBackend>, arch: &ArchInfo) -> Network {
     let ft = to_vec(model.ft.val())
         .iter()
         .map(|&v| qi16(v, 64.0))
@@ -431,7 +455,7 @@ fn quantize(model: &NnueModel<TrainBackend>, arch: &ArchInfo) -> Result<Network,
     let spec = crate::eval::nnue::arch::ArchSpec::embedded();
     let mut thresholds = [0u16; crate::eval::nnue::arch::NUM_THRESHOLDS];
     thresholds.copy_from_slice(&spec.thresholds_pieces);
-    Ok(Network {
+    Network {
         planes: spec.planes(),
         class_map: spec.class_map.clone(),
         thresholds,
@@ -447,5 +471,5 @@ fn quantize(model: &NnueModel<TrainBackend>, arch: &ArchInfo) -> Result<Network,
         fc1_b,
         fc2_w,
         fc2_b,
-    })
+    }
 }

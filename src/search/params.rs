@@ -216,6 +216,10 @@ pub const QUIETS_TRACKED_MAX: usize = 64;
 //     let mut cfg = SearchConfig::minimal();
 //     cfg.tt = true;          // only TT on, everything else off
 //     let s = Searcher::with_config(cfg);
+/// Per-technique on/off switches. The flags are deliberately independent:
+/// `research::ablate` flips each one at runtime to measure its contribution,
+/// and the CLI exposes each as a toggle. A bitfield would hide that contract.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SearchConfig {
     // ── Shallow-eval pruning (no move gen needed) ──

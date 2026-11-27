@@ -38,7 +38,7 @@ use super::qsearch;
 use super::tt::{self, Tt};
 use crate::board::Board;
 use crate::eval::{MATE_SCORE, evaluate};
-use crate::types::{BLACK, GameResult, WHITE, cell_piece};
+use crate::types::{BLACK, GameResult, Move, WHITE, cell_piece};
 use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -303,7 +303,79 @@ impl Ctx<'_> {
     ///
     /// `pb` is this node's scratch buffer; it is returned to the caller so it
     /// can be put back into the pool even on the early-return paths.
-    #[allow(clippy::too_many_arguments)] // node state, bundled on purpose
+    /// Shallow capture futility: prune a late, poor-ordered capture whose
+    /// material gain cannot raise `alpha`.
+    #[allow(clippy::too_many_arguments)]
+    fn capture_futility(
+        &self,
+        d: u32,
+        in_check: bool,
+        cur_move: usize,
+        order_score: i32,
+        alpha: i32,
+        static_eval: i32,
+        m: &Move,
+        values: &[i32; 512],
+    ) -> bool {
+        if !self.cfg.futility
+            || d > 2
+            || in_check
+            || cur_move == 0
+            || order_score >= params::TACTICAL_BASE_SCORE
+            || !params::mate_gate_ok(alpha)
+        {
+            return false;
+        }
+        let from_pt = cell_piece(self.board.cells[m.from_sq as usize]);
+        let gain = ordering::capture_qs_score(self.board, m, values) + values[from_pt as usize];
+        static_eval + gain + params::CAPTURE_FUTILITY_MARGIN <= alpha
+    }
+
+    /// Generate, score and order the tactical moves; return the capture beam.
+    // Flat inputs from the hot loop; a context struct would add indirection.
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_captures(
+        &self,
+        pb: &mut PlyBuffers,
+        stm: u8,
+        d: u32,
+        iid_move: u32,
+        values: &'static [i32; 512],
+    ) -> usize {
+        crate::attack::generate_captures_bb_into(&mut pb.caps, self.board);
+        // A fixed beam prunes a far larger FRACTION of moves at this branching
+        // factor (median 944), so scale it with the actual list length.
+        let beam = if self.cfg.capture_beam {
+            let base = params::capture_beam_base(d) as usize;
+            (base * (1 + pb.caps.len() / params::BEAM_BRANCH_SCALE)).min(params::CAPTURE_BEAM_MAX)
+        } else {
+            pb.caps.len()
+        };
+        pb.cap_scores.clear();
+        for m in &pb.caps {
+            let packed = ordering::m_pack(m);
+            let hist = self
+                .heur
+                .history_score(m.from_sq as usize, m.to_sq as usize, stm);
+            let cntr = self.heur.counter_score(self.prev_move, packed);
+            pb.cap_scores.push(ordering::score_move(
+                self.heur, m, iid_move, hist, cntr, d, values,
+            ));
+        }
+        beam
+    }
+
+    // This is the PVS core. Its branching (futility, PVS re-search, killers,
+    // history, beam breaks, TT store) is inherent to the algorithm: further
+    // extraction would scatter one decision across many helpers and make the
+    // hot path harder to audit. The three largest self-contained blocks
+    // (capture setup, futility checks, iteration reporting) are already
+    // helpers; what remains is one coherent search step.
+    #[allow(
+        clippy::too_many_arguments,
+        clippy::too_many_lines,
+        clippy::cognitive_complexity
+    )]
     fn search_node(
         &mut self,
         mut pb: PlyBuffers,
@@ -346,44 +418,13 @@ impl Ctx<'_> {
         // search. Reference: docx §3.2 Futility Pruning & §4.4 Quiescence.
         // Both lists live in this node's pooled buffer: filling them costs no
         // allocation.
-        crate::attack::generate_captures_bb_into(&mut pb.caps, self.board);
-        let cap_moves = &pb.caps;
-        // With hundreds of tactical moves per node (median branching 944,
-        // max 1254), a fixed 6-24 beam prunes a far larger FRACTION of moves
-        // than intended. Scale the threshold with the actual list length so
-        // the pruned fraction stays comparable to chess:
-        //   beam = base * (1 + tactical_moves / 128)
-        // Capture beam: prune captures after the first N searched. Disabled when
-        // cfg.capture_beam is off (all captures are searched).
-        let rps_beam = if self.cfg.capture_beam {
-            let beam_base = params::capture_beam_base(d);
-            (beam_base as usize * (1 + cap_moves.len() / params::BEAM_BRANCH_SCALE))
-                .min(params::CAPTURE_BEAM_MAX)
-        } else {
-            cap_moves.len()
-        };
-        // ── Incremental move selection (pick-next) ────────────────────
-        // Score once into a flat i32 buffer, then repeatedly select the best
-        // remaining move: O(k·n) with k ≈ rps_beam (6-24) instead of a full
-        // O(n log n) sort of the capture list at every node.
-        pb.cap_scores.clear();
-        for m in cap_moves {
-            let packed = ordering::m_pack(m);
-            let hist = self
-                .heur
-                .history_score(m.from_sq as usize, m.to_sq as usize, stm);
-            let cntr = self.heur.counter_score(self.prev_move, packed);
-            pb.cap_scores.push(ordering::score_move(
-                self.heur, m, iid_move, hist, cntr, d, values,
-            ));
-        }
-
+        let rps_beam = self.prepare_captures(&mut pb, stm, d, iid_move, values);
         let mut move_idx = 0usize;
         // ── Stage 1: captures + promotions ────────────────────────────
         // Order capture indices by score once (O(n log n)) instead of
         // linear-scanning for the max on every iteration (O(beam * n)).
         pb.cap_order.clear();
-        pb.cap_order.extend(0..cap_moves.len() as u32);
+        pb.cap_order.extend(0..pb.caps.len() as u32);
         pb.cap_order
             .sort_unstable_by(|&a, &b| pb.cap_scores[b as usize].cmp(&pb.cap_scores[a as usize]));
         let mut cap_order_pos = 0usize;
@@ -408,20 +449,17 @@ impl Ctx<'_> {
                 break;
             }
             let m = &pb.caps[idx];
-            // ── CAPTURE FUTILITY PRUNING (depth ≤ 2) ──────────────
-            if self.cfg.futility
-                && d <= 2
-                && !in_check
-                && cur_move > 0
-                && order_score < params::TACTICAL_BASE_SCORE
-                && params::mate_gate_ok(alpha)
-            {
-                let from_pt = cell_piece(self.board.cells[m.from_sq as usize]);
-                let gain =
-                    ordering::capture_qs_score(self.board, m, values) + values[from_pt as usize];
-                if static_eval + gain + params::CAPTURE_FUTILITY_MARGIN <= alpha {
-                    continue;
-                }
+            if self.capture_futility(
+                d,
+                in_check,
+                cur_move,
+                order_score,
+                alpha,
+                static_eval,
+                m,
+                values,
+            ) {
+                continue;
             }
             self.board.apply_move(m);
             // Every pseudo-legal move is legal in Taikyoku (no check): consume a

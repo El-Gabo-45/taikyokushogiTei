@@ -489,9 +489,8 @@ impl SelfPlayCoordinator {
 
         let output_dir = config.output_dir.clone();
         let save_interval = config.save_interval;
-        let writer_handle = std::thread::spawn(move || {
-            Self::writer_loop(&sample_rx, &output_dir, save_interval)
-        });
+        let writer_handle =
+            std::thread::spawn(move || Self::writer_loop(&sample_rx, &output_dir, save_interval));
 
         let db_handle = if let Some(db_path) = &config.sqlite_path {
             let db_path = db_path.clone();
@@ -629,11 +628,7 @@ impl SelfPlayCoordinator {
             .map_err(|e| format!("commit game {}: {e}", record.game_id))
     }
 
-    fn db_loop(
-        rx: &Receiver<GameRecord>,
-        db_path: &str,
-        output_dir: &str,
-    ) -> Result<(), String> {
+    fn db_loop(rx: &Receiver<GameRecord>, db_path: &str, output_dir: &str) -> Result<(), String> {
         std::fs::create_dir_all(output_dir)
             .map_err(|e| format!("cannot create dir {output_dir}: {e}"))?;
         let conn = rusqlite::Connection::open(db_path)
@@ -776,9 +771,14 @@ pub fn run_selfplay(config: Option<SelfPlayConfig>) {
 }
 
 #[cfg(test)]
-    // Test-only: panicking is the intended failure mode.
-    #[allow(clippy::unwrap_used, clippy::expect_used,             clippy::too_many_lines,
-            clippy::cognitive_complexity, clippy::type_complexity)]
+// Test-only: panicking is the intended failure mode.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::type_complexity
+)]
 mod tests {
     use super::*;
 

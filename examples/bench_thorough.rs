@@ -1,3 +1,27 @@
+// Benchmarks/tools: panic-on-failure is intentional for a diagnostic.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::unreadable_literal,
+    clippy::many_single_char_names,
+    clippy::too_many_lines,
+    clippy::cognitive_complexity,
+    clippy::type_complexity,
+    clippy::format_push_string,
+    clippy::items_after_statements,
+    clippy::doc_markdown,
+    clippy::needless_borrow,
+    clippy::redundant_closure,
+    clippy::similar_names,
+    clippy::must_use_candidate,
+    clippy::map_unwrap_or,
+    clippy::unnecessary_cast
+)]
+
 // Comprehensive, real-world performance benchmark for the Taikyoku Shogi engine.
 //
 // Unlike the simpler benchmarks, this one:
@@ -32,7 +56,7 @@ fn run_search(board: &mut Board, depth: u32, time_limit_ms: u64) -> RunStats {
     let t = Instant::now();
     let result = board.search(depth, time_limit_ms);
     let elapsed_us = t.elapsed().as_micros() as u64;
-    let elapsed_ms = elapsed_us / 1000;
+    let ms = elapsed_us / 1000;
     // Use microseconds for NPS calculation so sub-millisecond searches
     // report a real NPS instead of 0.
     let nps = if elapsed_us > 0 {
@@ -40,10 +64,10 @@ fn run_search(board: &mut Board, depth: u32, time_limit_ms: u64) -> RunStats {
     } else {
         0.0
     };
-    let overshoot = elapsed_ms as f64 - time_limit_ms as f64;
+    let overshoot = ms as f64 - time_limit_ms as f64;
     RunStats {
         nodes: result.nodes,
-        time_ms: elapsed_ms,
+        time_ms: ms,
         nps,
         score: result.score,
         overshoot_ms: overshoot,
