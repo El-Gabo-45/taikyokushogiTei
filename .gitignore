@@ -25,3 +25,5 @@ nets/*.tkn.zst
 nets/*.sha256
 training_data/
 data/
+mutants.out/
+mutants.out.old/
