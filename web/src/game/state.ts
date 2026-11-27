@@ -78,6 +78,8 @@ export class GameState {
   evalInfo: EvalInfo | null = null;
   /** Telemetry of the most recent search. */
   lastSearch: SearchStats | null = null;
+  /** Ring of recent searches for the diagnostics charts (newest last). */
+  readonly searchHistory: SearchStats[] = [];
   /** Piece the user clicked, with database details. */
   inspection: Inspection | null = null;
   /** Transient user-facing message. */
@@ -103,6 +105,12 @@ export class GameState {
 
   private notify(): void {
     for (const fn of this.listeners) fn();
+  }
+
+  /** Keep the last 60 searches for the diagnostics charts. */
+  private recordSearch(s: SearchStats): void {
+    this.searchHistory.push({ ...s });
+    if (this.searchHistory.length > 60) this.searchHistory.shift();
   }
 
   private setMessage(text: string, kind: GameMessage['kind'] = 'info'): void {
@@ -353,7 +361,9 @@ export class GameState {
           score: resp.score,
           nodes: resp.nodes,
           time_ms: resp.time_ms,
+          hashfull: resp.hashfull,
         };
+        this.recordSearch(this.lastSearch);
         const [fr, fc] = resp.best_move.from ?? [0, 0];
         const [tr, tc] = resp.best_move.to;
         this.setMessage(
@@ -444,6 +454,7 @@ export class GameState {
         this.lastMoveFrom = resp.last_move?.from ?? null;
         this.lastMoveTo = resp.last_move?.to ?? null;
         this.lastSearch = resp.search ?? null;
+        if (this.lastSearch) this.recordSearch(this.lastSearch);
         this.applyBoard(resp.board);
         return true;
       }

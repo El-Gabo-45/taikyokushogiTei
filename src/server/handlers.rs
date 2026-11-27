@@ -212,6 +212,27 @@ pub async fn get_config(State(app): State<Arc<crate::server::AppState>>) -> Json
     })
 }
 
+/// GPU/graphics adapters visible to `wgpu` (WebGPU). Unlike CUDA/ROCm probing
+/// this reports Vulkan, Metal, DX12 and GL adapters too — useful for a panel
+/// that asks "can this box accelerate anything at all?".
+pub async fn get_gpu() -> Json<serde_json::Value> {
+    #[cfg(feature = "gpu-detect")]
+    {
+        let adapters = crate::gpu::detect_or_empty();
+        Json(json!({
+            "detect_enabled": true,
+            "adapters": adapters,
+            "report": crate::gpu::report(),
+        }))
+    }
+    #[cfg(not(feature = "gpu-detect"))]
+    Json(json!({
+        "detect_enabled": false,
+        "adapters": [],
+        "report": "GPU detection disabled (build with --features gpu-detect)",
+    }))
+}
+
 pub async fn get_health() -> Json<HealthResponse> {
     Json(HealthResponse {
         ok: true,
@@ -667,6 +688,7 @@ struct SearchOutcome {
     score: i32,
     nodes: u64,
     time_ms: u64,
+    hashfull: u16,
     no_moves: bool,
 }
 
@@ -703,6 +725,7 @@ async fn execute_search(
                 score: 0,
                 nodes: 0,
                 time_ms: started.elapsed().as_millis() as u64,
+                hashfull: crate::hashfull(),
                 no_moves: mv.is_none(),
             }
         } else {
@@ -712,6 +735,7 @@ async fn execute_search(
                 score: r.score,
                 nodes: r.nodes,
                 time_ms: r.time_ms,
+                hashfull: crate::hashfull(),
                 no_moves: r.best_move.is_none(),
             }
         }
@@ -724,6 +748,7 @@ async fn execute_search(
             score: 0,
             nodes: 0,
             time_ms: 0,
+            hashfull: 0,
             no_moves: false,
         }
     }))
@@ -832,6 +857,7 @@ pub async fn post_ai_move(
             score: outcome.score,
             nodes: outcome.nodes,
             time_ms: outcome.time_ms,
+            hashfull: outcome.hashfull,
         }),
     }))
 }

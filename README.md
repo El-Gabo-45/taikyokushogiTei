@@ -24,6 +24,8 @@ Developed with AI assistance in some parts of the code and documentation.
 | Understand the codebase | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [docs/MODULE_GUIDE.md](docs/MODULE_GUIDE.md) |
 | Work on the NNUE evaluator | [docs/NNUE.md](docs/NNUE.md) |
 | Compare tooling with Stockfish | [docs/STOCKFISH_TOOLS.md](docs/STOCKFISH_TOOLS.md) |
+| Web diagnostics panel | press **D** in the GUI (logs, auto-refresh, search telemetry chart) |
+| Train NNUE on a GPU | [docs/NNUE.md](docs/NNUE.md#training-on-a-gpu) · `make nnue-gpu-setup` |
 
 ## Installation
 
@@ -73,7 +75,10 @@ cargo build --release --features server --bin taikyokushogi-server
 NNUE needs **no feature flag**: the evaluator is always compiled and a
 network is attached to a board at runtime (`board.set_network(Some(net))`).
 Optional features are described under [Cargo Features](#cargo-features) —
-note that the GPU features currently have no consuming code.
+note that the Rust GPU features currently have no consuming code. **Training**
+(the Python pipeline, not the Rust engine) uses CUDA or Apple MPS when
+available: `make nnue-gpu-setup`, `make nnue-device`,
+`make nnue-train DEVICE=auto`. See [docs/NNUE.md](docs/NNUE.md#training-on-a-gpu).
 
 **Python bindings (optional):** the `python` Cargo feature
 (`python = ["dep:pyo3"]`) compiles the PyO3 extension module:
@@ -261,9 +266,13 @@ module-by-module developer's guide:
 
 - `cpu` (default) — the pure-CPU build (no alternative backend is compiled
   in today; the flag is a namespace for future ones).
+- `gpu-detect` — builds `src/gpu.rs`, which enumerates **all** graphics
+  adapters through `wgpu`/WebGPU: Vulkan (AMD/Intel/NVIDIA), Metal, DirectX 12
+  and OpenGL — not just CUDA/ROCm devices. Exposed through `/api/gpu`, the
+  diagnostics panel and `nnue gpu`.
 - `gpu-cuda`, `gpu-metal`, `gpu-wgpu`, `gpu-vulkan` — enable the optional
-  GPU crates (`burn`/`wgpu`). No code in this tree consumes them yet, so
-  these features currently change nothing at runtime.
+  `burn` backends for future Rust-side compute; all of them also enable
+  `gpu-detect`. They do not change the evaluator or the search today.
 - `python` — enables the optional `pyo3` dependency and compiles the Python
   extension module (`src/python.rs` is gated on `cfg(feature = "python")`).
   Build it with maturin: `maturin build --release --features python`

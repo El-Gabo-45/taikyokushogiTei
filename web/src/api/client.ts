@@ -31,6 +31,7 @@ import {
   configSchema,
   engineInfoSchema,
   evalInfoSchema,
+  gpuResponseSchema,
   healthInfoSchema,
   historyInfoSchema,
   legalMovesSchema,
@@ -46,7 +47,7 @@ import {
   statusInfoSchema,
   undoResponseSchema,
 } from './schemas';
-import type { LogsResponse, ServerConfig } from './schemas';
+import type { GpuResponse, LogsResponse, ServerConfig } from './schemas';
 import type { ZodType } from 'zod';
 
 const BASE = '';
@@ -267,6 +268,11 @@ export function health(): Promise<HealthInfo> {
 /** Public runtime limits, so the UI never hard-codes them. */
 export function fetchConfig(): Promise<ServerConfig> {
   return get('/api/config', configSchema);
+}
+
+/** GPU/graphics adapters visible to the server (Vulkan/Metal/DX12/GL). */
+export function fetchGpu(): Promise<GpuResponse> {
+  return get('/api/gpu', gpuResponseSchema);
 }
 
 /** Most recent structured log entries (newest last). */

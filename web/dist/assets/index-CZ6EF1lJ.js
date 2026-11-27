@@ -5528,7 +5528,8 @@ var searchStatsSchema = checked(object({
 	depth: number(),
 	score: number(),
 	nodes: number(),
-	time_ms: number()
+	time_ms: number(),
+	hashfull: number()
 }));
 var moveResponseSchema = checked(object({
 	ok: boolean(),
@@ -5553,6 +5554,7 @@ var searchResponseSchema = checked(object({
 	score: number(),
 	nodes: number(),
 	time_ms: number(),
+	hashfull: number(),
 	depth: number(),
 	tsfen: string()
 }));
@@ -5647,12 +5649,13 @@ var logEntrySchema = object({
 	target: string(),
 	message: string()
 });
-object({
+var logsResponseSchema = object({
 	total: number(),
 	returned: number(),
 	entries: array(logEntrySchema)
 });
-object({
+/** Public runtime limits (`GET /api/config`). */
+var configSchema = object({
 	version: string(),
 	board_size: number(),
 	max_body_bytes: number(),
@@ -5666,6 +5669,19 @@ object({
 	]),
 	log_capacity: number(),
 	log_file_enabled: boolean()
+});
+/** GPU/graphics adapters detected by the server's wgpu backend. */
+var gpuAdapterSchema = object({
+	backend: string(),
+	name: string(),
+	vendor_device: tuple([number(), number()]).nullable(),
+	driver: string().nullable(),
+	compute: boolean()
+});
+var gpuResponseSchema = object({
+	detect_enabled: boolean(),
+	adapters: array(gpuAdapterSchema),
+	report: string()
 });
 // src/api/client.ts
 var BASE = "";
@@ -5797,6 +5813,18 @@ function pieceInfo(abbrev) {
 function fetchEngineInfo() {
 	return get("/api/engine-info", engineInfoSchema);
 }
+/** Public runtime limits, so the UI never hard-codes them. */
+function fetchConfig() {
+	return get("/api/config", configSchema);
+}
+/** GPU/graphics adapters visible to the server (Vulkan/Metal/DX12/GL). */
+function fetchGpu() {
+	return get("/api/gpu", gpuResponseSchema);
+}
+/** Most recent structured log entries (newest last). */
+function fetchLogs(limit = 50) {
+	return get(`/api/logs?limit=${limit}`, logsResponseSchema);
+}
 // src/game/view.ts
 var MIN_ZOOM = .7;
 var MAX_ZOOM = 1.8;
@@ -5870,6 +5898,8 @@ var GameState = class {
 	evalInfo = null;
 	/** Telemetry of the most recent search. */
 	lastSearch = null;
+	/** Ring of recent searches for the diagnostics charts (newest last). */
+	searchHistory = [];
 	/** Piece the user clicked, with database details. */
 	inspection = null;
 	/** Transient user-facing message. */
@@ -5888,6 +5918,11 @@ var GameState = class {
 	}
 	notify() {
 		for (const fn of this.listeners) fn();
+	}
+	/** Keep the last 60 searches for the diagnostics charts. */
+	recordSearch(s) {
+		this.searchHistory.push({ ...s });
+		if (this.searchHistory.length > 60) this.searchHistory.shift();
 	}
 	setMessage(text, kind = "info") {
 		this.message = {
@@ -6103,8 +6138,10 @@ var GameState = class {
 					depth: resp.depth,
 					score: resp.score,
 					nodes: resp.nodes,
-					time_ms: resp.time_ms
+					time_ms: resp.time_ms,
+					hashfull: resp.hashfull
 				};
+				this.recordSearch(this.lastSearch);
 				const [fr, fc] = resp.best_move.from ?? [0, 0];
 				const [tr, tc] = resp.best_move.to;
 				this.setMessage(`Analysis d${resp.depth}: best ${fr},${fc}→${tr},${tc} (${resp.score})`, "info");
@@ -6177,6 +6214,7 @@ var GameState = class {
 				this.lastMoveFrom = resp.last_move?.from ?? null;
 				this.lastMoveTo = resp.last_move?.to ?? null;
 				this.lastSearch = resp.search ?? null;
+				if (this.lastSearch) this.recordSearch(this.lastSearch);
 				this.applyBoard(resp.board);
 				return true;
 			}
@@ -7071,6 +7109,27 @@ function drawScoreChart(history) {
 	ctx.arc(last.x, last.y, 2.5, 0, Math.PI * 2);
 	ctx.fill();
 }
+// src/ui/telemetry.ts
+/** Human-readable one-line summary of the most recent search. */
+function describeSearch(s) {
+	const nps = Math.round(s.nodes / Math.max(1, s.time_ms) * 1e3).toLocaleString();
+	return `d${s.depth} score ${s.score} · ${s.nodes.toLocaleString()} nodes / ${s.time_ms} ms · ${nps} nps · TT ${(s.hashfull / 10).toFixed(1)}%`;
+}
+/** Normalised series in [-1, 1] for drawing: score, nps and TT occupancy. */
+function telemetrySeries(history) {
+	if (history.length === 0) return [
+		[],
+		[],
+		[]
+	];
+	const maxScore = Math.max(1, ...history.map((s) => Math.abs(s.score)));
+	const maxNps = Math.max(1, ...history.map((s) => s.nodes / Math.max(1, s.time_ms)));
+	return [
+		history.map((s) => s.score / maxScore),
+		history.map((s) => s.nodes / Math.max(1, s.time_ms) / maxNps),
+		history.map((s) => s.hashfull / 1e3)
+	];
+}
 // src/main.ts
 var canvas = document.getElementById("board-canvas");
 var ctx = canvas.getContext("2d");
@@ -7181,15 +7240,135 @@ function toggleDevTools() {
 	devVisible = !devVisible;
 	devPanel.hidden = !devVisible;
 	state.announce(devVisible ? "Developer tools shown" : "Developer tools hidden", "info");
+	if (devVisible) refreshDiagnostics();
 }
-Object.entries({
+var logFilter = "info";
+var autoRefresh = false;
+var autoTimer = null;
+var lastLogs = null;
+/** Draw nps / score / hashfull over the last searches on a canvas. */
+function drawSearchChart() {
+	const canvas = document.getElementById("dev-search-chart");
+	const out = document.getElementById("dev-search-stats");
+	if (!canvas) return;
+	const ctx = canvas.getContext("2d");
+	if (!ctx) return;
+	const { width: w, height: h } = canvas;
+	ctx.clearRect(0, 0, w, h);
+	const history = state.searchHistory;
+	const last = history.at(-1);
+	if (out) out.textContent = last ? `${history.length} searches · last ${describeSearch(last)}` : "No searches yet";
+	if (history.length < 2) return;
+	const colors = [
+		"#38bdf8",
+		"#4ade80",
+		"#fbbf24"
+	];
+	const series = telemetrySeries(history);
+	ctx.lineWidth = 1.5;
+	series.forEach((values, s) => {
+		ctx.strokeStyle = colors[s];
+		ctx.beginPath();
+		values.forEach((v, i) => {
+			const x = i / Math.max(1, values.length - 1) * (w - 4) + 2;
+			const y = h - 3 - (v + 1) / 2 * (h - 6);
+			if (i === 0) ctx.moveTo(x, y);
+			else ctx.lineTo(x, y);
+		});
+		ctx.stroke();
+	});
+	ctx.fillStyle = "#64748b";
+	ctx.font = "8px sans-serif";
+	ctx.fillText("score", 4, 10);
+	ctx.fillText("nps", 40, 10);
+	ctx.fillText("TT", 68, 10);
+}
+/** Render the cached logs with the active level filter. */
+function renderLogs() {
+	const el = document.getElementById("dev-logs");
+	if (!el || !lastLogs) return;
+	const rank = {
+		error: 3,
+		warn: 2,
+		info: 1,
+		debug: 0
+	};
+	const shown = lastLogs.entries.filter((e) => rank[e["level"]] >= rank[logFilter]);
+	el.textContent = shown.length ? shown.map((e) => `${new Date(e.ts_ms).toLocaleTimeString()} ${e.level.toUpperCase().padEnd(5)} [${e.request_id}] ${e.target}: ${e.message}`).join("\n") : `No ${logFilter}+ entries (${lastLogs.total} buffered)`;
+}
+state.subscribe(() => {
+	if (devVisible) drawSearchChart();
+});
+/** Load the server's public config and the most recent structured logs. */
+async function refreshDiagnostics() {
+	const configEl = document.getElementById("dev-config");
+	try {
+		const [config, logs, gpu] = await Promise.all([
+			fetchConfig(),
+			fetchLogs(50),
+			fetchGpu()
+		]);
+		const gpuEl = document.getElementById("dev-gpu");
+		if (gpuEl) {
+			gpuEl.textContent = gpu.detect_enabled ? `GPU: ${gpu.adapters.length} adapter(s) · ${gpu.adapters.map((a) => `${a.name} (${a.backend})`).join(", ") || "none"}` : "GPU: detection off — rebuild with --features gpu-detect";
+			gpuEl.title = gpu.report;
+		}
+		if (configEl) configEl.textContent = `v${config.version} · ${config.sessions ? "sessions" : "shared"} (${config.anon_policy}) · body ≤ ${(config.max_body_bytes / 1024).toFixed(0)} KiB · search ≤ ${config.max_concurrent_searches} · log ring ${config.log_capacity}${config.log_file_enabled ? " + file" : ""}`;
+		lastLogs = logs;
+		renderLogs();
+		drawSearchChart();
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		const el = document.getElementById("dev-logs");
+		if (el) el.textContent = `Diagnostics unavailable: ${message}`;
+	}
+}
+/** Map each dev button to the make/Cargo target it runs. */
+var devTargets = {
 	"dev-nnue-pack": "make nnue-pack   (zstd-compress nets/tk.tkn + sha256)",
 	"dev-nnue-parity": "make nnue-parity   (dump positions + parity_gate.py)",
 	"dev-version-race": "make version-race   (play current vs older commit)",
 	"dev-strength": "make strength   (Elo ladder vs depth d-1)",
 	"dev-coverage": "make coverage   (dataset coverage analyzer)",
 	"dev-calibration": "make calibration   (bucket calibration analyzer)"
-}).forEach(([id, cmd]) => {
+};
+document.getElementById("dev-refresh-logs")?.addEventListener("click", () => void refreshDiagnostics());
+document.getElementById("dev-export-logs")?.addEventListener("click", () => {
+	const blob = new Blob([JSON.stringify(lastLogs, null, 2)], { type: "application/json" });
+	const a = document.createElement("a");
+	a.href = URL.createObjectURL(blob);
+	a.download = `taikyoku-logs-${Date.now()}.json`;
+	a.click();
+	URL.revokeObjectURL(a.href);
+	state.announce("Logs exported", "success");
+});
+document.getElementById("dev-toggle-auto")?.addEventListener("click", (event) => {
+	autoRefresh = !autoRefresh;
+	const btn = event.currentTarget;
+	btn.textContent = `Auto: ${autoRefresh ? "on" : "off"}`;
+	btn.setAttribute("aria-pressed", String(autoRefresh));
+	if (autoRefresh) autoTimer = window.setInterval(() => void refreshDiagnostics(), 5e3);
+	else if (autoTimer !== null) {
+		window.clearInterval(autoTimer);
+		autoTimer = null;
+	}
+});
+document.querySelectorAll(".dev-filter button").forEach((btn) => {
+	btn.addEventListener("click", () => {
+		logFilter = btn.dataset["level"];
+		document.querySelectorAll(".dev-filter button").forEach((b) => b.setAttribute("aria-pressed", "false"));
+		btn.setAttribute("aria-pressed", "true");
+		renderLogs();
+	});
+});
+document.getElementById("dev-copy-config")?.addEventListener("click", () => {
+	fetchConfig().then((cfg) => {
+		navigator.clipboard.writeText(JSON.stringify(cfg, null, 2)).then(() => {
+			state.announce("Server config copied", "success");
+		});
+	});
+});
+Object.entries(devTargets).forEach(([id, cmd]) => {
 	const btn = document.getElementById(id);
 	if (!btn) return;
 	btn.addEventListener("click", () => {

@@ -21,7 +21,7 @@ engine's equivalents and records which ones were adopted.
 | `info … hashfull` | **`IterInfo.hashfull`** + USI `info … hashfull` (added) | ✅ added |
 | `info … seldepth`, `currmove`, `currmovenumber`, `multipv` | Not exposed (single-PV search; callback only after each iteration) | ⚠️ not applicable yet |
 | `UCI_ShowWDL` (win/draw/loss estimate) | No fitted WDL model for a 804-piece variant | ⚠️ not applicable |
-| `go searchmoves` (root move restriction) | `research::multipv --max-root` prefilter | ⚠️ partial |
+| `go searchmoves` (root move restriction) | **USI `go searchmoves` + `Searcher::set_root_moves`** (added) | ✅ added |
 | `go movestogo` (moves remaining) | `wtime`/`winc`/`byoyomi`/`movetime` | ✅ equivalent for this UI |
 | SPSA parameter tuner (`tune.cpp`) | `research::ablate` (decision-level) + Elo/SPRT matches | ⚠️ different approach |
 | Syzygy tablebases | Impossible on a 36×36 board | ❌ not applicable |
@@ -48,6 +48,12 @@ engine's equivalents and records which ones were adopted.
    a GUI/backend can see when the TT is too small for the search.
 4. **USI `d`** — prints the current board through `Board::display()` as
    `info string` lines.
+5. **`go searchmoves`** — `RootState` carries an optional packed-move
+   whitelist, `Searcher::set_root_moves` sets it for the next search (and
+   `share_tt` propagates it to Lazy SMP workers), and USI `go searchmoves <mv>…`
+   parses the tokens against the current position. The engine then searches
+   only those root moves — essential for deep analysis in a position with
+   ~500 legal moves. Test: `go_searchmoves_restricts_root_and_bestmove_is_in_the_list`.
 
 ## Why some Stockfish tools were NOT copied
 

@@ -96,6 +96,8 @@ pub struct SearchStats {
     pub score: i32,
     pub nodes: u64,
     pub time_ms: u64,
+    /// Approximate transposition-table occupancy in per mille (`hashfull`).
+    pub hashfull: u16,
 }
 
 #[derive(Serialize)]

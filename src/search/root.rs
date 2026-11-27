@@ -57,6 +57,9 @@ pub(crate) struct RootState {
     scores: Vec<i32>,
     /// Permutation of `moves`, best first.
     order: Vec<u32>,
+    /// Optional packed-move whitelist (`go searchmoves`). A change forces a
+    /// rebuild of the cached list.
+    filter: Option<Vec<u32>>,
 }
 
 impl RootState {
@@ -66,7 +69,16 @@ impl RootState {
             moves: Vec::new(),
             scores: Vec::new(),
             order: Vec::new(),
+            filter: None,
         }
+    }
+
+    /// Restrict the root moves to `filter` (packed keys). `None` clears it.
+    pub fn set_filter(&mut self, filter: Option<Vec<u32>>) {
+        if self.filter != filter {
+            self.hash = 0; // force regeneration on the next prepare()
+        }
+        self.filter = filter;
     }
 
     /// Number of cached root moves (diagnostics / tests).
@@ -92,6 +104,14 @@ impl RootState {
         if self.hash != board.hash || self.moves.is_empty() {
             self.hash = board.hash;
             generate_pseudo_legal_moves_into(&mut self.moves, board);
+            if let Some(filter) = &self.filter {
+                self.moves.retain(|m| filter.contains(&ordering::m_pack(m)));
+                if self.moves.is_empty() {
+                    // No requested move is legal here: search everything
+                    // rather than reporting a bogus "no legal moves" loss.
+                    generate_pseudo_legal_moves_into(&mut self.moves, board);
+                }
+            }
             self.scores.clear();
             self.scores.resize(self.moves.len(), 0);
             let stm = board.side_to_move;

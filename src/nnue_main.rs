@@ -519,6 +519,15 @@ fn main() {
             net.save(output).unwrap_or_else(|e| die(e));
             println!("wrote {output} (raw TKN1 v2)");
         }
+        Some("gpu") => {
+            #[cfg(feature = "gpu-detect")]
+            {
+                println!("GPU/graphics adapters detected by wgpu (Vulkan/Metal/DX12/GL):");
+                println!("{}", taikyokushogi::gpu::report());
+            }
+            #[cfg(not(feature = "gpu-detect"))]
+            die("nnue gpu needs GPU detection: cargo build --features gpu-detect --bin nnue");
+        }
         Some("dump-positions") => cmd_dump(rest),
         Some("explain") => cmd_explain(rest),
         Some("bench") => cmd_bench(rest.first().map(std::string::String::as_str)),
@@ -532,7 +541,7 @@ fn main() {
         Some("ablate") => taikyokushogi::research::ablate::run(rest).unwrap_or_else(|e| die(e)),
         _ => {
             eprintln!(
-                "usage: nnue <classes|gen-classes|info|verify|random-net|export|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
+                "usage: nnue <classes|gen-classes|info|verify|random-net|export|gpu|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
             );
             std::process::exit(if args.is_empty() { 0 } else { 2 });
         }

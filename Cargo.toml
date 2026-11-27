@@ -43,12 +43,14 @@ default = ["cpu"]
 cpu = []
 server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:async-trait"]
 python = ["dep:pyo3"]
-# GPU backends are future work: no code consumes these crates yet, so the
-# features are placeholders (they only affect the dependency graph).
-gpu-cuda = ["dep:burn", "burn/cuda"]
-gpu-metal = ["dep:burn", "burn/metal"]
-gpu-wgpu = ["dep:burn", "burn/wgpu"]
-gpu-vulkan = ["dep:burn", "burn/wgpu", "dep:wgpu", "wgpu/vulkan-portability"]
+# Adapter detection via wgpu/WebGPU. Unlike CUDA/ROCm probing this also sees
+# Vulkan (AMD/Intel), Metal (Apple), DX12 and GL adapters — i.e. GPUs that do
+# NOT expose a compute runtime like CUDA or ROCm.
+gpu-detect = ["dep:wgpu"]
+gpu-cuda = ["dep:burn", "burn/cuda", "gpu-detect"]
+gpu-metal = ["dep:burn", "burn/metal", "gpu-detect"]
+gpu-wgpu = ["dep:burn", "burn/wgpu", "gpu-detect"]
+gpu-vulkan = ["dep:burn", "burn/wgpu", "dep:wgpu", "wgpu/vulkan-portability", "gpu-detect"]
 
 [dependencies]
 pyo3 = { version = "0.30", features = ["extension-module"], optional = true }

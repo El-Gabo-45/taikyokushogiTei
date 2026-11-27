@@ -52,6 +52,7 @@ with the engine's own position format (documented in full in the
 | `movetime <MS>` | convenience extension: fixed time per move |
 | `infinite`, bare `go` | search until `stop` |
 | `ponder`, `ponderhit`, `stop` | honored per the USI spec; the engine never announces a `ponder` move (reply prediction on a 500+ branching factor is a coin toss) and `stop` during pondering suppresses `bestmove` |
+| `searchmoves <mv>...` | **root-move restriction** (Stockfish-style): only the listed moves are searched; must be the last `go` keyword. Illegal tokens are ignored. Useful to compare candidates in a 500-move branch. |
 | `nodes <N>` | not implemented: answered with `info string` + unlimited search |
 | `mate` | normal search — the variant has no checks, so "mating" is the forced capture of the last royal piece (reported as `score mate <n>`) |
 

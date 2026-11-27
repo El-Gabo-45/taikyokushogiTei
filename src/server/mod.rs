@@ -725,6 +725,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest_service("/assets", ServeDir::new(dist_dir().join("assets")))
         .fallback(get(serve_frontend))
         .route("/api/ready", get(handlers::get_ready))
+        .route("/api/gpu", get(handlers::get_gpu))
         // ── Observability ──
         .route("/api/logs", get(handlers::get_logs))
         .route("/api/config", get(handlers::get_config))
@@ -892,7 +893,7 @@ async fn sessions_middleware(
         || !path.starts_with("/api/")
         || matches!(
             path,
-            "/api/health" | "/api/ready" | "/api/logs" | "/api/config"
+            "/api/health" | "/api/ready" | "/api/gpu" | "/api/logs" | "/api/config"
         )
     {
         return next.run(req).await;

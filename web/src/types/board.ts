@@ -52,6 +52,8 @@ export interface SearchStats {
   score: number;
   nodes: number;
   time_ms: number;
+  /** Transposition-table occupancy in per mille. */
+  hashfull: number;
 }
 
 export interface LastMove {
@@ -162,6 +164,7 @@ export interface SearchResponse {
   score: number;
   nodes: number;
   time_ms: number;
+  hashfull: number;
   depth: number;
   tsfen: string;
 }

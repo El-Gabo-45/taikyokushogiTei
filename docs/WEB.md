@@ -122,6 +122,7 @@ whole router in-process).
 | `/api/moves` | GET | Legal moves from a square (`?r=<row>&c=<col>`) |
 | `/api/legal-moves` | GET | Every legal move of the side to move (with origins) |
 | `/api/engine-info` | GET | Version, backend, hash size, threads, search techniques |
+| `/api/gpu` | GET | GPU/graphics adapters detected by `wgpu` (Vulkan/Metal/DX12/GL; needs `gpu-detect`) |
 | `/api/evaluate` | GET | Static evaluation and material balance |
 | `/api/pieces` | GET | Full piece database (301 piece types) |
 | `/api/piece-info/:abbrev` | GET | Piece metadata incl. Betza and royal flag (404 if unknown) |
@@ -216,7 +217,18 @@ handlers:
    count, session cap, anon policy, log capacity) so clients/tests can read
    them instead of hard-coding.
 5. The frontend has `api.fetchLogs(limit)` and `api.fetchConfig()` with Zod
-   validation, so a diagnostics panel can be added without new protocol work.
+   validation. The **Developer Tools panel** (press **D**) includes a
+   *Diagnostics* section:
+   - newest log lines with level filter (`ERROR`/`WARN`/`INFO`) and an
+     auto-refresh toggle (5 s),
+   - **Export logs** as a JSON file, **Copy config** as JSON to the clipboard,
+   - the public limits (body cap, search slots, session policy, log ring),
+   - GPU/graphics adapters from `GET /api/gpu` (Vulkan/Metal/DX12/GL — works
+     for AMD/Intel cards without CUDA/ROCm), with the full report in a tooltip;
+   - a **search-telemetry chart** (`<canvas>`) plotting score, nodes/s and TT
+     `hashfull` over the last 60 searches, plus a one-line summary of the most
+     recent one. `hashfull` travels from `Tt::hashfull()` through `IterInfo`,
+     the server's `SearchStats` and the Zod-validated client response.
 
 Background tasks (e.g. a `spawn_blocking` join failure in the search) use
 `logs.error("search", …)` with request id `-`, so they land in the same ring.

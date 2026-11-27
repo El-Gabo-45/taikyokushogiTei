@@ -13,6 +13,7 @@
 import './styles/index.css';
 
 import { GameState, type Mode } from './game/state';
+import { fetchConfig, fetchGpu, fetchLogs } from './api/client';
 import {
   buildGameFile,
   buildPgn,
@@ -23,6 +24,7 @@ import {
 import { Controller } from './ui/controller';
 import { updatePanels } from './ui/panel';
 import { MAX_ZOOM, MIN_ZOOM } from './game/view';
+import { describeSearch, telemetrySeries } from './ui/telemetry';
 
 // ── Bootstrap ──────────────────────────────────────────────────────
 
@@ -172,6 +174,101 @@ function toggleDevTools(): void {
   devVisible = !devVisible;
   devPanel.hidden = !devVisible;
   state.announce(devVisible ? 'Developer tools shown' : 'Developer tools hidden', 'info');
+  if (devVisible) void refreshDiagnostics();
+}
+
+let logFilter: 'error' | 'warn' | 'info' = 'info';
+let autoRefresh = false;
+let autoTimer: number | null = null;
+let lastLogs: Awaited<ReturnType<typeof fetchLogs>> | null = null;
+
+/** Draw nps / score / hashfull over the last searches on a canvas. */
+function drawSearchChart(): void {
+  const canvas = document.getElementById('dev-search-chart') as HTMLCanvasElement | null;
+  const out = document.getElementById('dev-search-stats');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const { width: w, height: h } = canvas;
+  ctx.clearRect(0, 0, w, h);
+  const history = state.searchHistory;
+  const last = history.at(-1);
+  if (out) out.textContent = last ? `${history.length} searches · last ${describeSearch(last)}` : 'No searches yet';
+  if (history.length < 2) return;
+  const colors = ['#38bdf8', '#4ade80', '#fbbf24']; // score, nps, TT fill
+  const series = telemetrySeries(history);
+  ctx.lineWidth = 1.5;
+  series.forEach((values, s) => {
+    ctx.strokeStyle = colors[s]!;
+    ctx.beginPath();
+    values.forEach((v, i) => {
+      const x = (i / Math.max(1, values.length - 1)) * (w - 4) + 2;
+      const y = h - 3 - ((v + 1) / 2) * (h - 6);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+  ctx.fillStyle = '#64748b';
+  ctx.font = '8px sans-serif';
+  ctx.fillText('score', 4, 10);
+  ctx.fillText('nps', 40, 10);
+  ctx.fillText('TT', 68, 10);
+}
+
+/** Render the cached logs with the active level filter. */
+function renderLogs(): void {
+  const el = document.getElementById('dev-logs');
+  if (!el || !lastLogs) return;
+  const rank = { error: 3, warn: 2, info: 1, debug: 0 };
+  const shown = lastLogs.entries.filter((e) => rank[e['level']] >= rank[logFilter]);
+  el.textContent = shown.length
+    ? shown
+        .map(
+          (e) =>
+            `${new Date(e.ts_ms).toLocaleTimeString()} ${e.level.toUpperCase().padEnd(5)} ` +
+            `[${e.request_id}] ${e.target}: ${e.message}`,
+        )
+        .join('\n')
+    : `No ${logFilter}+ entries (${lastLogs.total} buffered)`;
+}
+
+// Keep the telemetry chart live while diagnostics are open.
+state.subscribe(() => {
+  if (devVisible) drawSearchChart();
+});
+
+/** Load the server's public config and the most recent structured logs. */
+async function refreshDiagnostics(): Promise<void> {
+  const configEl = document.getElementById('dev-config');
+  try {
+    const [config, logs, gpu] = await Promise.all([
+      fetchConfig(),
+      fetchLogs(50),
+      fetchGpu(),
+    ]);
+    const gpuEl = document.getElementById('dev-gpu');
+    if (gpuEl) {
+      gpuEl.textContent = gpu.detect_enabled
+        ? `GPU: ${gpu.adapters.length} adapter(s) · ${gpu.adapters.map((a) => `${a.name} (${a.backend})`).join(', ') || 'none'}`
+        : 'GPU: detection off — rebuild with --features gpu-detect';
+      gpuEl.title = gpu.report;
+    }
+    if (configEl) {
+      configEl.textContent =
+        `v${config.version} · ${config.sessions ? 'sessions' : 'shared'} (${config.anon_policy}) · ` +
+        `body ≤ ${(config.max_body_bytes / 1024).toFixed(0)} KiB · ` +
+        `search ≤ ${config.max_concurrent_searches} · ` +
+        `log ring ${config.log_capacity}${config.log_file_enabled ? ' + file' : ''}`;
+    }
+    lastLogs = logs;
+    renderLogs();
+    drawSearchChart();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const el = document.getElementById('dev-logs');
+    if (el) el.textContent = `Diagnostics unavailable: ${message}`;
+  }
 }
 
 /** Map each dev button to the make/Cargo target it runs. */
@@ -183,6 +280,46 @@ const devTargets: Record<string, string> = {
   'dev-coverage': 'make coverage   (dataset coverage analyzer)',
   'dev-calibration': 'make calibration   (bucket calibration analyzer)',
 };
+
+document
+  .getElementById('dev-refresh-logs')
+  ?.addEventListener('click', () => void refreshDiagnostics());
+document.getElementById('dev-export-logs')?.addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(lastLogs, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `taikyoku-logs-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  state.announce('Logs exported', 'success');
+});
+document.getElementById('dev-toggle-auto')?.addEventListener('click', (event) => {
+  autoRefresh = !autoRefresh;
+  const btn = event.currentTarget as HTMLButtonElement;
+  btn.textContent = `Auto: ${autoRefresh ? 'on' : 'off'}`;
+  btn.setAttribute('aria-pressed', String(autoRefresh));
+  if (autoRefresh) {
+    autoTimer = window.setInterval(() => void refreshDiagnostics(), 5000);
+  } else if (autoTimer !== null) {
+    window.clearInterval(autoTimer);
+    autoTimer = null;
+  }
+});
+document.querySelectorAll<HTMLButtonElement>('.dev-filter button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    logFilter = btn.dataset['level'] as typeof logFilter;
+    document.querySelectorAll('.dev-filter button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+    btn.setAttribute('aria-pressed', 'true');
+    renderLogs();
+  });
+});
+document.getElementById('dev-copy-config')?.addEventListener('click', () => {
+  void fetchConfig().then((cfg) => {
+    void navigator.clipboard.writeText(JSON.stringify(cfg, null, 2)).then(() => {
+      state.announce('Server config copied', 'success');
+    });
+  });
+});
 
 Object.entries(devTargets).forEach(([id, cmd]) => {
   const btn = document.getElementById(id) as HTMLButtonElement | null;

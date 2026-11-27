@@ -151,6 +151,25 @@
               <button type="button" id="dev-calibration" aria-label="Run bucket calibration">Calibration</button>
             </div>
             <div class="dev-note">Launches the matching Cargo / make target against the Rust backend.</div>
+
+            <h3 class="dev-subhead">Diagnostics</h3>
+            <div class="dev-grid">
+              <button type="button" id="dev-refresh-logs" aria-label="Refresh server logs">Refresh logs</button>
+              <button type="button" id="dev-copy-config" aria-label="Copy server config">Copy config</button>
+              <button type="button" id="dev-export-logs" aria-label="Download logs as JSON">Export logs</button>
+              <button type="button" id="dev-toggle-auto" aria-label="Toggle auto-refresh">Auto: off</button>
+            </div>
+            <div id="dev-config" class="dev-config">Config not loaded</div>
+            <div id="dev-gpu" class="dev-config">GPU: not loaded</div>
+            <div class="dev-filter" role="group" aria-label="Log level filter">
+              <button type="button" data-level="error">ERROR</button>
+              <button type="button" data-level="warn">WARN</button>
+              <button type="button" data-level="info" aria-pressed="true">INFO</button>
+            </div>
+            <pre id="dev-logs" class="dev-logs">Logs not loaded</pre>
+            <h4 class="dev-subhead">Search telemetry (last 60 searches)</h4>
+            <canvas id="dev-search-chart" class="dev-chart" width="260" height="90" aria-label="Search telemetry chart"></canvas>
+            <div id="dev-search-stats" class="dev-config">No searches yet</div>
           </section>
         </aside>
       </main>

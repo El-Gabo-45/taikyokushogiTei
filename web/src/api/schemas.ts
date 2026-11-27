@@ -122,6 +122,7 @@ export const searchStatsSchema = checked<SearchStats>(
     score: z.number(),
     nodes: z.number(),
     time_ms: z.number(),
+    hashfull: z.number(),
   }),
 );
 
@@ -157,6 +158,7 @@ export const searchResponseSchema = checked<SearchResponse>(
     score: z.number(),
     nodes: z.number(),
     time_ms: z.number(),
+    hashfull: z.number(),
     depth: z.number(),
     tsfen: z.string(),
   }),
@@ -299,3 +301,20 @@ export const configSchema = z.object({
 export type LogEntry = z.infer<typeof logEntrySchema>;
 export type LogsResponse = z.infer<typeof logsResponseSchema>;
 export type ServerConfig = z.infer<typeof configSchema>;
+
+/** GPU/graphics adapters detected by the server's wgpu backend. */
+export const gpuAdapterSchema = z.object({
+  backend: z.string(),
+  name: z.string(),
+  vendor_device: z.tuple([z.number(), z.number()]).nullable(),
+  driver: z.string().nullable(),
+  compute: z.boolean(),
+});
+
+export const gpuResponseSchema = z.object({
+  detect_enabled: z.boolean(),
+  adapters: z.array(gpuAdapterSchema),
+  report: z.string(),
+});
+
+export type GpuResponse = z.infer<typeof gpuResponseSchema>;

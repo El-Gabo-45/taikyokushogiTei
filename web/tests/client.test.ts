@@ -246,7 +246,7 @@ describe('api client — mutating endpoints', () => {
   });
 
   it('posts analysis searches to /api/search', async () => {
-    const calls = mockJson({ ok: true, score: 0, nodes: 0, time_ms: 0, depth: 4, tsfen: '' });
+    const calls = mockJson({ ok: true, score: 0, nodes: 0, time_ms: 0, hashfull: 0, depth: 4, tsfen: '' });
     await api.analyze(4, 2000);
     expect(calls[0].url).toBe('/api/search');
     expect(bodyOf(calls[0])).toEqual({ depth: 4, time_limit: 2000 });

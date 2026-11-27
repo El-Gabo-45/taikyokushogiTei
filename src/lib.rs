@@ -107,6 +107,8 @@ pub(crate) mod test_lock {
 mod bitboard;
 pub mod debugging;
 pub mod elo;
+#[cfg(feature = "gpu-detect")]
+pub mod gpu;
 pub mod research;
 pub mod selfplay;
 #[cfg(feature = "server")]
@@ -620,6 +622,12 @@ pub fn set_hash_mb(mb: usize) -> usize {
 #[must_use]
 pub fn hash_mb() -> usize {
     search::hash_mb()
+}
+
+/// Approximate transposition-table occupancy in per mille (`hashfull`).
+#[must_use]
+pub fn hashfull() -> u16 {
+    search::hashfull()
 }
 
 /// Whether the given `piece_type` ID is a royal piece (King, Crown Prince,

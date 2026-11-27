@@ -1470,3 +1470,13 @@ async fn config_endpoint_exposes_public_limits() {
     assert_eq!(body["sessions"], false);
     assert_eq!(body["anon_policy"], "shared");
 }
+
+#[tokio::test]
+async fn gpu_endpoint_reports_detection_state() {
+    let (_state, app) = game();
+    let (status, body) = get(&app, "/api/gpu").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["detect_enabled"].is_boolean());
+    assert!(body["adapters"].is_array());
+    assert!(body["report"].as_str().is_some());
+}

@@ -202,10 +202,54 @@ command is the hand-crafted counterpart — see
 make nnue-data      # self-play (games, depth, workers, time, --opening-plies, --net)
 make nnue-gates     # unit gate on the data
 make nnue-buckets   # calibrate thresholds, write rules/nnue_arch.json, then rebuild
-make nnue-train     # train + export nets/tk.tkn
+make nnue-train     # train + export nets/tk.tkn (GPU when available)
 make nnue-parity    # Rust vs Python integer reference, normal and thinned positions
 make nnue-bench
 ```
+
+### Training on a GPU
+
+`training/train.py --device auto` picks **CUDA** when available, then **Apple
+MPS** (Apple Silicon), then CPU. The CI lockfile installs CPU-only torch for
+reproducibility — on the machine that actually trains, install a GPU build:
+
+```bash
+make nnue-gpu-setup           # NVIDIA ( CUDA 12.4 wheels by default )
+# GPU_INDEX=https://download.pytorch.org/whl/cu121 make nnue-gpu-setup
+make nnue-device              # prints torch version, CUDA/MPS availability and the chosen device
+make nnue-train DEVICE=auto   # or DEVICE=cuda | mps | cpu
+```
+
+`--device-check` compares one fixed batch on CPU and on the selected device
+before a long run (catches wrong-device transfers early):
+
+```bash
+python3 training/train.py data --device cuda --device-check --epochs 20 --out nets/tk.tkn
+```
+
+Checkpoints stay device-agnostic, so a run can be resumed on a different
+machine. Generating the games (`make nnue-data`) still uses the Rust engine on
+CPU; the GPU accelerates the **training** of the network from those games.
+
+#### Detecting a GPU without CUDA/ROCm
+
+CUDA/ROCm probing cannot see many perfectly good GPUs (e.g. an AMD Radeon
+running on RADV/Vulkan, Intel Arc, or an Apple GPU). The Rust side has a
+vendor-neutral detector built on `wgpu`/WebGPU:
+
+```bash
+cargo build --features gpu-detect --bin nnue
+./target/debug/nnue gpu
+#   [0] AMD Radeon RX 570 Series (RADV POLARIS10) [1002:67df] via Vulkan (compute)
+#   [1] llvmpipe (LLVM ...) [10005:0000] via Vulkan (compute)
+```
+
+It enumerates Vulkan, Metal, DirectX 12 and OpenGL adapters and reports PCI
+vendor/device ids. The same data is served by `GET /api/gpu` (when the server
+is built with `--features server,gpu-detect`) and shown in the browser's
+Diagnostics panel. This is **detection only** — it does not make PyTorch use a
+Vulkan adapter; for training, the device choices remain `cpu`, `cuda` and
+`mps` as above.
 
 (or run the commands in the `Makefile` by hand). Details:
 

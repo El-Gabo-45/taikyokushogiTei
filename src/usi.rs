@@ -122,6 +122,8 @@ pub struct GoParams {
     pub depth: Option<u32>,
     pub nodes: Option<u64>,
     pub mate: bool,
+    /// Root-move whitelist from `go searchmoves` (Stockfish-compatible).
+    pub searchmoves: Vec<String>,
 }
 
 impl GoParams {
@@ -146,6 +148,13 @@ impl GoParams {
                 "movetime" => p.movetime = num(&mut i),
                 "depth" => p.depth = num(&mut i).map(|v| v as u32),
                 "nodes" => p.nodes = num(&mut i),
+                "searchmoves" => {
+                    // Consumes the rest of the line (Stockfish: must be last).
+                    while let Some(next) = tokens.get(i + 1) {
+                        i += 1;
+                        p.searchmoves.push((*next).to_owned());
+                    }
+                }
                 // `go mate [N | in N | all]`: the keyword alone means mate.
                 "mate" => {
                     p.mate = true;
@@ -719,6 +728,18 @@ impl UsiEngine {
     /// for it and parks the searcher back on the engine.
     fn start_search(&mut self, depth: u32, budget_ms: u64, ponder: bool, params: GoParams) {
         let mut searcher = self.searcher.take().unwrap_or_default();
+        // Stockfish-style `go searchmoves`: restrict the root list. Tokens that
+        // do not parse in this position are simply ignored.
+        if !params.searchmoves.is_empty() {
+            let allowed: Vec<_> = params
+                .searchmoves
+                .iter()
+                .filter_map(|token| parse_move(&self.board, token).ok())
+                .collect();
+            if !allowed.is_empty() {
+                searcher.set_root_moves(&allowed);
+            }
+        }
         let mut board = self.board.clone();
         board.set_network(self.net.clone());
         let threads = self.threads;
@@ -1298,5 +1319,33 @@ mod tests {
         let (mut e, sink) = engine();
         e.handle("nonsense command here");
         assert_eq!(sink.lines(), [] as [std::string::String; 0]);
+    }
+    #[test]
+    fn go_searchmoves_restricts_root_and_bestmove_is_in_the_list() {
+        let (mut e, sink) = engine();
+        e.handle("position startpos");
+        // Two legal moves from the initial position.
+        let board = e.board.clone();
+        let legal = crate::Board::legal_moves(&board);
+        assert!(legal.len() >= 2);
+        let a = usi_move_str(&legal[0].inner);
+        let b = usi_move_str(&legal[1].inner);
+        e.handle(&format!("go depth 1 searchmoves {a} {b}"));
+        e.wait_search();
+        let lines = sink.lines();
+        let best = lines
+            .iter()
+            .find(|l| l.starts_with("bestmove "))
+            .expect("bestmove");
+        let picked = best
+            .strip_prefix("bestmove ")
+            .unwrap()
+            .split_whitespace()
+            .next()
+            .unwrap();
+        assert!(
+            picked == a || picked == b,
+            "bestmove {picked} must be one of {a}/{b}"
+        );
     }
 }

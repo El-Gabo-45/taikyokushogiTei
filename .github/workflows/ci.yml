@@ -277,6 +277,9 @@ jobs:
       - name: Build the nnue tool
         run: cargo build --release --bin nnue
 
+      - name: Report training device (CPU-only torch in CI)
+        run: make nnue-device
+
       - name: Python pipeline tests (includes the Rust/Python architecture hash check)
         run: NNUE_BIN=target/release/nnue python -m unittest training/test_pipeline.py -v
 

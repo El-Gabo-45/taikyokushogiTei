@@ -52,12 +52,20 @@ def targets(d, ids, lam, sc, device: str | torch.device = "cpu"):
 
 
 def resolve_device(name):
-    """`auto` picks cuda when available; an explicit `cuda` errors if missing."""
+    """`auto` picks cuda, then Apple MPS, then cpu; explicit devices must exist."""
     if name == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
     d = torch.device(name)
     if d.type == "cuda" and not torch.cuda.is_available():
         raise SystemExit("--device cuda requested but torch.cuda is not available")
+    if d.type == "mps" and not (
+        getattr(torch.backends, "mps", None) and torch.backends.mps.is_available()
+    ):
+        raise SystemExit("--device mps requested but torch.backends.mps is not available")
     return d
 
 
@@ -119,8 +127,8 @@ def main():
     ap.add_argument("--allow-clip", action="store_true")
     ap.add_argument("--checkpoint", default=None, help="save the float model here after every epoch")
     ap.add_argument("--checkpoint-best", default=None, help="save the best-validation state here")
-    ap.add_argument("--device", default="auto", choices=["cpu", "cuda", "auto"],
-                    help="training device (auto = cuda when available)")
+    ap.add_argument("--device", default="auto", choices=["cpu", "cuda", "mps", "auto"],
+                    help="training device (auto = cuda, then Apple MPS, then cpu)")
     ap.add_argument("--device-check", action="store_true",
                     help="compare one batch cpu vs the chosen device before training")
     args = ap.parse_args()

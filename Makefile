@@ -10,8 +10,12 @@ NET    ?= nets/tk.tkn
 EPOCHS ?= 10
 PY     ?= python3
 ZSTD   ?= zstd
+# Training device: auto (cuda -> mps -> cpu), or force cpu/cuda/mps.
+DEVICE ?= auto
+# CUDA wheel index used by `make nnue-gpu-setup` (override for your driver).
+GPU_INDEX ?= https://download.pytorch.org/whl/cu124
 
-.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-parity nnue-bench nnue-test
+.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-parity nnue-bench nnue-test nnue-gpu-setup nnue-device
 
 nnue-data:
 	cargo run --release --bin selfplay -- $(GAMES) $(DEPTH) $(MAXMV) $(WORKERS) $(TIMEMS) --out $(DATA) --opening-plies $(OPEN)
@@ -25,7 +29,14 @@ nnue-buckets:
 
 nnue-train:
 	mkdir -p $(dir $(NET))
-	$(PY) training/train.py $(DATA) --out $(NET) --epochs $(EPOCHS)
+	$(PY) training/train.py $(DATA) --out $(NET) --epochs $(EPOCHS) --device $(DEVICE)
+
+# GPU setup / detection for the NNUE trainer (the Rust engine stays CPU-only).
+nnue-gpu-setup:
+	bash scripts/setup_gpu.sh $(GPU_INDEX)
+
+nnue-device:
+	cd training && $(PY) device_info.py
 
 nnue-pack:
 	cd $(dir $(NET)) && $(ZSTD) -19 -f $(notdir $(NET)) -o $(notdir $(NET)).zst && sha256sum $(notdir $(NET)).zst > $(notdir $(NET)).zst.sha256

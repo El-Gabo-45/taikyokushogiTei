@@ -117,6 +117,8 @@ pub struct Searcher {
     /// they do not all walk the same tree in lockstep. The master keeps 0
     /// (pure best-first ordering); worker `i` uses `i`.
     order_offset: usize,
+    /// Optional packed root-move whitelist (`go searchmoves`, from Stockfish).
+    root_filter: Option<Vec<u32>>,
 }
 
 /// Print a one-line deepening trace (`RPS_DEBUG`).
@@ -261,6 +263,7 @@ impl Searcher {
             pool: SearchPool::new(),
             root: RootState::new(),
             order_offset: 0,
+            root_filter: None,
         }
     }
 
@@ -285,6 +288,17 @@ impl Searcher {
             pool: SearchPool::new(),
             root: RootState::new(),
             order_offset: 0,
+            root_filter: self.root_filter.clone(),
+        }
+    }
+
+    /// Restrict the next search to these root moves (Stockfish `searchmoves`).
+    /// Unknown/illegal tokens are ignored; pass an empty slice to clear.
+    pub fn set_root_moves(&mut self, moves: &[crate::Move]) {
+        if moves.is_empty() {
+            self.root_filter = None;
+        } else {
+            self.root_filter = Some(moves.iter().map(|m| ordering::m_pack(&m.inner)).collect());
         }
     }
 
@@ -300,6 +314,12 @@ impl Searcher {
     #[must_use]
     pub fn hash_mb(&self) -> usize {
         self.tt.size_mb()
+    }
+
+    /// Approximate TT occupancy in per mille (`hashfull`, Stockfish-style).
+    #[must_use]
+    pub fn hashfull(&self) -> u16 {
+        self.tt.hashfull()
     }
 
     /// Drop everything this searcher learned — the "new game" hook: the
@@ -386,6 +406,8 @@ impl Searcher {
         on_iter: IterMutFn<'_>,
     ) -> (SearchResult, u32) {
         let mut state = SearchState::new(board);
+        // Apply (and consume) a one-shot `searchmoves` filter set by the caller.
+        self.root.set_filter(self.root_filter.take());
         self.tt.new_generation();
         ordering::piece_vals();
 
@@ -512,6 +534,12 @@ pub fn set_hash_mb(mb: usize) -> usize {
 #[must_use]
 pub fn hash_mb() -> usize {
     DEFAULT_SEARCHER.with(|s| s.borrow().hash_mb())
+}
+
+/// Approximate TT occupancy in per mille for the default searcher.
+#[must_use]
+pub fn hashfull() -> u16 {
+    DEFAULT_SEARCHER.with(|s| s.borrow().hashfull())
 }
 
 /// Search `board` with the calling thread's default [`Searcher`] using Lazy
