@@ -229,6 +229,9 @@ fn adopt_deeper_worker_result(
 }
 
 #[cfg(test)]
+    // Test-only: panicking is the intended failure mode.
+    #[allow(clippy::unwrap_used, clippy::expect_used,             clippy::too_many_lines,
+            clippy::cognitive_complexity, clippy::type_complexity)]
 mod tests {
     use super::*;
     use crate::search::SearchResult;
@@ -278,7 +281,7 @@ mod tests {
         // to a real move of this position.
         let shared = SharedBest::new();
         shared.publish(5, 4242, crate::search::ordering::m_pack(target));
-        let out = adopt_deeper_worker_result(&board, master.clone(), 3, &shared);
+        let out = adopt_deeper_worker_result(&board, master, 3, &shared);
         assert_eq!(out.score, 4242);
         let m = out.best_move.expect("adopted move must exist");
         assert_eq!(
@@ -289,7 +292,7 @@ mod tests {
         // The same depth as the master does not count as "deeper".
         let shared = SharedBest::new();
         shared.publish(3, 999, crate::search::ordering::m_pack(target));
-        let out = adopt_deeper_worker_result(&board, master.clone(), 3, &shared);
+        let out = adopt_deeper_worker_result(&board, master, 3, &shared);
         assert_eq!(out.score, 10, "the master's own result must stand");
     }
 

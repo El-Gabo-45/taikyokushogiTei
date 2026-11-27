@@ -28,8 +28,7 @@ fn main() {
         .output()
         .ok()
         .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".into());
+        .map_or_else(|| "unknown".into(), |s| s.trim().to_string());
     println!("cargo:rustc-env=TAIKYOKU_RUSTC={rustc}");
     println!(
         "cargo:rustc-env=TAIKYOKU_BUILD_TARGET={}",

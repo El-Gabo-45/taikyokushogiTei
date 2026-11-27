@@ -767,6 +767,19 @@ fn status(board: &Board, opt: &Options) {
     println!("tsfen:        {}", board.to_tsfen());
 }
 
+/// Display-only `u64 -> f64` helper (node counts and microsecond timings are
+/// far below 2^53, so the cast is exact for every value produced here).
+#[allow(clippy::cast_precision_loss)]
+fn display_f64(v: u64) -> f64 {
+    v as f64
+}
+
+/// Same as [`display_f64`] for `u128` microsecond timings.
+#[allow(clippy::cast_precision_loss)]
+fn display_f64_u128(v: u128) -> f64 {
+    v as f64
+}
+
 fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<String>) -> bool {
     let line = line.trim();
     if line.is_empty() {
@@ -1176,7 +1189,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 depth,
                 n,
                 secs * 1000.0,
-                n as f64 / secs / 1e6
+                display_f64(n) / secs / 1e6
             );
         }
         "bench" => {
@@ -1189,12 +1202,12 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
             for _ in 0..ITERS {
                 let _ = board.legal_moves();
             }
-            let mg = t.elapsed().as_micros() as f64 / ITERS as f64;
+            let mg = display_f64_u128(t.elapsed().as_micros()) / ITERS as f64;
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
                 let _ = board.evaluate();
             }
-            let ev = t.elapsed().as_micros() as f64 / ITERS as f64;
+            let ev = display_f64_u128(t.elapsed().as_micros()) / ITERS as f64;
             let t = std::time::Instant::now();
             for _ in 0..ITERS {
                 let m = board.legal_moves().into_iter().next();
@@ -1203,7 +1216,7 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                     board.undo();
                 }
             }
-            let au = t.elapsed().as_micros() as f64 / ITERS as f64;
+            let au = display_f64_u128(t.elapsed().as_micros()) / ITERS as f64;
             println!(
                 "movegen {mg:.1}us  eval {ev:.1}us  apply+undo {au:.1}us  ({ITERS} iters each)"
             );
@@ -1456,7 +1469,7 @@ fn main() {
             n,
             nodes,
             secs * 1000.0,
-            nodes as f64 / secs / 1e6
+            display_f64(nodes) / secs / 1e6
         );
         return;
     }

@@ -570,6 +570,9 @@ pub fn run_sprt(cfg: &MatchConfig, sprt: &Sprt) -> SprtReport {
 // ============================================================
 
 #[cfg(test)]
+    // Test-only: panicking is the intended failure mode.
+    #[allow(clippy::unwrap_used, clippy::expect_used,             clippy::too_many_lines,
+            clippy::cognitive_complexity, clippy::type_complexity)]
 mod tests {
     use super::*;
 
@@ -777,11 +780,11 @@ mod tests {
     fn match_callback_receives_every_game() {
         // See play_game_returns_valid_outcome: run alone (crate::test_lock).
         use std::sync::atomic::{AtomicUsize, Ordering};
-        let _serial = crate::test_lock::lock();
         static COUNT: AtomicUsize = AtomicUsize::new(0);
         fn cb(_g: usize, _r: GameResult, _a_white: bool) {
             COUNT.fetch_add(1, Ordering::SeqCst);
         }
+        let _serial = crate::test_lock::lock();
         let cfg = MatchConfig {
             games: 3,
             a: EngineConfig::depth(1),

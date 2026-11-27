@@ -67,6 +67,13 @@ impl Rng {
     }
 }
 
+/// Display-only `u64 -> f64` helper. File sizes and timings are far below
+/// 2^53, so the cast is exact for every value this tool can produce.
+#[allow(clippy::cast_precision_loss)]
+fn display_f64(v: u64) -> f64 {
+    v as f64
+}
+
 fn die(msg: impl std::fmt::Display) -> ! {
     eprintln!("error: {msg}");
     std::process::exit(2);
@@ -180,7 +187,7 @@ fn cmd_info(path: &str) {
         })
         .unwrap_or(false);
     let net = load(path);
-    println!("file        {path} ({:.1} MB)", size as f64 / 1e6);
+    println!("file        {path} ({:.1} MB)", display_f64(size) / 1e6);
     println!(
         "format      TKN1 v2{}",
         if compressed { " (zstd-compressed)" } else { "" }

@@ -204,7 +204,7 @@ pub async fn get_config(State(app): State<Arc<crate::server::AppState>>) -> Json
         max_sessions: app
             .sessions
             .as_ref()
-            .map_or(crate::server::DEFAULT_MAX_SESSIONS, |m| m.max()),
+            .map_or(crate::server::DEFAULT_MAX_SESSIONS, crate::server::SessionMap::max),
         sessions,
         anon_policy: app.anon_policy().as_str(),
         log_capacity: app.logs.capacity(),

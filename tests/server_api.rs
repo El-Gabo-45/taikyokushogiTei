@@ -1,3 +1,8 @@
+// In tests, panic-on-failure is intentional: unwrap/expect turn a broken
+// invariant into a failing test instead of silently passing.
+#![allow(clippy::unwrap_used, clippy::expect_used,         clippy::cognitive_complexity,
+        clippy::too_many_lines, clippy::type_complexity)]
+
 //! Integration tests for the HTTP API.
 //!
 //! The router is driven in-process with `tower::ServiceExt::oneshot`, so the

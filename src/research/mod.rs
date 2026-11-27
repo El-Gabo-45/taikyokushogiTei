@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -413,6 +414,9 @@ pub(crate) mod testdb {
 }
 
 #[cfg(test)]
+    // Test-only: panicking is the intended failure mode.
+    #[allow(clippy::unwrap_used, clippy::expect_used,             clippy::too_many_lines,
+            clippy::cognitive_complexity, clippy::type_complexity)]
 mod tests {
     use super::*;
 

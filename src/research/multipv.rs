@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![allow(clippy::all)]
 //! `nnue multipv` — `MultiPV`: the best N candidate moves, compared.
 //!

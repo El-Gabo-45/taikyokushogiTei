@@ -1,3 +1,8 @@
+// In tests, panic-on-failure is intentional: unwrap/expect turn a broken
+// invariant into a failing test instead of silently passing.
+#![allow(clippy::unwrap_used, clippy::expect_used,         clippy::cognitive_complexity,
+        clippy::too_many_lines, clippy::type_complexity)]
+
 //! Production smoke tests for the Taikyoku Shogi engine library.
 //!
 //! These tests exercise the public API directly, verifying the audit-fix items:

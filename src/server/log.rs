@@ -46,6 +46,10 @@ pub struct LogBuffer {
 impl LogBuffer {
     /// Create a buffer holding at most `capacity` entries. When `file` is set,
     /// every entry is also appended as one JSON line.
+    ///
+    /// # Errors
+    ///
+    /// Returns the underlying I/O error if the JSONL file cannot be opened.
     pub fn new(capacity: usize, file: Option<&Path>) -> std::io::Result<Self> {
         let file = match file {
             Some(path) => Some(Mutex::new(
@@ -72,8 +76,7 @@ impl LogBuffer {
         let entry = LogEntry {
             ts_ms: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0),
+                .map_or(0, |d| d.as_millis()),
             level,
             request_id: request_id.to_owned(),
             target,
@@ -137,7 +140,7 @@ impl LogBuffer {
 
     /// Number of entries currently buffered.
     pub fn len(&self) -> usize {
-        self.entries.lock().map(|e| e.len()).unwrap_or(0)
+        self.entries.lock().map_or(0, |e| e.len())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -146,6 +149,7 @@ impl LogBuffer {
 }
 
 impl LogLevel {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Error => "ERROR",
@@ -156,6 +160,7 @@ impl LogLevel {
     }
 
     /// Parse a level name case-insensitively (`error`, `warn`, `info`, `debug`).
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
             "error" => Some(Self::Error),

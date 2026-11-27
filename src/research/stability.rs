@@ -128,6 +128,9 @@ fn print_ladder(
 }
 
 #[cfg(test)]
+    // Test-only: panicking is the intended failure mode.
+    #[allow(clippy::unwrap_used, clippy::expect_used,             clippy::too_many_lines,
+            clippy::cognitive_complexity, clippy::type_complexity)]
 mod tests {
     /// One search must yield one ladder entry per completed depth, and the
     /// ladder must be depth-ordered and capped by the requested depth.

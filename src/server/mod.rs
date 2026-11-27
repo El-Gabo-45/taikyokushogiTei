@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 #![allow(clippy::all)]
 //! HTTP server + REST API for the Taikyoku Shogi engine.
 //!
@@ -265,6 +266,10 @@ pub fn new_state_with_network(net: Option<Arc<Network>>) -> Arc<AppState> {
 
 /// [`new_state`] with fully explicit configuration (tests and embedders that
 /// must not depend on the process environment).
+///
+/// # Panics
+///
+/// Panics when `TAIKYOKU_LOG_FILE` cannot be opened for appending.
 #[must_use]
 pub fn new_state_with_config(net: Option<Arc<Network>>, cfg: AppStateConfig) -> Arc<AppState> {
     let sessions = cfg.sessions.then(|| SessionMap {
@@ -772,8 +777,7 @@ async fn request_context(State(app): State<Arc<AppState>>, req: Request, next: N
                 && s.bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         })
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("req-{:016x}", rand::random::<u64>()));
+        .map_or_else(|| format!("req-{:016x}", rand::random::<u64>()), str::to_owned);
 
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
@@ -945,6 +949,7 @@ async fn sessions_middleware(
 }
 
 /// Entries kept in the in-memory log ring (`TAIKYOKU_LOG_CAPACITY`).
+#[must_use]
 pub fn log_capacity() -> usize {
     std::env::var("TAIKYOKU_LOG_CAPACITY")
         .ok()
@@ -1060,12 +1065,12 @@ async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
             .await
-            .expect("failed to install Ctrl+C handler");
+            .unwrap_or_else(|e| panic!("failed to install Ctrl+C handler: {e}"));
     };
     #[cfg(unix)]
     let terminate = async {
         tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
+            .unwrap_or_else(|e| panic!("failed to install SIGTERM handler: {e}"))
             .recv()
             .await;
     };
