@@ -69,6 +69,7 @@ function syncControlsFromSettings(): void {
   const zoom = $<HTMLInputElement>('zoom-range');
   zoom.value = String(Math.round(state.settings.zoom * 100));
   $('zoom-label').textContent = `${Math.round(state.settings.zoom * 100)}%`;
+  $('btn-eval-bar').setAttribute('aria-pressed', String(state.settings.showEvalBar));
 }
 
 $('btn-new').addEventListener('click', () => {
@@ -86,6 +87,10 @@ $('btn-auto').addEventListener('click', () => {
 
 $('btn-kanji').addEventListener('click', () => state.toggleKanji());
 $('btn-flip').addEventListener('click', () => state.toggleFlip());
+$('btn-eval-bar').addEventListener('click', () => {
+  state.toggleEvalBar();
+  syncControlsFromSettings();
+});
 $('btn-analyze').addEventListener('click', () => void state.analyze());
 $('btn-ai-move').addEventListener('click', () => void state.aiMove());
 

@@ -47,6 +47,7 @@
           <button type="button" id="btn-analyze" aria-label="Analyze without moving">Analyze</button>
           <button type="button" id="btn-kanji" aria-pressed="true" aria-label="Kanji / English (K)">Kanji</button>
           <button type="button" id="btn-flip" aria-pressed="false" aria-label="Flip board (F)">Flip</button>
+          <button type="button" id="btn-eval-bar" aria-pressed="true" aria-label="Toggle evaluation bar">Eval bar</button>
           <span role="separator" aria-orientation="vertical" style="opacity: 0"></span>
           <span class="zoom">
             <label for="zoom-range">Zoom</label>
@@ -63,6 +64,11 @@
       <main class="main" id="content">
         <div class="board-wrap">
           <canvas id="board-canvas"></canvas>
+          <div id="eval-bar" class="eval-bar" role="img" aria-label="Material balance">
+            <div class="eval-bar-black" id="eval-bar-black"></div>
+            <div class="eval-bar-white" id="eval-bar-white"></div>
+            <span class="eval-bar-label" id="eval-bar-label">0</span>
+          </div>
         </div>
 
         <aside class="sidebar">

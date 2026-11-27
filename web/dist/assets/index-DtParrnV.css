@@ -211,6 +211,49 @@ aside.sidebar {
   padding-right: 2px;
 }
 
+/* Optional evaluation bar (Chess.com style): Black share on the left,
+   White on the right; flips with the board orientation. */
+.eval-bar {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 16px;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.eval-bar[hidden] {
+  display: none;
+}
+
+.eval-bar.flipped {
+  flex-direction: row-reverse;
+}
+
+.eval-bar-black {
+  height: 100%;
+  background: #1b1b1f;
+  transition: width 180ms ease;
+}
+
+.eval-bar-white {
+  height: 100%;
+  background: #f0f0f5;
+  transition: width 180ms ease;
+}
+
+.eval-bar-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  mix-blend-mode: difference;
+  pointer-events: none;
+}
+
 /* Components — Taikyoku Shogi Web GUI */
 
 /* Panels */

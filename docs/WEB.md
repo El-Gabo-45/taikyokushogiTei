@@ -102,6 +102,11 @@ cd web && npm install && npm run build && cd ..
   36×36 board is outside the PGN standard, so the PGN uses coordinate moves
   and a `MoveFormat` tag.
 - **TSFEN panel**: export, copy, download and load positions
+- **Optional evaluation bar** (Chess.com style): a thin bar under the board
+  shows the material balance — Black's share on the left, White's on the
+  right, flipping with the board. Toggle it with the **Eval bar** button
+  (`showEvalBar` setting); the engine's material score is in pawn units
+  (500 = one pawn) and the bar saturates at ±10,000.
 - **Flip board**, **zoom slider**, kanji/English glyphs, last-move and hover
   highlights, responsive layout, keyboard shortcuts (N/U/A/K/F/±/Space)
 - **New Game**, **Undo** (multi-ply via API), **Auto** play and **AI Move**

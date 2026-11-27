@@ -57,6 +57,20 @@ export function formatScore(score: number): string {
   return score > 0 ? `+${score}` : String(score);
 }
 
+/**
+ * Fraction of the evaluation bar occupied by Black, in [0, 100].
+ *
+ * `score` is the engine's material score from Black's perspective (pawn =
+ * 500). `cap` is the score that fills the bar completely; Taikyoku pieces
+ * range up to ~20,000, so 10,000 gives a readable bar for normal games while
+ * still saturating on huge material swings.
+ */
+export function evalBarShare(score: number, cap = 10_000): number {
+  if (!Number.isFinite(score)) return 50;
+  const t = Math.max(-1, Math.min(1, score / cap));
+  return 50 + t * 50;
+}
+
 /** Compact node counts: 12, 4.3k, 1.2M. */
 export function formatNodes(nodes: number): string {
   if (nodes >= 1_000_000) return `${(nodes / 1_000_000).toFixed(1)}M`;

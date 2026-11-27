@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Taikyoku Shogi — Engine Web GUI</title>
-    <script type="module" crossorigin src="/assets/index-CZ6EF1lJ.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CazqPqdv.css">
+    <script type="module" crossorigin src="/assets/index-DNpG3c6D.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DtParrnV.css">
   </head>
   <body>
     <a href="#content" class="skip-link">Skip to main content</a>
@@ -49,6 +49,7 @@
           <button type="button" id="btn-analyze" aria-label="Analyze without moving">Analyze</button>
           <button type="button" id="btn-kanji" aria-pressed="true" aria-label="Kanji / English (K)">Kanji</button>
           <button type="button" id="btn-flip" aria-pressed="false" aria-label="Flip board (F)">Flip</button>
+          <button type="button" id="btn-eval-bar" aria-pressed="true" aria-label="Toggle evaluation bar">Eval bar</button>
           <span role="separator" aria-orientation="vertical" style="opacity: 0"></span>
           <span class="zoom">
             <label for="zoom-range">Zoom</label>
@@ -65,6 +66,11 @@
       <main class="main" id="content">
         <div class="board-wrap">
           <canvas id="board-canvas"></canvas>
+          <div id="eval-bar" class="eval-bar" role="img" aria-label="Material balance">
+            <div class="eval-bar-black" id="eval-bar-black"></div>
+            <div class="eval-bar-white" id="eval-bar-white"></div>
+            <span class="eval-bar-label" id="eval-bar-label">0</span>
+          </div>
         </div>
 
         <aside class="sidebar">

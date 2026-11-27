@@ -38,6 +38,8 @@ export interface Settings {
   zoom: number;
   /** Whether the AI loop keeps playing automatically. */
   autoPlay: boolean;
+  /** Show the material/evaluation bar under the board (Chess.com style). */
+  showEvalBar: boolean;
 }
 
 export interface Inspection {
@@ -70,6 +72,7 @@ export class GameState {
     flip: false,
     zoom: DEFAULT_ZOOM,
     autoPlay: false,
+    showEvalBar: true,
   };
 
   /** Engine metadata, fetched once at startup. */
@@ -218,6 +221,12 @@ export class GameState {
   /** Rotate the board 180°. */
   toggleFlip(): void {
     this.settings.flip = !this.settings.flip;
+    this.notify();
+  }
+
+  /** Show/hide the evaluation bar under the board. */
+  toggleEvalBar(): void {
+    this.settings.showEvalBar = !this.settings.showEvalBar;
     this.notify();
   }
 

@@ -6,7 +6,14 @@
  */
 
 import type { GameState } from '../game/state';
-import { chartPoints, describeResult, formatNodes, formatScore, sideName } from '../game/view';
+import {
+  chartPoints,
+  describeResult,
+  evalBarShare,
+  formatNodes,
+  formatScore,
+  sideName,
+} from '../game/view';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
@@ -54,6 +61,22 @@ export function updatePanels(state: GameState): void {
     `${sideName(board.side_to_move)} to move · ${board.black_pieces} vs ${board.white_pieces} pieces · move ${board.move_number}`,
   );
   setText('busy', state.busy ? '● thinking…' : '');
+
+  // ── Optional evaluation bar ────────────────────────────────
+  const evalBar = $('eval-bar');
+  if (evalBar) {
+    evalBar.hidden = !state.settings.showEvalBar;
+    if (state.settings.showEvalBar) {
+      const blackPct = evalBarShare(board.material_score);
+      const black = $('eval-bar-black');
+      const white = $('eval-bar-white');
+      if (black) black.style.width = `${blackPct}%`;
+      if (white) white.style.width = `${100 - blackPct}%`;
+      evalBar.classList.toggle('flipped', state.settings.flip);
+      evalBar.setAttribute('aria-label', `Material balance: Black ${formatScore(board.material_score)}`);
+      setText('eval-bar-label', formatScore(board.material_score));
+    }
+  }
 
   // ── Engine panel ──────────────────────────────────────────
   const search = state.lastSearch;

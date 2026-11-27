@@ -6,6 +6,7 @@ import {
   chartPoints,
   clampZoom,
   describeResult,
+  evalBarShare,
   formatNodes,
   formatScore,
   fromViewSquare,
@@ -100,5 +101,22 @@ describe('material chart', () => {
     const points = chartPoints([42], 100, 50);
     expect(points).toHaveLength(1);
     expect(points[0].x).toBe(3);
+  });
+});
+
+describe('evaluation bar', () => {
+  it('is centred on an equal position', () => {
+    expect(evalBarShare(0)).toBe(50);
+  });
+
+  it('gives Black more of the bar for a positive (Black) score', () => {
+    expect(evalBarShare(5_000)).toBe(75);
+    expect(evalBarShare(-5_000)).toBe(25);
+  });
+
+  it('saturates at the cap and tolerates non-finite input', () => {
+    expect(evalBarShare(50_000)).toBe(100);
+    expect(evalBarShare(-50_000)).toBe(0);
+    expect(evalBarShare(Number.NaN)).toBe(50);
   });
 });

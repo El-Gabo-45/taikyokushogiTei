@@ -5856,6 +5856,18 @@ function describeResult(result) {
 function formatScore(score) {
 	return score > 0 ? `+${score}` : String(score);
 }
+/**
+* Fraction of the evaluation bar occupied by Black, in [0, 100].
+*
+* `score` is the engine's material score from Black's perspective (pawn =
+* 500). `cap` is the score that fills the bar completely; Taikyoku pieces
+* range up to ~20,000, so 10,000 gives a readable bar for normal games while
+* still saturating on huge material swings.
+*/
+function evalBarShare(score, cap = 1e4) {
+	if (!Number.isFinite(score)) return 50;
+	return 50 + Math.max(-1, Math.min(1, score / cap)) * 50;
+}
 /** Compact node counts: 12, 4.3k, 1.2M. */
 function formatNodes(nodes) {
 	if (nodes >= 1e6) return `${(nodes / 1e6).toFixed(1)}M`;
@@ -5890,7 +5902,8 @@ var GameState = class {
 		useKanji: true,
 		flip: false,
 		zoom: 1,
-		autoPlay: false
+		autoPlay: false,
+		showEvalBar: true
 	};
 	/** Engine metadata, fetched once at startup. */
 	engineInfo = null;
@@ -6017,6 +6030,11 @@ var GameState = class {
 	/** Rotate the board 180°. */
 	toggleFlip() {
 		this.settings.flip = !this.settings.flip;
+		this.notify();
+	}
+	/** Show/hide the evaluation bar under the board. */
+	toggleEvalBar() {
+		this.settings.showEvalBar = !this.settings.showEvalBar;
 		this.notify();
 	}
 	setZoom(zoom) {
@@ -6983,6 +7001,20 @@ function updatePanels(state) {
 	}
 	setText("status", `${sideName(board.side_to_move)} to move · ${board.black_pieces} vs ${board.white_pieces} pieces · move ${board.move_number}`);
 	setText("busy", state.busy ? "● thinking…" : "");
+	const evalBar = $$1("eval-bar");
+	if (evalBar) {
+		evalBar.hidden = !state.settings.showEvalBar;
+		if (state.settings.showEvalBar) {
+			const blackPct = evalBarShare(board.material_score);
+			const black = $$1("eval-bar-black");
+			const white = $$1("eval-bar-white");
+			if (black) black.style.width = `${blackPct}%`;
+			if (white) white.style.width = `${100 - blackPct}%`;
+			evalBar.classList.toggle("flipped", state.settings.flip);
+			evalBar.setAttribute("aria-label", `Material balance: Black ${formatScore(board.material_score)}`);
+			setText("eval-bar-label", formatScore(board.material_score));
+		}
+	}
 	const search = state.lastSearch;
 	setText("search-depth", search ? `d${search.depth}` : "—");
 	setText("search-score", search ? formatScore(search.score) : "—");
@@ -7161,6 +7193,7 @@ function syncControlsFromSettings() {
 	const zoom = $("zoom-range");
 	zoom.value = String(Math.round(state.settings.zoom * 100));
 	$("zoom-label").textContent = `${Math.round(state.settings.zoom * 100)}%`;
+	$("btn-eval-bar").setAttribute("aria-pressed", String(state.settings.showEvalBar));
 }
 $("btn-new").addEventListener("click", () => {
 	readSettingsFromControls();
@@ -7174,6 +7207,10 @@ $("btn-auto").addEventListener("click", () => {
 });
 $("btn-kanji").addEventListener("click", () => state.toggleKanji());
 $("btn-flip").addEventListener("click", () => state.toggleFlip());
+$("btn-eval-bar").addEventListener("click", () => {
+	state.toggleEvalBar();
+	syncControlsFromSettings();
+});
 $("btn-analyze").addEventListener("click", () => void state.analyze());
 $("btn-ai-move").addEventListener("click", () => void state.aiMove());
 $("zoom-range").addEventListener("input", (event) => {
