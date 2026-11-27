@@ -7,7 +7,7 @@
 #   1. rustup update stable        -> toolchain sync with CI (anti clippy-drift)
 #   2. cargo fmt --check           -> 'test' job
 #   3. cargo clippy -D warnings    -> 'test' job
-#   4. cargo check --all-targets   -> 'test' job
+#   4. cargo check --all-targets   -> 'test' job (+ GPU feature build, compile only)
 #   5. USI protocol smoke test     -> 'test' job
 #   6. lib/doc/smoke/server_api    -> 'test' job
 #   7. web (vitest/build/lint)     -> 'web-build' job (skipped without node_modules)
@@ -67,6 +67,9 @@ cargo clippy --all-targets --features server -- -D warnings
 
 step "cargo check --all-targets --features server"
 cargo check --all-targets --features server
+
+step "cargo check GPU features (compile only, no GPU needed)"
+cargo check --all-targets --features "server,gpu-detect,gpu-wgpu"
 
 step "USI protocol smoke test"
 cargo build --bin taikyokushogi-usi

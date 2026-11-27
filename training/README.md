@@ -35,7 +35,8 @@ data they encode are a separate work licensed under the Open Database License
 | `dataset.py` | Reader for the `TKD1` self-play files (`samples_*.bin`) |
 | `features.py` | Vectorised feature indices; must match `Network::feature_index` in Rust |
 | `model.py` | PyTorch model (`TKNet`); float forward pass mirrors the integer inference |
-| `train.py` | Training loop, label gate, validation and final export |
+| `train.py` | Training loop, label gate, validation and final export (`--device cpu|cuda|mps|auto`) |
+| `device_info.py` | Reports torch version, CUDA/MPS availability and the device `auto` would choose (`make nnue-device`) |
 | `export.py` | Quantises a trained model and writes the TKN1 v2 file |
 | `tkn.py` | TKN1 v2 reader/writer (layout documented in the module docstring) |
 | `quantized_forward.py` | Pure-Python integer reference used by the parity gate |
@@ -88,8 +89,19 @@ python3 -m pip install -r training/requirements-lock.txt \
     --extra-index-url https://pypi.org/simple
 ```
 
-The trainer currently runs on **CPU**. The pilot network was trained in about
-6 minutes on one core; a GPU is not required.
+### Training devices
+
+The PyTorch trainer runs on **CPU, CUDA or Apple MPS**: `train.py --device
+auto` picks CUDA → MPS → CPU. Run `make nnue-device` to see what `auto` would
+choose, and `make nnue-gpu-setup` to install a CUDA-enabled torch on an NVIDIA
+machine (the pinned CPU lockfile is used for reproducible CI runs). A pilot
+network trains in about 6 minutes on one CPU core.
+
+For a GPU that PyTorch cannot use (AMD on RADV/Vulkan, Intel, Metal), the
+Rust trainer runs autodiff on `burn`/Wgpu:
+`make nnue-gpu-train NET=nets/gpu_nnue.tkn GPU_SAMPLES=2048`. It writes the
+same TKN1 v2 format — verify any network with `nnue verify <file>`. See
+[`docs/NNUE.md`](../docs/NNUE.md#training-on-any-gpu-with-burnwgpu).
 
 ## Workflow
 
@@ -99,7 +111,9 @@ The `Makefile` wraps the whole pipeline:
 make nnue-data      # self-play -> data/samples_*.bin (TKD1)
 make nnue-gates     # label-unit gate
 make nnue-buckets   # calibrate thresholds, rewrite rules/nnue_arch.json, rebuild
-make nnue-train     # train + export nets/tk.tkn
+make nnue-train     # train + export nets/tk.tkn (device from DEVICE=auto)
+make nnue-device    # report CUDA/MPS availability
+make nnue-gpu-train # alternative: burn/Wgpu trainer (any Vulkan/Metal GPU)
 make nnue-parity    # Rust vs Python integer parity (normal + thinned positions)
 make nnue-bench     # evaluations/s and apply+undo overhead
 make nnue-test      # Rust tests + Python pipeline tests

@@ -23,9 +23,12 @@ src/
   selfplay.rs     — Self-play game generation for NNUE training
   usi.rs          — USI (Universal Shogi Interface) front-end
   python.rs       — PyO3 bindings (feature-gated)
+  gpu.rs          — wgpu/WebGPU adapter detection (feature gpu-detect)
+  gpu_train.rs    — burn/Wgpu autodiff NNUE trainer (feature gpu-wgpu)
   debugging/      — Debug helpers for eval and search
   main.rs         — axum HTTP server (+ web GUI); flags: --sessions/--bind/--net
   server/         — axum router, handlers, JSON types (library module; shared or per-session games; driven by tests/server_api.rs)
+    log.rs        — Structured log ring + optional JSONL file (GET /api/logs)
   nnue_main.rs    — NNUE tool entry point (bin nnue; see docs/NNUE.md)
   cli.rs          — Interactive CLI REPL
   debug_cli.rs    — Minimal one-shot search harness
@@ -102,6 +105,19 @@ prise.
 - Adding a new search technique → `params.rs` (toggle) + relevant file (implementation)
 - Tuning search constants → `params.rs`
 - Fixing search bugs → the relevant algorithm file (`pvs.rs`, `root.rs`, etc.)
+
+## `src/gpu.rs` / `src/gpu_train.rs` — GPU support (feature-gated)
+
+| File | Contents |
+| ---- | ---------- |
+| `gpu.rs` | `Adapter`, `detect()` / `detect_or_empty()` / `report()` via `wgpu` (Vulkan, Metal, DX12, GL). Feature `gpu-detect`; served by `GET /api/gpu` and `nnue gpu`. |
+| `gpu_train.rs` | TKD1 reader, dense feature builder, `NnueModel<B>` (burn `Param`s matching TKN1 v2), Adam loop on `Autodiff<Wgpu>`, quantisation and `Network` export. Feature `gpu-wgpu`; `nnue gpu-train`. |
+
+**Rule**: GPU code is gated with `#[cfg(feature = …)]`. The default build and
+CI's `--features server` build must stay green without any GPU dependency;
+add GPU-specific checks in a separate job/step, not in the default gate.
+`rules/nnue_arch.json` is the source of truth for both trainers (Python and
+burn) — never hard-code dimensions here.
 
 ## `src/usi.rs` — USI protocol front-end
 

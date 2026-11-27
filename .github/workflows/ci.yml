@@ -53,6 +53,11 @@ jobs:
       - name: Compile all targets
         run: cargo check --all-targets --features server
 
+      # GPU code is feature-gated: make sure the optional build stays valid
+      # even though CI runners have no GPU to execute on.
+      - name: Check GPU feature build (compile only)
+        run: cargo check --all-targets --features "server,gpu-detect,gpu-wgpu"
+
       - name: USI protocol smoke test
         run: |
           cargo build --bin taikyokushogi-usi
