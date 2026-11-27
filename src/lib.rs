@@ -1131,3 +1131,6 @@ fn taikyokushogi(m: &Bound<'_, PyModule>) -> PyResult<()> {
 pub fn eval_only(b: &Board) -> i32 {
     crate::eval::evaluate(&b.inner)
 }
+
+#[cfg(feature = "gpu-wgpu")]
+pub mod gpu_train;

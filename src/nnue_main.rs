@@ -528,6 +528,26 @@ fn main() {
             #[cfg(not(feature = "gpu-detect"))]
             die("nnue gpu needs GPU detection: cargo build --features gpu-detect --bin nnue");
         }
+        // GPU training through burn's Wgpu backend (Vulkan/Metal/DX12).
+        #[cfg(feature = "gpu-wgpu")]
+        Some("gpu-train") => {
+            let data = rest
+                .first()
+                .unwrap_or_else(|| die("usage: nnue gpu-train <data-dir> <out.tkn> [epochs] [batch]"));
+            let out = rest.get(1).unwrap_or_else(|| die("usage: nnue gpu-train <data-dir> <out.tkn>"));
+            let epochs = rest.get(2).and_then(|v| v.parse().ok()).unwrap_or(2usize);
+            let batch = rest.get(3).and_then(|v| v.parse().ok()).unwrap_or(512usize);
+            taikyokushogi::gpu_train::run(
+                std::path::Path::new(data),
+                std::path::Path::new(out),
+                epochs,
+                batch,
+                2e-3,
+            )
+            .unwrap_or_else(|e| die(e));
+        }
+        #[cfg(not(feature = "gpu-wgpu"))]
+        Some("gpu-train") => die("GPU training needs: cargo build --features gpu-wgpu --bin nnue"),
         Some("dump-positions") => cmd_dump(rest),
         Some("explain") => cmd_explain(rest),
         Some("bench") => cmd_bench(rest.first().map(std::string::String::as_str)),
@@ -541,7 +561,7 @@ fn main() {
         Some("ablate") => taikyokushogi::research::ablate::run(rest).unwrap_or_else(|e| die(e)),
         _ => {
             eprintln!(
-                "usage: nnue <classes|gen-classes|info|verify|random-net|export|gpu|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
+                "usage: nnue <classes|gen-classes|info|verify|random-net|export|gpu|gpu-train|dump-positions|explain|bench|multipv|tree|stability|critical|pieces|ablate> ..."
             );
             std::process::exit(if args.is_empty() { 0 } else { 2 });
         }
