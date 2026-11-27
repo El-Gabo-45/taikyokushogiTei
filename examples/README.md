@@ -131,3 +131,12 @@ cargo run --release --example <name> -- [args...]
   `cargo run --release --example export_piece_metadata > training/piece_metadata.json`
 - `nnue_speed`: micro-benchmark of `evaluate()` — from-scratch refresh vs
   the incrementally-maintained accumulator. No arguments.
+
+The `nnue` binary also ships training/inspection commands (see docs/NNUE.md):
+`nnue gpu` lists Vulkan/Metal/DX12 adapters via `wgpu`, and
+`nnue gpu-train <data> <out.tkn> [epochs] [batch] [samples]` trains the full
+TKN1 architecture on any GPU through `burn`'s Wgpu autodiff backend — no CUDA
+or ROCm needed. Build it once with
+`cargo build --release --features gpu-wgpu --bin nnue`, or use
+`make nnue-gpu-train`. `make nnue-smoke` runs the whole pipeline (data →
+label gate → GPU training → `nnue verify`) on 20 tiny games in `/tmp`.

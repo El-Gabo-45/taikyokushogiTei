@@ -15,7 +15,7 @@ DEVICE ?= auto
 # CUDA wheel index used by `make nnue-gpu-setup` (override for your driver).
 GPU_INDEX ?= https://download.pytorch.org/whl/cu124
 
-.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-parity nnue-bench nnue-test nnue-gpu-setup nnue-device nnue-gpu-train
+.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-verify-pack nnue-parity nnue-bench nnue-test nnue-gpu-setup nnue-device nnue-gpu-train nnue-smoke
 
 nnue-data:
 	cargo run --release --bin selfplay -- $(GAMES) $(DEPTH) $(MAXMV) $(WORKERS) $(TIMEMS) --out $(DATA) --opening-plies $(OPEN)
@@ -46,8 +46,25 @@ nnue-gpu-setup:
 nnue-device:
 	cd training && $(PY) device_info.py
 
+# One-command smoke pipeline: small self-play run, label gate, GPU training
+# and engine verification. Uses DATA=/tmp by default so it never touches the
+# checked-in nets/ or training_data/.
+SMOKE_DATA ?= /tmp/tk_nnue_smoke
+SMOKE_NET  ?= /tmp/tk_nnue_smoke.tkn
+nnue-smoke:
+	mkdir -p $(SMOKE_DATA)
+	cargo run --release --bin selfplay -- 20 2 200 4 200 --out $(SMOKE_DATA) --opening-plies 6 --seed 1
+	$(PY) training/check_label_units.py $(SMOKE_DATA)
+	cargo run --release --features gpu-wgpu --bin nnue -- gpu-train $(SMOKE_DATA) $(SMOKE_NET) 2 256 512
+	cargo run --release --bin nnue -- verify $(SMOKE_NET)
+
 nnue-pack:
 	cd $(dir $(NET)) && $(ZSTD) -19 -f $(notdir $(NET)) -o $(notdir $(NET)).zst && sha256sum $(notdir $(NET)).zst > $(notdir $(NET)).zst.sha256
+
+# Verify a packed network: checksum round-trip + engine load + NNUE parity.
+nnue-verify-pack:
+	cd $(dir $(NET)) && sha256sum -c $(notdir $(NET)).zst.sha256
+	cargo run --release --bin nnue -- info $(NET).zst
 
 nnue-parity:
 	cargo run --release --bin nnue -- dump-positions --net $(NET) --n 2000 --seed 11 --out /tmp/tk_pos.jsonl

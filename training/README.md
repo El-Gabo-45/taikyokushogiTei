@@ -114,9 +114,12 @@ make nnue-buckets   # calibrate thresholds, rewrite rules/nnue_arch.json, rebuil
 make nnue-train     # train + export nets/tk.tkn (device from DEVICE=auto)
 make nnue-device    # report CUDA/MPS availability
 make nnue-gpu-train # alternative: burn/Wgpu trainer (any Vulkan/Metal GPU)
+make nnue-pack      # zstd-compress the net + write its .sha256
+make nnue-verify-pack  # check the checksum and load the compressed net
 make nnue-parity    # Rust vs Python integer parity (normal + thinned positions)
 make nnue-bench     # evaluations/s and apply+undo overhead
 make nnue-test      # Rust tests + Python pipeline tests
+make nnue-smoke     # end-to-end: 20 games -> gate -> GPU train -> verify (in /tmp)
 ```
 
 Useful overrides: `make nnue-data GAMES=800 DEPTH=3 WORKERS=8`,

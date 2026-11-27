@@ -205,6 +205,9 @@ make nnue-buckets   # calibrate thresholds, write rules/nnue_arch.json, then reb
 make nnue-train     # train + export nets/tk.tkn (GPU when available)
 make nnue-parity    # Rust vs Python integer reference, normal and thinned positions
 make nnue-bench
+make nnue-pack      # zstd-compress the net and write its .sha256
+make nnue-verify-pack  # verify the checksum and that the engine loads the .zst
+make nnue-smoke     # full pipeline on 20 tiny games: data -> gate -> GPU train -> verify
 ```
 
 ### Training on a GPU
