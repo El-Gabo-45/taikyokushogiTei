@@ -247,9 +247,28 @@ cargo build --features gpu-detect --bin nnue
 It enumerates Vulkan, Metal, DirectX 12 and OpenGL adapters and reports PCI
 vendor/device ids. The same data is served by `GET /api/gpu` (when the server
 is built with `--features server,gpu-detect`) and shown in the browser's
-Diagnostics panel. This is **detection only** — it does not make PyTorch use a
-Vulkan adapter; for training, the device choices remain `cpu`, `cuda` and
-`mps` as above.
+Diagnostics panel.
+
+#### Training on any GPU with burn/Wgpu
+
+For a GPU that PyTorch cannot use (e.g. AMD on RADV/Vulkan, Intel, Apple via
+Metal), the Rust trainer runs autodiff on `burn`'s **Wgpu** backend — the same
+Vulkan/Metal/DX12 adapter that `nnue gpu` reports:
+
+```bash
+make nnue-gpu-train DATA=data NET=nets/gpu_nnue.tkn GPU_EPOCHS=2 GPU_BATCH=512
+# or directly:
+cargo build --release --features gpu-wgpu --bin nnue
+./target/release/nnue gpu-train data nets/gpu_nnue.tkn 2 512
+```
+
+It reads TKD1 samples, trains the full TKN1 "S" architecture (feature
+transformer, PSQT and the three dense layers) in f32 on the GPU, quantises the
+weights and writes a standard TKN1 v2 file that `Network::load` can use. The
+quick smoke run uses at most 2048 samples to keep memory bounded; raise the
+sample cap in `src/gpu_train.rs` for a real training session. The PyTorch
+pipeline above (`--device cuda|mps`) remains the production path for large
+runs.
 
 (or run the commands in the `Makefile` by hand). Details:
 

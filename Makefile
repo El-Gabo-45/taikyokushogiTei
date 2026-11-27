@@ -15,7 +15,7 @@ DEVICE ?= auto
 # CUDA wheel index used by `make nnue-gpu-setup` (override for your driver).
 GPU_INDEX ?= https://download.pytorch.org/whl/cu124
 
-.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-parity nnue-bench nnue-test nnue-gpu-setup nnue-device
+.PHONY: nnue-data nnue-gates nnue-buckets nnue-train nnue-pack nnue-parity nnue-bench nnue-test nnue-gpu-setup nnue-device nnue-gpu-train
 
 nnue-data:
 	cargo run --release --bin selfplay -- $(GAMES) $(DEPTH) $(MAXMV) $(WORKERS) $(TIMEMS) --out $(DATA) --opening-plies $(OPEN)
@@ -31,7 +31,15 @@ nnue-train:
 	mkdir -p $(dir $(NET))
 	$(PY) training/train.py $(DATA) --out $(NET) --epochs $(EPOCHS) --device $(DEVICE)
 
-# GPU setup / detection for the NNUE trainer (the Rust engine stays CPU-only).
+# GPU NNUE training through burn/Wgpu (Vulkan, Metal, DX12 — any GPU).
+# Build once with: cargo build --release --features gpu-wgpu --bin nnue
+GPU_EPOCHS ?= 2
+GPU_BATCH  ?= 512
+GPU_SAMPLES ?= 2048
+nnue-gpu-train:
+	cargo run --release --features gpu-wgpu --bin nnue -- gpu-train $(DATA) $(NET) $(GPU_EPOCHS) $(GPU_BATCH)
+
+# GPU setup / detection for the PyTorch pipeline (CUDA/MPS only).
 nnue-gpu-setup:
 	bash scripts/setup_gpu.sh $(GPU_INDEX)
 

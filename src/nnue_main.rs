@@ -531,10 +531,12 @@ fn main() {
         // GPU training through burn's Wgpu backend (Vulkan/Metal/DX12).
         #[cfg(feature = "gpu-wgpu")]
         Some("gpu-train") => {
-            let data = rest
-                .first()
-                .unwrap_or_else(|| die("usage: nnue gpu-train <data-dir> <out.tkn> [epochs] [batch]"));
-            let out = rest.get(1).unwrap_or_else(|| die("usage: nnue gpu-train <data-dir> <out.tkn>"));
+            let data = rest.first().unwrap_or_else(|| {
+                die("usage: nnue gpu-train <data-dir> <out.tkn> [epochs] [batch]")
+            });
+            let out = rest
+                .get(1)
+                .unwrap_or_else(|| die("usage: nnue gpu-train <data-dir> <out.tkn>"));
             let epochs = rest.get(2).and_then(|v| v.parse().ok()).unwrap_or(2usize);
             let batch = rest.get(3).and_then(|v| v.parse().ok()).unwrap_or(512usize);
             taikyokushogi::gpu_train::run(
