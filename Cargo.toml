@@ -38,6 +38,10 @@ path = "src/cli.rs"
 name = "taikyokushogi-usi"
 path = "src/usi_main.rs"
 
+[[bin]]
+name = "taikyokushogi-atsi"
+path = "src/atsi_main.rs"
+
 [features]
 default = ["cpu"]
 cpu = []

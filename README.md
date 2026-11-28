@@ -18,6 +18,7 @@ Developed with AI assistance in some parts of the code and documentation.
 | Play in the browser / use the REST API | [docs/WEB.md](docs/WEB.md) |
 | Use the CLI | [docs/CLI.md](docs/CLI.md) |
 | Load it into a shogi GUI (USI) | [docs/USI.md](docs/USI.md) |
+| Play on taikyoku-shogi.github.io (ATSI v0) | [docs/ATSI.md](docs/ATSI.md) |
 | Benchmark it / measure strength | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) · current Elo: [docs/STRENGTH.md](docs/STRENGTH.md) |
 | Debug evals, NNUE and search | [docs/CLI.md](docs/CLI.md#debugging) · [docs/NNUE.md](docs/NNUE.md) |
 | Use it as a Rust crate | [docs/LIBRARY.md](docs/LIBRARY.md) |

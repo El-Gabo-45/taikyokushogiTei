@@ -33,6 +33,7 @@
 
 pub mod families;
 pub mod nnue;
+pub mod positional;
 pub mod psqt;
 pub mod zones;
 

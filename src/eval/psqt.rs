@@ -58,6 +58,13 @@ pub fn psqt_value(pt: u16, sq: usize, color: u8) -> i32 {
     };
     score += zone_bonus;
 
+    // Optional centrality + royal-proximity bonuses from Tomatene. Folded
+    // into the PSQT (no extra scan at search time) but off by default so the
+    // existing hand-crafted evaluation is preserved unless explicitly enabled.
+    if crate::eval::positional::enabled() {
+        score += crate::eval::positional::bonus(pt, sq, color);
+    }
+
     // Small positional bonus: pieces advancing toward the enemy camp get a
     // tiny extra edge; royals penalized for being exposed near center.
     if pieces::is_royal(pt) {

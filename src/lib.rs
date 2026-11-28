@@ -73,7 +73,12 @@ mod attack;
 mod board;
 mod eval;
 mod movegen;
+/// Movement-derived feature vectors for every piece type (read-only metadata).
+pub mod piece_features;
 mod pieces;
+/// Auxiliary reverse attack index: "who attacks this square?", built from the
+/// existing move generator without changing it. Used by eval features and tools.
+pub mod reverse_attack;
 pub mod search;
 mod types;
 
@@ -119,6 +124,11 @@ mod tsfen;
 /// standard USI command set over stdin/stdout so the engine can be loaded by
 /// USI GUIs and test harnesses (bin `taikyokushogi-usi`).
 pub mod usi;
+
+/// ATSI v0 front-end for `taikyoku-shogi.github.io/play` (bin
+/// `taikyokushogi-atsi`). It is a thin protocol adapter over the same board
+/// and search as USI — see `docs/ATSI.md`.
+pub mod atsi;
 
 #[cfg(feature = "python")]
 mod python;

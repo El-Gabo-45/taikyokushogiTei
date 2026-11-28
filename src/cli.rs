@@ -1202,6 +1202,11 @@ fn execute(line: &str, board: &mut Board, opt: &mut Options, hist: &mut Vec<Stri
                 display_f64(n) / secs / 1e6
             );
         }
+        "piece-features" => {
+            // Read-only movement-derived metadata (no code generation, no
+            // change to the hard-coded piece table or movegen).
+            print!("{}", taikyokushogi::piece_features::json_metadata());
+        }
         "bench" => {
             const ITERS: usize = 50;
             if rest.first().is_some_and(|s| *s == "search") {

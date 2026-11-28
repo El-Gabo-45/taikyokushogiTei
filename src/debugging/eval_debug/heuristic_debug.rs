@@ -27,6 +27,9 @@ pub struct HeuristicDebugReport {
     /// perspective). Tracked separately so the decomposition reproduces the
     /// engine's hand-crafted score exactly.
     pub royal_center: i32,
+    /// Centrality + royal-proximity term from `eval/positional.rs`, also
+    /// folded into the PSQT. Tracked so the decomposition stays exact.
+    pub positional: i32,
     pub king_safety: i32,
     pub by_piece: Vec<(String, i32)>,
 }
@@ -38,6 +41,7 @@ pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
     let mut material = 0i32;
     let mut family_weight = 0i32;
     let mut royal_center = 0i32;
+    let mut positional = 0i32;
     let mut by_piece: Vec<(String, i32)> = Vec::new();
 
     for color in [BLACK, WHITE] {
@@ -66,6 +70,10 @@ pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
                 royal_center -= sign * dist * 2;
             }
 
+            if crate::eval::positional::enabled() {
+                positional += sign * crate::eval::positional::bonus(pt, sq, color);
+            }
+
             if let Some((_, existing)) = by_piece.iter_mut().find(|(name, _)| name == &piece_name) {
                 *existing += sign * value;
             } else {
@@ -81,7 +89,7 @@ pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
     // (threat-zone bitboard ∩ friendly occupancy) — reusing it keeps this
     // decomposition exactly equal to the engine's score.
     let king_safety = crate::eval::king_safety(b, BLACK) - crate::eval::king_safety(b, WHITE);
-    let total = family_weight + zones + royal_center + king_safety;
+    let total = family_weight + zones + royal_center + positional + king_safety;
 
     HeuristicDebugReport {
         total,
@@ -89,6 +97,7 @@ pub fn debug_heuristic(board: &crate::Board) -> HeuristicDebugReport {
         family_weight,
         zones,
         royal_center,
+        positional,
         king_safety,
         by_piece,
     }
